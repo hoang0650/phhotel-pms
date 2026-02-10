@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { LayoutDashboard, BedDouble, CalendarDays, Users } from 'lucide-react-native';
+import { LayoutDashboard, BedDouble, CalendarDays, Users, Briefcase, UserCog, Settings } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 
 export default function TabLayout() {
@@ -53,6 +53,27 @@ export default function TabLayout() {
         options={{
           title: 'Khách hàng',
           tabBarIcon: ({ color, size }) => <Users size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="services"
+        options={{
+          title: 'Dịch vụ',
+          tabBarIcon: ({ color, size }) => <Briefcase size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="staffs"
+        options={{
+          title: 'Nhân viên',
+          tabBarIcon: ({ color, size }) => <UserCog size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Cài đặt',
+          tabBarIcon: ({ color, size }) => <Settings size={size} color={color} />,
         }}
       />
       <Tabs.Screen

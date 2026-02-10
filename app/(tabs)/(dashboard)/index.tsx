@@ -16,6 +16,7 @@ import {
   CalendarCheck,
   CalendarX,
   TrendingUp,
+  TrendingDown,
   Sparkles,
   Wrench,
   ChevronRight,
@@ -23,12 +24,15 @@ import {
   Building2,
   ChevronDown,
   Check,
+  DollarSign,
+  BarChart3,
+  PieChart,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useHotel } from '@/contexts/HotelContext';
-import { roomsApi, bookingsApi } from '@/services/api';
+import { roomsApi, bookingsApi, revenueApi } from '@/services/api';
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
@@ -47,7 +51,19 @@ export default function DashboardScreen() {
     enabled: true,
   });
 
-  const isLoading = hotelsLoading || roomsLoading || bookingsLoading;
+  const { data: revenueSummary, isLoading: revenueLoading, refetch: refetchRevenue } = useQuery({
+    queryKey: ['revenue', 'summary', selectedHotelId],
+    queryFn: () => revenueApi.getSummary(selectedHotelId || undefined),
+    enabled: true,
+  });
+
+  const { data: dailyRevenue = [], refetch: refetchDailyRevenue } = useQuery({
+    queryKey: ['revenue', 'daily', selectedHotelId],
+    queryFn: () => revenueApi.getDaily(selectedHotelId || undefined),
+    enabled: true,
+  });
+
+  const isLoading = hotelsLoading || roomsLoading || bookingsLoading || revenueLoading;
 
   const today = new Date().toISOString().split('T')[0];
   
@@ -62,18 +78,30 @@ export default function DashboardScreen() {
     occupancyRate: rooms.length > 0 
       ? Math.round((rooms.filter(r => r.status === 'occupied').length / rooms.length) * 100) 
       : 0,
-    todayRevenue: bookings.filter(b => b.checkIn === today).reduce((sum, b) => sum + b.paidAmount, 0),
-    monthlyRevenue: bookings.reduce((sum, b) => sum + b.paidAmount, 0),
   };
 
   const todayCheckIns = bookings.filter(b => b.checkIn === today && b.status === 'confirmed');
   const todayCheckOuts = bookings.filter(b => b.checkOut === today && b.status === 'checked_in');
 
   const handleRefresh = async () => {
-    await Promise.all([refetchRooms(), refetchBookings()]);
+    await Promise.all([refetchRooms(), refetchBookings(), refetchRevenue(), refetchDailyRevenue()]);
   };
 
   const formatCurrency = (amount: number) => {
+    if (amount >= 1000000000) {
+      return `${(amount / 1000000000).toFixed(1)}B`;
+    }
+    if (amount >= 1000000) {
+      return `${(amount / 1000000).toFixed(1)}M`;
+    }
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatFullCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
       currency: 'VND',
@@ -90,6 +118,11 @@ export default function DashboardScreen() {
     selectHotel(hotelId);
     setHotelModalVisible(false);
   };
+
+  const revenueGrowth = revenueSummary?.revenueGrowth || 0;
+  const isPositiveGrowth = revenueGrowth >= 0;
+
+  const maxDailyRevenue = Math.max(...dailyRevenue.map(d => d.revenue), 1);
 
   if (isLoading && !selectedHotel) {
     return (
@@ -196,35 +229,98 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.revenueSection}>
-          <Text style={styles.sectionTitle}>Doanh thu</Text>
-          <View style={styles.revenueCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Doanh thu</Text>
+            <View style={styles.growthBadge}>
+              {isPositiveGrowth ? (
+                <TrendingUp size={14} color="#10b981" />
+              ) : (
+                <TrendingDown size={14} color="#ef4444" />
+              )}
+              <Text style={[styles.growthText, { color: isPositiveGrowth ? '#10b981' : '#ef4444' }]}>
+                {isPositiveGrowth ? '+' : ''}{revenueGrowth.toFixed(1)}%
+              </Text>
+            </View>
+          </View>
+          
+          <View style={styles.revenueCards}>
             <LinearGradient
               colors={['#0f766e', '#0d9488']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={styles.revenueGradient}
+              style={styles.revenueMainCard}
             >
-              <View style={styles.revenueRow}>
-                <View>
-                  <Text style={styles.revenueLabel}>Hôm nay</Text>
-                  <Text style={styles.revenueValue}>
-                    {formatCurrency(stats.todayRevenue)}
-                  </Text>
-                </View>
-                <View style={styles.revenueDivider} />
-                <View>
-                  <Text style={styles.revenueLabel}>Tháng này</Text>
-                  <Text style={styles.revenueValue}>
-                    {formatCurrency(stats.monthlyRevenue)}
-                  </Text>
-                </View>
+              <View style={styles.revenueMainIcon}>
+                <DollarSign size={24} color="#fff" />
               </View>
-              <View style={styles.trendRow}>
-                <TrendingUp size={16} color="#a7f3d0" />
-                <Text style={styles.trendText}>Dữ liệu realtime từ API</Text>
+              <Text style={styles.revenueMainLabel}>Hôm nay</Text>
+              <Text style={styles.revenueMainValue}>
+                {formatFullCurrency(revenueSummary?.todayRevenue || 0)}
+              </Text>
+              <View style={styles.revenueCompare}>
+                <Text style={styles.revenueCompareText}>
+                  Hôm qua: {formatCurrency(revenueSummary?.yesterdayRevenue || 0)}
+                </Text>
               </View>
             </LinearGradient>
+
+            <View style={styles.revenueSecondaryCards}>
+              <View style={styles.revenueSecondaryCard}>
+                <BarChart3 size={18} color="#6366f1" />
+                <Text style={styles.revenueSecondaryLabel}>Tuần này</Text>
+                <Text style={styles.revenueSecondaryValue}>
+                  {formatCurrency(revenueSummary?.weeklyRevenue || 0)}
+                </Text>
+              </View>
+              <View style={styles.revenueSecondaryCard}>
+                <PieChart size={18} color="#f59e0b" />
+                <Text style={styles.revenueSecondaryLabel}>Tháng này</Text>
+                <Text style={styles.revenueSecondaryValue}>
+                  {formatCurrency(revenueSummary?.monthlyRevenue || 0)}
+                </Text>
+              </View>
+            </View>
           </View>
+
+          <View style={styles.revenueBreakdown}>
+            <View style={styles.breakdownItem}>
+              <View style={[styles.breakdownDot, { backgroundColor: '#0d9488' }]} />
+              <Text style={styles.breakdownLabel}>Phòng</Text>
+              <Text style={styles.breakdownValue}>
+                {formatCurrency(revenueSummary?.roomRevenue || 0)}
+              </Text>
+            </View>
+            <View style={styles.breakdownItem}>
+              <View style={[styles.breakdownDot, { backgroundColor: '#f59e0b' }]} />
+              <Text style={styles.breakdownLabel}>Dịch vụ</Text>
+              <Text style={styles.breakdownValue}>
+                {formatCurrency(revenueSummary?.serviceRevenue || 0)}
+              </Text>
+            </View>
+          </View>
+
+          {dailyRevenue.length > 0 && (
+            <View style={styles.chartContainer}>
+              <Text style={styles.chartTitle}>Doanh thu 7 ngày qua</Text>
+              <View style={styles.chart}>
+                {dailyRevenue.map((day, index) => (
+                  <View key={day.period} style={styles.chartBar}>
+                    <View style={styles.chartBarContainer}>
+                      <View 
+                        style={[
+                          styles.chartBarFill, 
+                          { height: `${(day.revenue / maxDailyRevenue) * 100}%` }
+                        ]} 
+                      />
+                    </View>
+                    <Text style={styles.chartLabel}>
+                      {new Date(day.period).getDate()}/{new Date(day.period).getMonth() + 1}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
         </View>
 
         <View style={styles.section}>
@@ -282,7 +378,7 @@ export default function DashboardScreen() {
                   <View style={styles.bookingDetails}>
                     <Text style={styles.guestName}>{booking.guestName}</Text>
                     <Text style={styles.bookingMeta}>
-                      Còn nợ: {formatCurrency(booking.totalAmount - booking.paidAmount)}
+                      Còn nợ: {formatFullCurrency(booking.totalAmount - booking.paidAmount)}
                     </Text>
                   </View>
                 </View>
@@ -506,54 +602,170 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600' as const,
     color: Colors.light.text,
-    marginBottom: 12,
-  },
-  revenueCard: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  revenueGradient: {
-    padding: 20,
-  },
-  revenueRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  revenueLabel: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 4,
-  },
-  revenueValue: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: '#fff',
-  },
-  revenueDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  trendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    gap: 6,
-  },
-  trendText: {
-    fontSize: 12,
-    color: '#a7f3d0',
-  },
-  section: {
-    marginBottom: 24,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  growthBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0fdf4',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+    gap: 4,
+  },
+  growthText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  revenueCards: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  revenueMainCard: {
+    flex: 1.2,
+    padding: 16,
+    borderRadius: 16,
+    minHeight: 140,
+  },
+  revenueMainIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  revenueMainLabel: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  revenueMainValue: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: '#fff',
+    marginTop: 4,
+  },
+  revenueCompare: {
+    marginTop: 12,
+  },
+  revenueCompareText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  revenueSecondaryCards: {
+    flex: 1,
+    gap: 12,
+  },
+  revenueSecondaryCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  revenueSecondaryLabel: {
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    marginTop: 6,
+  },
+  revenueSecondaryValue: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: Colors.light.text,
+    marginTop: 2,
+  },
+  revenueBreakdown: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 12,
+    gap: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  breakdownItem: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  breakdownDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  breakdownLabel: {
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  breakdownValue: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+    marginLeft: 'auto',
+  },
+  chartContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  chartTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+    marginBottom: 16,
+  },
+  chart: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 100,
+    gap: 8,
+  },
+  chartBar: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  chartBarContainer: {
+    width: '100%',
+    height: 80,
+    backgroundColor: '#f0f9ff',
+    borderRadius: 4,
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+  },
+  chartBarFill: {
+    width: '100%',
+    backgroundColor: '#0d9488',
+    borderRadius: 4,
+  },
+  chartLabel: {
+    fontSize: 10,
+    color: Colors.light.textSecondary,
+    marginTop: 6,
+  },
+  section: {
+    marginBottom: 24,
   },
   seeAllBtn: {
     flexDirection: 'row',

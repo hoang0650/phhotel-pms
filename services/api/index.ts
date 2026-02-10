@@ -5,3 +5,6 @@ export { bookingsApi } from './bookings';
 export { guestsApi } from './guests';
 export { dashboardApi } from './dashboard';
 export { hotelsApi } from './hotels';
+export { revenueApi } from './revenue';
+export { servicesApi } from './services';
+export { staffsApi } from './staffs';

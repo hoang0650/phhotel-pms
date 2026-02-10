@@ -41,6 +41,16 @@ export const API_ENDPOINTS = {
     SUMMARY: '/financial-summary',
     EXPORT_EXCEL: '/financial-summary/export-excel',
   },
+  REVENUE: {
+    BASE: '/revenue',
+    BY_ID: (id: string) => `/revenue/${id}`,
+    BY_HOTEL: (hotelId: string) => `/revenue/hotel/${hotelId}`,
+    DAILY: '/revenue/daily',
+    MONTHLY: '/revenue/monthly',
+    YEARLY: '/revenue/yearly',
+    SUMMARY: '/revenue/summary',
+    BY_DATE_RANGE: '/revenue/date-range',
+  },
   SERVICES: {
     BASE: '/services',
     BY_ID: (id: string) => `/services/${id}`,

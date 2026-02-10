@@ -56,3 +56,56 @@ export interface DashboardStats {
   todayRevenue: number;
   monthlyRevenue: number;
 }
+
+export interface Service {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: string;
+  isActive: boolean;
+  hotelId: string;
+  icon?: string;
+}
+
+export interface ServiceOrder {
+  id: string;
+  serviceId: string;
+  serviceName: string;
+  roomId: string;
+  roomNumber: string;
+  guestId: string;
+  guestName: string;
+  quantity: number;
+  totalPrice: number;
+  status: 'pending' | 'processing' | 'completed' | 'cancelled';
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface Staff {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  position: string;
+  department: string;
+  hotelId: string;
+  avatar?: string;
+  salary: number;
+  startDate: string;
+  status: 'active' | 'inactive' | 'on_leave';
+}
+
+export interface SalaryRecord {
+  id: string;
+  staffId: string;
+  staffName: string;
+  baseSalary: number;
+  bonus: number;
+  deductions: number;
+  netSalary: number;
+  month: string;
+  paidAt?: string;
+  status: 'pending' | 'paid';
+}
