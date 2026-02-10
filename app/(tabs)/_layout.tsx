@@ -1,21 +1,32 @@
 import { Tabs } from 'expo-router';
 import { Home, BedDouble, BarChart3, Settings } from 'lucide-react-native';
-import Colors from '@/constants/colors';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function TabLayout() {
+  const { isDark, colors } = useTheme();
+  const { language } = useLanguage();
+
+  const tabLabels = {
+    home: language === 'vi' ? 'Trang chủ' : 'Home',
+    rooms: language === 'vi' ? 'Phòng' : 'Rooms',
+    report: language === 'vi' ? 'Báo cáo' : 'Report',
+    settings: language === 'vi' ? 'Cài đặt' : 'Settings',
+  };
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: Colors.light.tint,
-        tabBarInactiveTintColor: Colors.light.tabIconDefault,
+        tabBarActiveTintColor: colors.tint,
+        tabBarInactiveTintColor: colors.tabIconDefault,
         tabBarStyle: {
-          backgroundColor: '#fff',
+          backgroundColor: isDark ? '#1e293b' : '#fff',
           borderTopWidth: 0,
           elevation: 20,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.08,
+          shadowOpacity: isDark ? 0.3 : 0.08,
           shadowRadius: 12,
           height: 65,
           paddingBottom: 8,
@@ -30,28 +41,28 @@ export default function TabLayout() {
       <Tabs.Screen
         name="(dashboard)"
         options={{
-          title: 'Trang chủ',
+          title: tabLabels.home,
           tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="rooms"
         options={{
-          title: 'Phòng',
+          title: tabLabels.rooms,
           tabBarIcon: ({ color, size }) => <BedDouble size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="report"
         options={{
-          title: 'Báo cáo',
+          title: tabLabels.report,
           tabBarIcon: ({ color, size }) => <BarChart3 size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Cài đặt',
+          title: tabLabels.settings,
           tabBarIcon: ({ color, size }) => <Settings size={size} color={color} />,
         }}
       />

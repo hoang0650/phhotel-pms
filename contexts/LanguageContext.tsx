@@ -1,0 +1,245 @@
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import createContextHook from '@nkzw/create-context-hook';
+
+export type Language = 'vi' | 'en';
+
+const LANGUAGE_KEY = 'app_language';
+
+const translations = {
+  vi: {
+    settings: 'Cài đặt',
+    editProfile: 'Chỉnh sửa hồ sơ',
+    hotel: 'Khách sạn',
+    hotelInfo: 'Thông tin khách sạn',
+    noHotelSelected: 'Chưa chọn khách sạn',
+    paymentBilling: 'Thanh toán & Hóa đơn',
+    notifications: 'Thông báo',
+    pushNotifications: 'Thông báo đẩy',
+    pushDesc: 'Nhận thông báo về đặt phòng mới',
+    emailNotifications: 'Email thông báo',
+    emailDesc: 'Báo cáo hàng ngày qua email',
+    smsNotifications: 'SMS thông báo',
+    smsDesc: 'Thông báo quan trọng qua SMS',
+    appearance: 'Giao diện',
+    darkMode: 'Chế độ tối',
+    darkModeDesc: 'Giảm mỏi mắt vào ban đêm',
+    language: 'Ngôn ngữ',
+    vietnamese: 'Tiếng Việt',
+    english: 'English',
+    security: 'Bảo mật',
+    changePassword: 'Đổi mật khẩu',
+    biometric: 'Xác thực sinh trắc học',
+    biometricDesc: 'Đăng nhập bằng vân tay/Face ID',
+    sessions: 'Phiên đăng nhập',
+    sessionsDesc: 'Quản lý các thiết bị đã đăng nhập',
+    support: 'Hỗ trợ',
+    helpCenter: 'Trung tâm trợ giúp',
+    contactSupport: 'Liên hệ hỗ trợ',
+    terms: 'Điều khoản sử dụng',
+    logout: 'Đăng xuất',
+    logoutConfirm: 'Bạn có chắc chắn muốn đăng xuất?',
+    cancel: 'Hủy',
+    save: 'Lưu',
+    developing: 'Tính năng đang phát triển',
+    notice: 'Thông báo',
+    name: 'Tên',
+    email: 'Email',
+    phone: 'Số điện thoại',
+    role: 'Vai trò',
+    selectLanguage: 'Chọn ngôn ngữ',
+    profileUpdated: 'Cập nhật thành công',
+    profileUpdateFailed: 'Cập nhật thất bại',
+    roomManagement: 'Quản lý phòng',
+    rooms: 'phòng',
+    searchRoom: 'Tìm số phòng...',
+    all: 'Tất cả',
+    available: 'Trống',
+    occupied: 'Đang ở',
+    cleaning: 'Dọn dẹp',
+    maintenance: 'Bảo trì',
+    checkIn: 'Nhận phòng',
+    checkOut: 'Trả phòng',
+    transferRoom: 'Chuyển phòng',
+    cleanRoom: 'Dọn dẹp',
+    completeCleaning: 'Hoàn tất dọn dẹp',
+    completeMaintenance: 'Hoàn tất bảo trì',
+    roomDetails: 'Chi tiết phòng',
+    roomNumber: 'Số phòng',
+    roomType: 'Loại phòng',
+    floor: 'Tầng',
+    price: 'Giá',
+    capacity: 'Sức chứa',
+    guest: 'Khách',
+    checkOutDate: 'Ngày trả',
+    perNight: '/đêm',
+    people: 'người',
+    confirmCheckOut: 'Xác nhận trả phòng',
+    confirmCheckOutMsg: 'Xác nhận trả phòng',
+    confirm: 'Xác nhận',
+    success: 'Thành công',
+    checkedIn: 'Đã nhận phòng',
+    checkedOut: 'Đã trả phòng',
+    roomReady: 'Phòng đã sẵn sàng',
+    error: 'Lỗi',
+    cannotCheckIn: 'Không thể nhận phòng',
+    cannotCheckOut: 'Không thể trả phòng',
+    cannotUpdateStatus: 'Không thể cập nhật trạng thái phòng',
+    noRoomData: 'Chưa có dữ liệu phòng',
+    checkApiConnection: 'Kiểm tra kết nối API',
+    noRoomFound: 'Không tìm thấy phòng',
+    loadingRooms: 'Đang tải danh sách phòng...',
+    transferRoomFrom: 'Chuyển phòng từ',
+    selectTargetRoom: 'Chọn phòng đích',
+    amenities: 'Tiện nghi',
+    guestName: 'Tên khách hàng',
+    enterGuestName: 'Nhập tên khách hàng',
+    guestPhone: 'Số điện thoại',
+    enterGuestPhone: 'Nhập số điện thoại',
+    guestId: 'CMND/CCCD',
+    enterGuestId: 'Nhập số CMND/CCCD',
+    dashboard: 'Trang chủ',
+    selectHotel: 'Chọn khách sạn',
+  },
+  en: {
+    settings: 'Settings',
+    editProfile: 'Edit Profile',
+    hotel: 'Hotel',
+    hotelInfo: 'Hotel Information',
+    noHotelSelected: 'No hotel selected',
+    paymentBilling: 'Payment & Billing',
+    notifications: 'Notifications',
+    pushNotifications: 'Push Notifications',
+    pushDesc: 'Receive notifications about new bookings',
+    emailNotifications: 'Email Notifications',
+    emailDesc: 'Daily reports via email',
+    smsNotifications: 'SMS Notifications',
+    smsDesc: 'Important notifications via SMS',
+    appearance: 'Appearance',
+    darkMode: 'Dark Mode',
+    darkModeDesc: 'Reduce eye strain at night',
+    language: 'Language',
+    vietnamese: 'Tiếng Việt',
+    english: 'English',
+    security: 'Security',
+    changePassword: 'Change Password',
+    biometric: 'Biometric Auth',
+    biometricDesc: 'Login with fingerprint/Face ID',
+    sessions: 'Login Sessions',
+    sessionsDesc: 'Manage logged-in devices',
+    support: 'Support',
+    helpCenter: 'Help Center',
+    contactSupport: 'Contact Support',
+    terms: 'Terms of Service',
+    logout: 'Log Out',
+    logoutConfirm: 'Are you sure you want to log out?',
+    cancel: 'Cancel',
+    save: 'Save',
+    developing: 'Feature in development',
+    notice: 'Notice',
+    name: 'Name',
+    email: 'Email',
+    phone: 'Phone',
+    role: 'Role',
+    selectLanguage: 'Select Language',
+    profileUpdated: 'Profile updated',
+    profileUpdateFailed: 'Update failed',
+    roomManagement: 'Room Management',
+    rooms: 'rooms',
+    searchRoom: 'Search room number...',
+    all: 'All',
+    available: 'Available',
+    occupied: 'Occupied',
+    cleaning: 'Cleaning',
+    maintenance: 'Maintenance',
+    checkIn: 'Check In',
+    checkOut: 'Check Out',
+    transferRoom: 'Transfer Room',
+    cleanRoom: 'Clean Room',
+    completeCleaning: 'Complete Cleaning',
+    completeMaintenance: 'Complete Maintenance',
+    roomDetails: 'Room Details',
+    roomNumber: 'Room No.',
+    roomType: 'Room Type',
+    floor: 'Floor',
+    price: 'Price',
+    capacity: 'Capacity',
+    guest: 'Guest',
+    checkOutDate: 'Check-out',
+    perNight: '/night',
+    people: 'people',
+    confirmCheckOut: 'Confirm Check-out',
+    confirmCheckOutMsg: 'Confirm check-out for room',
+    confirm: 'Confirm',
+    success: 'Success',
+    checkedIn: 'Checked in successfully',
+    checkedOut: 'Checked out successfully',
+    roomReady: 'Room is ready',
+    error: 'Error',
+    cannotCheckIn: 'Cannot check in',
+    cannotCheckOut: 'Cannot check out',
+    cannotUpdateStatus: 'Cannot update room status',
+    noRoomData: 'No room data',
+    checkApiConnection: 'Check API connection',
+    noRoomFound: 'No room found',
+    loadingRooms: 'Loading rooms...',
+    transferRoomFrom: 'Transfer from room',
+    selectTargetRoom: 'Select target room',
+    amenities: 'Amenities',
+    guestName: 'Guest Name',
+    enterGuestName: 'Enter guest name',
+    guestPhone: 'Phone Number',
+    enterGuestPhone: 'Enter phone number',
+    guestId: 'ID Number',
+    enterGuestId: 'Enter ID number',
+    dashboard: 'Dashboard',
+    selectHotel: 'Select Hotel',
+  },
+};
+
+export type TranslationKey = keyof typeof translations.vi;
+
+export const [LanguageProvider, useLanguage] = createContextHook(() => {
+  const [language, setLanguageState] = useState<Language>('vi');
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  useEffect(() => {
+    const loadLanguage = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(LANGUAGE_KEY);
+        if (stored === 'vi' || stored === 'en') {
+          setLanguageState(stored);
+        }
+      } catch (error) {
+        console.error('[LanguageContext] Error loading language:', error);
+      } finally {
+        setIsInitialized(true);
+      }
+    };
+    loadLanguage();
+  }, []);
+
+  const setLanguage = useCallback(async (lang: Language) => {
+    setLanguageState(lang);
+    try {
+      await AsyncStorage.setItem(LANGUAGE_KEY, lang);
+      console.log('[LanguageContext] Language saved:', lang);
+    } catch (error) {
+      console.error('[LanguageContext] Error saving language:', error);
+    }
+  }, []);
+
+  const t = useCallback((key: TranslationKey): string => {
+    return translations[language][key] || key;
+  }, [language]);
+
+  const currentTranslations = useMemo(() => translations[language], [language]);
+
+  return {
+    language,
+    setLanguage,
+    t,
+    translations: currentTranslations,
+    isInitialized,
+  };
+});

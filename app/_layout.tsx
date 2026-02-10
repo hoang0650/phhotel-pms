@@ -6,6 +6,8 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { HotelProvider } from "@/contexts/HotelContext";
+import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -31,6 +33,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function ThemedStatusBar() {
+  const { isDark } = useTheme();
+  return <StatusBar style={isDark ? "light" : "dark"} />;
+}
+
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerBackTitle: "Quay lại" }}>
@@ -52,12 +59,16 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <HotelProvider>
-          <GestureHandlerRootView style={{ flex: 1 }}>
-            <StatusBar style="light" />
-            <AuthGate>
-              <RootLayoutNav />
-            </AuthGate>
-          </GestureHandlerRootView>
+          <ThemeProvider>
+            <LanguageProvider>
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                <ThemedStatusBar />
+                <AuthGate>
+                  <RootLayoutNav />
+                </AuthGate>
+              </GestureHandlerRootView>
+            </LanguageProvider>
+          </ThemeProvider>
         </HotelProvider>
       </AuthProvider>
     </QueryClientProvider>

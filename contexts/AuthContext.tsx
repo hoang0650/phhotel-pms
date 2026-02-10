@@ -7,6 +7,13 @@ import { authApi, User, LoginRequest, RegisterRequest, ForgotPasswordRequest } f
 const AUTH_TOKEN_KEY = 'auth_token';
 const AUTH_USER_KEY = 'auth_user';
 
+export interface UpdateProfileData {
+  name?: string;
+  email?: string;
+  phone?: string;
+  avatar?: string;
+}
+
 export const [AuthProvider, useAuth] = createContextHook(() => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -65,6 +72,18 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     }
   }, []);
 
+  const updateLocalUser = useCallback(async (updates: Partial<User>) => {
+    if (!user) return;
+    const updatedUser = { ...user, ...updates };
+    setUser(updatedUser);
+    try {
+      await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(updatedUser));
+      console.log('[AuthContext] Updated local user');
+    } catch (error) {
+      console.error('[AuthContext] Error updating local user:', error);
+    }
+  }, [user]);
+
   const loginMutation = useMutation({
     mutationFn: (data: LoginRequest) => authApi.login(data),
     onSuccess: async (response) => {
@@ -89,6 +108,22 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     mutationFn: (data: ForgotPasswordRequest) => authApi.forgotPassword(data),
     onError: (error) => {
       console.error('[AuthContext] Forgot password failed:', error);
+    },
+  });
+
+  const updateProfileMutation = useMutation({
+    mutationFn: async (data: UpdateProfileData) => {
+      if (!user || !token) throw new Error('Not authenticated');
+      const result = await authApi.updateProfile(user.id, data, token);
+      return result;
+    },
+    onSuccess: async (updatedUser) => {
+      if (updatedUser) {
+        await updateLocalUser(updatedUser);
+      }
+    },
+    onError: (error) => {
+      console.error('[AuthContext] Profile update failed:', error);
     },
   });
 
@@ -125,6 +160,10 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     forgotPassword: forgotPasswordMutation.mutateAsync,
     forgotPasswordLoading: forgotPasswordMutation.isPending,
     forgotPasswordError: forgotPasswordMutation.error,
+    updateProfile: updateProfileMutation.mutateAsync,
+    updateProfileLoading: updateProfileMutation.isPending,
+    updateProfileError: updateProfileMutation.error,
+    updateLocalUser,
     logout: logoutMutation.mutateAsync,
     logoutLoading: logoutMutation.isPending,
   };

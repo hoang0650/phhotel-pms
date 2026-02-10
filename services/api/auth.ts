@@ -108,6 +108,21 @@ export const authApi = {
     return mapApiUserToUser(response);
   },
 
+  updateProfile: async (userId: string, data: Partial<User>, token: string): Promise<User> => {
+    console.log('[authApi.updateProfile] Updating profile for:', userId);
+    try {
+      const response = await apiClient.postWithAuth<ApiUser>(
+        API_ENDPOINTS.USERS.BY_ID(userId),
+        data,
+        token
+      );
+      return mapApiUserToUser(response);
+    } catch (error) {
+      console.error('[authApi.updateProfile] Error:', error);
+      throw error;
+    }
+  },
+
   logout: async (): Promise<void> => {
     console.log('[authApi.logout] Logging out');
     try {
