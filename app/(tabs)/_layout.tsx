@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, BedDouble, BarChart3, Settings } from 'lucide-react-native';
+import { Home, BedDouble, BarChart3, Settings, Briefcase } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -10,6 +10,7 @@ export default function TabLayout() {
   const tabLabels = {
     home: language === 'vi' ? 'Trang chủ' : 'Home',
     rooms: language === 'vi' ? 'Phòng' : 'Rooms',
+    management: language === 'vi' ? 'Quản Lý' : 'Management',
     report: language === 'vi' ? 'Báo cáo' : 'Report',
     settings: language === 'vi' ? 'Cài đặt' : 'Settings',
   };
@@ -50,6 +51,13 @@ export default function TabLayout() {
         options={{
           title: tabLabels.rooms,
           tabBarIcon: ({ color, size }) => <BedDouble size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="management"
+        options={{
+          title: tabLabels.management,
+          tabBarIcon: ({ color, size }) => <Briefcase size={size} color={color} />,
         }}
       />
       <Tabs.Screen

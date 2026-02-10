@@ -24,7 +24,7 @@ export const dashboardApi = {
       
       const totalRooms = rooms.length;
       const occupiedRooms = rooms.filter(r => r.status === 'occupied').length;
-      const availableRooms = rooms.filter(r => r.status === 'available').length;
+      const availableRooms = rooms.filter(r => r.status === 'vacant').length;
       const cleaningRooms = rooms.filter(r => r.status === 'cleaning').length;
       
       const todayCheckIns = bookings.filter(

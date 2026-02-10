@@ -46,22 +46,32 @@ const mapBookingStatus = (status: string): BookingStatus => {
   return statusMap[status] || 'confirmed';
 };
 
-const mapApiBookingToBooking = (apiBooking: ApiBooking): Booking => ({
-  id: apiBooking._id,
-  guestId: apiBooking.guest?._id || '',
-  guestName: apiBooking.guest?.name || apiBooking.guestName || 'Khách hàng',
-  roomId: apiBooking.room?._id || '',
-  roomNumber: apiBooking.room?.roomNumber || apiBooking.roomNumber || '',
-  checkIn: apiBooking.checkInDate?.split('T')[0] || '',
-  checkOut: apiBooking.checkOutDate?.split('T')[0] || '',
-  status: mapBookingStatus(apiBooking.status),
-  totalAmount: apiBooking.totalAmount || 0,
-  paidAmount: apiBooking.paidAmount || 0,
-  adults: apiBooking.numberOfGuests?.adults || apiBooking.adults || 1,
-  children: apiBooking.numberOfGuests?.children || apiBooking.children || 0,
-  specialRequests: apiBooking.specialRequests,
-  createdAt: apiBooking.createdAt,
-});
+const mapApiBookingToBooking = (apiBooking: ApiBooking): Booking => {
+  console.log('Mapping booking:', {
+    adults: apiBooking.adults,
+    children: apiBooking.children,
+    numberOfGuests: apiBooking.numberOfGuests,
+    rawAdults: apiBooking.numberOfGuests?.adults,
+    rawChildren: apiBooking.numberOfGuests?.children
+  });
+  
+  return {
+    id: apiBooking._id,
+    guestId: apiBooking.guest?._id || '',
+    guestName: apiBooking.guest?.name || apiBooking.guestName || 'Khách hàng',
+    roomId: apiBooking.room?._id || '',
+    roomNumber: apiBooking.room?.roomNumber || apiBooking.roomNumber || '',
+    checkIn: apiBooking.checkInDate?.split('T')[0] || '',
+    checkOut: apiBooking.checkOutDate?.split('T')[0] || '',
+    status: mapBookingStatus(apiBooking.status),
+    totalAmount: apiBooking.totalAmount || 0,
+    paidAmount: apiBooking.paidAmount || 0,
+    adults: Number(apiBooking.numberOfGuests?.adults || apiBooking.adults || 1),
+    children: Number(apiBooking.numberOfGuests?.children || apiBooking.children || 0),
+    specialRequests: apiBooking.specialRequests,
+    createdAt: apiBooking.createdAt,
+  };
+};
 
 export const bookingsApi = {
   getAll: async (): Promise<Booking[]> => {

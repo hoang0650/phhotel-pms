@@ -16,9 +16,13 @@ export default {
   },
   status: {
     available: "#22c55e",
-    occupied: "#3b82f6",
-    cleaning: "#f59e0b",
-    maintenance: "#ef4444",
+    vacant: "#22c55e",
+    occupied: "#ef4444",
+    cleaning: "#3b82f6",
+    dirty: "#f97316",
+    maintenance: "#a855f7",
+    booked: "#0ea5e9",
+    guestOut: "#13c2c2",
   },
   booking: {
     confirmed: "#3b82f6",

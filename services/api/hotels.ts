@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
+import { extractId } from './utils';
 
 export interface Hotel {
   id: string;
@@ -9,6 +10,7 @@ export interface Hotel {
   email?: string;
   logo?: string;
   description?: string;
+  businessId?: string;
 }
 
 export interface ApiHotel {
@@ -21,6 +23,7 @@ export interface ApiHotel {
   description?: string;
   createdAt?: string;
   updatedAt?: string;
+  businessId?: any; // Allow any for robustness
 }
 
 const mapApiHotelToHotel = (apiHotel: ApiHotel): Hotel => ({
@@ -31,6 +34,7 @@ const mapApiHotelToHotel = (apiHotel: ApiHotel): Hotel => ({
   email: apiHotel.email,
   logo: apiHotel.logo,
   description: apiHotel.description,
+  businessId: extractId(apiHotel.businessId),
 });
 
 export const hotelsApi = {

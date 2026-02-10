@@ -32,6 +32,8 @@ import {
   Briefcase,
   UserCog,
   ClipboardList,
+  Search,
+  X,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -41,6 +43,7 @@ import { useHotel } from '@/contexts/HotelContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { roomsApi, bookingsApi, revenueApi, notificationsApi } from '@/services/api';
+import { TextInput } from 'react-native';
 
 interface QuickAccessItem {
   id: string;
@@ -57,8 +60,13 @@ export default function DashboardScreen() {
   const { isDark, colors } = useTheme();
   const [hotelModalVisible, setHotelModalVisible] = useState(false);
   const [notificationModalVisible, setNotificationModalVisible] = useState(false);
+  const [hotelSearchText, setHotelSearchText] = useState('');
   const { hotels, selectedHotel, selectedHotelId, selectHotel, isLoading: hotelsLoading, canSelectMultipleHotels } = useHotel();
   const { user } = useAuth();
+
+  const filteredHotels = hotels.filter(hotel => 
+    hotel.name.toLowerCase().includes(hotelSearchText.toLowerCase())
+  );
 
   const { data: rooms = [], isLoading: roomsLoading, refetch: refetchRooms } = useQuery({
     queryKey: ['rooms', selectedHotelId],
@@ -72,16 +80,21 @@ export default function DashboardScreen() {
     enabled: true,
   });
 
-  const { data: revenueSummary, isLoading: revenueLoading, refetch: refetchRevenue } = useQuery({
-    queryKey: ['revenue', 'summary', selectedHotelId],
-    queryFn: () => revenueApi.getSummary(selectedHotelId || undefined),
-    enabled: true,
-  });
-
-  const { data: dailyRevenue = [], refetch: refetchDailyRevenue } = useQuery({
-    queryKey: ['revenue', 'daily', selectedHotelId],
-    queryFn: () => revenueApi.getDaily(selectedHotelId || undefined),
-    enabled: true,
+  const { data: revenueData, isLoading: revenueLoading, refetch: refetchRevenue } = useQuery({
+    queryKey: ['revenue', selectedHotelId],
+    queryFn: async () => {
+      const today = new Date();
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - 6); // Last 7 days
+      
+      return revenueApi.getRevenueByPeriod({
+        hotelId: selectedHotelId || '',
+        period: 'day',
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: today.toISOString().split('T')[0]
+      });
+    },
+    enabled: !!selectedHotelId,
   });
 
   const { data: notifications = [], refetch: refetchNotifications } = useQuery({
@@ -95,17 +108,31 @@ export default function DashboardScreen() {
 
   const today = new Date().toISOString().split('T')[0];
   
+  // Calculate stats based on hotelapp logic
+  // guestOutRooms: rooms where status is occupied and guestStatus is out
+  // occupancyRate: (occupied rooms / total rooms) * 100
+  const occupiedRoomsCount = rooms.filter(r => r.status === 'occupied').length;
+  const totalRoomsCount = rooms.length;
+  
   const stats = {
-    totalRooms: rooms.length,
-    occupiedRooms: rooms.filter(r => r.status === 'occupied').length,
-    availableRooms: rooms.filter(r => r.status === 'available').length,
+    totalRooms: totalRoomsCount,
+    occupiedRooms: occupiedRoomsCount,
+    vacantRooms: rooms.filter(r => r.status === 'vacant').length,
+    dirtyRooms: rooms.filter(r => r.status === 'dirty').length,
     cleaningRooms: rooms.filter(r => r.status === 'cleaning').length,
     maintenanceRooms: rooms.filter(r => r.status === 'maintenance').length,
+    bookedRooms: rooms.filter(r => r.status === 'booked').length,
+    guestOutRooms: rooms.filter(r => r.status === 'occupied' && r.guestStatus === 'out').length,
     todayCheckIns: bookings.filter(b => b.checkIn === today && b.status === 'confirmed').length,
     todayCheckOuts: bookings.filter(b => b.checkOut === today && b.status === 'checked_in').length,
-    occupancyRate: rooms.length > 0 
-      ? Math.round((rooms.filter(r => r.status === 'occupied').length / rooms.length) * 100) 
+    occupancyRate: totalRoomsCount > 0 
+      ? Math.round((occupiedRoomsCount / totalRoomsCount) * 100) 
       : 0,
+    // Use revenue data from API
+    totalRevenue: revenueData?.totalRevenue || 0,
+    todayRevenue: revenueData?.revenueData && revenueData.revenueData.length > 0 
+      ? revenueData.revenueData[revenueData.revenueData.length - 1] 
+      : 0
   };
 
   const todayCheckIns = bookings.filter(b => b.checkIn === today && b.status === 'confirmed');
@@ -119,7 +146,7 @@ export default function DashboardScreen() {
   ];
 
   const handleRefresh = async () => {
-    await Promise.all([refetchRooms(), refetchBookings(), refetchRevenue(), refetchDailyRevenue(), refetchNotifications()]);
+    await Promise.all([refetchRooms(), refetchBookings(), refetchRevenue(), refetchNotifications()]);
   };
 
   const formatCurrency = (amount: number) => {
@@ -158,10 +185,20 @@ export default function DashboardScreen() {
     router.push(route as any);
   };
 
-  const revenueGrowth = revenueSummary?.revenueGrowth || 0;
+  // Calculate growth based on revenue data (compare last day with previous day)
+  const revenueGrowth = (() => {
+    if (!revenueData?.revenueData || revenueData.revenueData.length < 2) return 0;
+    const lastDay = revenueData.revenueData[revenueData.revenueData.length - 1];
+    const prevDay = revenueData.revenueData[revenueData.revenueData.length - 2];
+    if (prevDay === 0) return lastDay > 0 ? 100 : 0;
+    return Math.round(((lastDay - prevDay) / prevDay) * 100);
+  })();
+  
   const isPositiveGrowth = revenueGrowth >= 0;
 
-  const maxDailyRevenue = Math.max(...dailyRevenue.map(d => d.revenue), 1);
+  const maxDailyRevenue = revenueData?.revenueData 
+    ? Math.max(...revenueData.revenueData, 1) 
+    : 1;
 
   if (isLoading && !selectedHotel) {
     return (
@@ -181,27 +218,31 @@ export default function DashboardScreen() {
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
             <Text style={styles.greeting}>Xin chào, {user?.name || 'Quản lý'}!</Text>
-            {canSelectMultipleHotels ? (
+            {hotels.length > 1 ? (
               <TouchableOpacity 
                 style={styles.hotelSelector}
                 onPress={() => setHotelModalVisible(true)}
               >
                 <Building2 size={18} color="#fff" />
                 <Text style={styles.hotelName} numberOfLines={1}>
-                  {selectedHotel?.name || 'Chọn khách sạn'}
+                  {selectedHotel?.name || (isLoading ? 'Đang tải...' : 'Chọn khách sạn')}
                 </Text>
                 <ChevronDown size={18} color="#fff" />
               </TouchableOpacity>
             ) : (
-              <View style={styles.hotelInfo}>
-                <Building2 size={16} color="rgba(255,255,255,0.8)" />
-                <Text style={styles.hotelNameStatic} numberOfLines={1}>
-                  {selectedHotel?.name || 'Khách sạn'}
+              <View style={styles.hotelSelector}>
+                <Building2 size={18} color="#fff" />
+                <Text style={styles.hotelName} numberOfLines={1}>
+                  {selectedHotel?.name || (hotels.length > 0 ? hotels[0].name : (isLoading ? 'Đang tải...' : 'Chưa có khách sạn'))}
                 </Text>
               </View>
             )}
           </View>
-          <View style={styles.headerRight}>
+          <View style={styles.headerRight}>        
+            <View style={styles.dateContainer}>
+              <Text style={styles.dateText}>{dateStr}</Text>
+              <Text style={styles.dayText}>{dayStr}</Text>
+            </View>
             <TouchableOpacity 
               style={styles.notificationBtn}
               onPress={() => setNotificationModalVisible(true)}
@@ -215,10 +256,6 @@ export default function DashboardScreen() {
                 </View>
               )}
             </TouchableOpacity>
-            <View style={styles.dateContainer}>
-              <Text style={styles.dateText}>{dateStr}</Text>
-              <Text style={styles.dayText}>{dayStr}</Text>
-            </View>
           </View>
         </View>
 
@@ -240,9 +277,15 @@ export default function DashboardScreen() {
               </Text>
             </View>
             <View style={styles.occupancyStat}>
-              <View style={[styles.statusDot, { backgroundColor: Colors.status.available }]} />
+              <View style={[styles.statusDot, { backgroundColor: Colors.status.vacant }]} />
               <Text style={styles.occupancyStatText}>
-                {stats.availableRooms} trống
+                {stats.vacantRooms} trống
+              </Text>
+            </View>
+            <View style={styles.occupancyStat}>
+              <View style={[styles.statusDot, { backgroundColor: Colors.status.dirty }]} />
+              <Text style={styles.occupancyStatText}>
+                {stats.dirtyRooms} bẩn
               </Text>
             </View>
           </View>
@@ -276,24 +319,24 @@ export default function DashboardScreen() {
         <View style={styles.quickStats}>
           <View style={[styles.statCard, { backgroundColor: isDark ? '#052e16' : '#ecfdf5' }]}>
             <View style={[styles.statIcon, { backgroundColor: isDark ? '#14532d' : '#d1fae5' }]}>
-              <CalendarCheck size={20} color={Colors.status.available} />
+              <CalendarCheck size={20} color={Colors.status.vacant} />
             </View>
-            <Text style={[styles.statValue, { color: colors.text }]}>{stats.todayCheckIns}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Check-in hôm nay</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>{stats.vacantRooms}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Phòng trống</Text>
           </View>
-          <View style={[styles.statCard, { backgroundColor: isDark ? '#422006' : '#fef3c7' }]}>
-            <View style={[styles.statIcon, { backgroundColor: isDark ? '#713f12' : '#fde68a' }]}>
-              <CalendarX size={20} color={Colors.status.cleaning} />
+          <View style={[styles.statCard, { backgroundColor: isDark ? '#083344' : '#ecfeff' }]}>
+            <View style={[styles.statIcon, { backgroundColor: isDark ? '#164e63' : '#cffafe' }]}>
+              <Users size={20} color={Colors.status.guestOut} />
             </View>
-            <Text style={[styles.statValue, { color: colors.text }]}>{stats.todayCheckOuts}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Check-out hôm nay</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>{stats.guestOutRooms}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Khách ra ngoài</Text>
           </View>
         </View>
 
         <View style={styles.quickStats}>
           <View style={[styles.statCard, { backgroundColor: isDark ? '#172554' : '#eff6ff' }]}>
             <View style={[styles.statIcon, { backgroundColor: isDark ? '#1e3a5f' : '#dbeafe' }]}>
-              <Sparkles size={20} color={Colors.status.occupied} />
+              <Sparkles size={20} color={Colors.status.cleaning} />
             </View>
             <Text style={[styles.statValue, { color: colors.text }]}>{stats.cleaningRooms}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Đang dọn dẹp</Text>
@@ -304,6 +347,23 @@ export default function DashboardScreen() {
             </View>
             <Text style={[styles.statValue, { color: colors.text }]}>{stats.maintenanceRooms}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Bảo trì</Text>
+          </View>
+        </View>
+
+        <View style={styles.quickStats}>
+           <View style={[styles.statCard, { backgroundColor: isDark ? '#4a044e' : '#fdf4ff' }]}>
+            <View style={[styles.statIcon, { backgroundColor: isDark ? '#701a75' : '#f5d0fe' }]}>
+              <BedDouble size={20} color={Colors.status.booked} />
+            </View>
+            <Text style={[styles.statValue, { color: colors.text }]}>{stats.bookedRooms}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Đã đặt</Text>
+          </View>
+           <View style={[styles.statCard, { backgroundColor: isDark ? '#431407' : '#fff7ed' }]}>
+            <View style={[styles.statIcon, { backgroundColor: isDark ? '#7c2d12' : '#ffedd5' }]}>
+              <AlertCircle size={20} color={Colors.status.dirty} />
+            </View>
+            <Text style={[styles.statValue, { color: colors.text }]}>{stats.dirtyRooms}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Phòng bẩn</Text>
           </View>
         </View>
 
@@ -334,11 +394,11 @@ export default function DashboardScreen() {
               </View>
               <Text style={styles.revenueMainLabel}>Hôm nay</Text>
               <Text style={styles.revenueMainValue}>
-                {formatFullCurrency(revenueSummary?.todayRevenue || 0)}
+                {formatFullCurrency(stats.todayRevenue)}
               </Text>
               <View style={styles.revenueCompare}>
                 <Text style={styles.revenueCompareText}>
-                  Hôm qua: {formatCurrency(revenueSummary?.yesterdayRevenue || 0)}
+                  Tổng doanh thu: {formatCurrency(revenueData?.totalRevenue || 0)}
                 </Text>
               </View>
             </LinearGradient>
@@ -346,16 +406,16 @@ export default function DashboardScreen() {
             <View style={styles.revenueSecondaryCards}>
               <View style={[styles.revenueSecondaryCard, { backgroundColor: colors.cardBackground }]}>
                 <BarChart3 size={18} color="#6366f1" />
-                <Text style={[styles.revenueSecondaryLabel, { color: colors.textSecondary }]}>Tuần này</Text>
+                <Text style={[styles.revenueSecondaryLabel, { color: colors.textSecondary }]}>Tổng thanh toán</Text>
                 <Text style={[styles.revenueSecondaryValue, { color: colors.text }]}>
-                  {formatCurrency(revenueSummary?.weeklyRevenue || 0)}
+                  {formatCurrency(revenueData?.totalPayment || 0)}
                 </Text>
               </View>
               <View style={[styles.revenueSecondaryCard, { backgroundColor: colors.cardBackground }]}>
                 <PieChart size={18} color="#f59e0b" />
-                <Text style={[styles.revenueSecondaryLabel, { color: colors.textSecondary }]}>Tháng này</Text>
+                <Text style={[styles.revenueSecondaryLabel, { color: colors.textSecondary }]}>Tổng chi phí</Text>
                 <Text style={[styles.revenueSecondaryValue, { color: colors.text }]}>
-                  {formatCurrency(revenueSummary?.monthlyRevenue || 0)}
+                  {formatCurrency(revenueData?.totalExpense || 0)}
                 </Text>
               </View>
             </View>
@@ -364,39 +424,44 @@ export default function DashboardScreen() {
           <View style={[styles.revenueBreakdown, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.breakdownItem}>
               <View style={[styles.breakdownDot, { backgroundColor: '#0d9488' }]} />
-              <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Phòng</Text>
+              <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Doanh thu phòng</Text>
               <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                {formatCurrency(revenueSummary?.roomRevenue || 0)}
+                {formatCurrency(revenueData?.totalRevenue || 0)}
               </Text>
             </View>
             <View style={styles.breakdownItem}>
               <View style={[styles.breakdownDot, { backgroundColor: '#f59e0b' }]} />
-              <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Dịch vụ</Text>
+              <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Doanh thu dịch vụ</Text>
               <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                {formatCurrency(revenueSummary?.serviceRevenue || 0)}
+                {formatCurrency(0)}
               </Text>
             </View>
           </View>
 
-          {dailyRevenue.length > 0 && (
+          {revenueData?.revenueData && revenueData.revenueData.length > 0 && (
             <View style={[styles.chartContainer, { backgroundColor: colors.cardBackground }]}>
               <Text style={[styles.chartTitle, { color: colors.text }]}>Doanh thu 7 ngày qua</Text>
               <View style={styles.chart}>
-                {dailyRevenue.slice(-7).map((day) => (
-                  <View key={day.period} style={styles.chartBar}>
-                    <View style={styles.chartBarContainer}>
-                      <View 
-                        style={[
-                          styles.chartBarFill, 
-                          { height: `${(day.revenue / maxDailyRevenue) * 100}%` }
-                        ]} 
-                      />
+                {revenueData.revenueData.map((revenue: number, index: number) => {
+                  const label = revenueData.labels?.[index] 
+                    ? revenueData.labels[index].split('-').slice(1).reverse().join('/')
+                    : '';
+                  return (
+                    <View key={index} style={styles.chartBar}>
+                      <View style={styles.chartBarContainer}>
+                        <View 
+                          style={[
+                            styles.chartBarFill, 
+                            { height: `${(revenue / maxDailyRevenue) * 100}%` }
+                          ]} 
+                        />
+                      </View>
+                      <Text style={styles.chartLabel}>
+                        {label}
+                      </Text>
                     </View>
-                    <Text style={styles.chartLabel}>
-                      {new Date(day.period).getDate()}/{new Date(day.period).getMonth() + 1}
-                    </Text>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             </View>
           )}
@@ -493,8 +558,25 @@ export default function DashboardScreen() {
         >
           <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>Chọn khách sạn</Text>
+            
+            <View style={[styles.searchContainer, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
+              <Search size={20} color={colors.textSecondary} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Tìm kiếm khách sạn..."
+                placeholderTextColor={colors.textSecondary}
+                value={hotelSearchText}
+                onChangeText={setHotelSearchText}
+              />
+              {hotelSearchText.length > 0 && (
+                <TouchableOpacity onPress={() => setHotelSearchText('')}>
+                  <X size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
             <ScrollView style={styles.hotelList}>
-              {hotels.map((hotel) => (
+              {filteredHotels.map((hotel) => (
                 <TouchableOpacity
                   key={hotel.id}
                   style={[
@@ -520,10 +602,12 @@ export default function DashboardScreen() {
                   )}
                 </TouchableOpacity>
               ))}
-              {hotels.length === 0 && (
+              {filteredHotels.length === 0 && (
                 <View style={styles.emptyHotels}>
                   <AlertCircle size={24} color={colors.textSecondary} />
-                  <Text style={[styles.emptyHotelsText, { color: colors.textSecondary }]}>Chưa có khách sạn nào</Text>
+                  <Text style={[styles.emptyHotelsText, { color: colors.textSecondary }]}>
+                    {hotels.length === 0 ? 'Chưa có khách sạn nào' : 'Không tìm thấy khách sạn phù hợp'}
+                  </Text>
                 </View>
               )}
             </ScrollView>
@@ -1067,6 +1151,20 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     marginBottom: 16,
     textAlign: 'center',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    padding: 0,
   },
   hotelList: {
     maxHeight: 300,

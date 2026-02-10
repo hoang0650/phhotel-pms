@@ -1,4 +1,4 @@
-export type RoomStatus = 'available' | 'occupied' | 'cleaning' | 'maintenance';
+export type RoomStatus = 'vacant' | 'occupied' | 'cleaning' | 'dirty' | 'maintenance' | 'booked';
 export type BookingStatus = 'confirmed' | 'checked_in' | 'checked_out' | 'cancelled';
 export type RoomType = 'standard' | 'deluxe' | 'suite' | 'presidential';
 
@@ -8,11 +8,14 @@ export interface Room {
   floor: number;
   type: RoomType;
   status: RoomStatus;
+  guestStatus?: 'in' | 'out';
   price: number;
   capacity: number;
   amenities: string[];
   currentGuest?: string;
   checkoutDate?: string;
+  lastCleaned?: string;
+  lastMaintenance?: string;
 }
 
 export interface Guest {

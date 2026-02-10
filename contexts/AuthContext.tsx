@@ -20,30 +20,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    const loadAuthState = async () => {
-      try {
-        const [storedToken, storedUser] = await Promise.all([
-          AsyncStorage.getItem(AUTH_TOKEN_KEY),
-          AsyncStorage.getItem(AUTH_USER_KEY),
-        ]);
-
-        if (storedToken && storedUser) {
-          setToken(storedToken);
-          setUser(JSON.parse(storedUser));
-          console.log('[AuthContext] Restored auth state');
-        }
-      } catch (error) {
-        console.error('[AuthContext] Error loading auth state:', error);
-      } finally {
-        setIsInitialized(true);
-        setIsLoading(false);
-      }
-    };
-
-    loadAuthState();
-  }, []);
-
   const saveAuthState = useCallback(async (newToken: string, newUser: User) => {
     try {
       await Promise.all([
@@ -56,6 +32,63 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     } catch (error) {
       console.error('[AuthContext] Error saving auth state:', error);
     }
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const freshUser = await authApi.getProfile();
+      if (freshUser) {
+        // Keep existing token, just update user
+        if (token) {
+           await saveAuthState(token, freshUser);
+        } else {
+           // Should not happen if we are refreshing, but safety check
+           setUser(freshUser);
+           await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(freshUser));
+        }
+        console.log('[AuthContext] Refreshed user profile');
+      }
+    } catch (error) {
+      console.error('[AuthContext] Error refreshing user profile:', error);
+    }
+  }, [token, saveAuthState]);
+
+  useEffect(() => {
+    const loadAuthState = async () => {
+      try {
+        const [storedToken, storedUser] = await Promise.all([
+          AsyncStorage.getItem(AUTH_TOKEN_KEY),
+          AsyncStorage.getItem(AUTH_USER_KEY),
+        ]);
+
+        if (storedToken && storedUser) {
+          setToken(storedToken);
+          setUser(JSON.parse(storedUser));
+          console.log('[AuthContext] Restored auth state');
+          
+          // Refresh profile in background to get latest data (like businessId)
+          // We call this immediately after restoring state
+          authApi.getProfile()
+            .then(freshUser => {
+               console.log('[AuthContext] Background refresh success');
+               // Update state and storage without triggering full reload if possible, 
+               // but saveAuthState does both.
+               // We need to access the current token, which is storedToken here.
+               return Promise.all([
+                 AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(freshUser)),
+               ]).then(() => setUser(freshUser));
+            })
+            .catch(err => console.warn('[AuthContext] Background refresh failed:', err));
+        }
+      } catch (error) {
+        console.error('[AuthContext] Error loading auth state:', error);
+      } finally {
+        setIsInitialized(true);
+        setIsLoading(false);
+      }
+    };
+
+    loadAuthState();
   }, []);
 
   const clearAuthState = useCallback(async () => {
@@ -166,6 +199,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     updateLocalUser,
     logout: logoutMutation.mutateAsync,
     logoutLoading: logoutMutation.isPending,
+    refreshUser,
   };
 });
 

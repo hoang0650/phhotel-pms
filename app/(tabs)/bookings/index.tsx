@@ -78,7 +78,7 @@ export default function BookingsScreen() {
     const status = statusConfig[booking.status];
     const StatusIcon = status.icon;
     const nights = calculateNights(booking.checkIn, booking.checkOut);
-    const isPaid = booking.paidAmount >= booking.totalAmount;
+    const isPaid = Number(booking.paidAmount) >= Number(booking.totalAmount);
 
     return (
       <TouchableOpacity key={booking.id} style={styles.bookingCard} activeOpacity={0.7}>
@@ -100,7 +100,7 @@ export default function BookingsScreen() {
           <View style={styles.guestInfo}>
             <Text style={styles.guestName}>{booking.guestName}</Text>
             <Text style={styles.guestMeta}>
-              {booking.adults} người lớn{booking.children > 0 ? ` • ${booking.children} trẻ em` : ''}
+              {Number(booking.adults) || 1} người lớn{Number(booking.children) > 0 ? ` • ${Number(booking.children)} trẻ em` : ''}
             </Text>
           </View>
         </View>
@@ -139,7 +139,7 @@ export default function BookingsScreen() {
           </View>
           <View style={[styles.paymentBadge, { backgroundColor: isPaid ? '#dcfce7' : '#fef3c7' }]}>
             <Text style={[styles.paymentStatus, { color: isPaid ? Colors.status.available : Colors.status.cleaning }]}>
-              {isPaid ? 'Đã thanh toán' : `Còn nợ ${formatCurrency(booking.totalAmount - booking.paidAmount)}`}
+              {isPaid ? 'Đã thanh toán' : `Còn nợ ${formatCurrency(Number(booking.totalAmount) - Number(booking.paidAmount))}`}
             </Text>
           </View>
         </View>

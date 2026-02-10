@@ -1,4 +1,5 @@
 import { API_CONFIG } from './config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -18,6 +19,17 @@ class ApiClient {
   private async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { method = 'GET', body, headers = {} } = options;
     
+    // Auto-attach token if available
+    let authHeader = {};
+    try {
+      const token = await AsyncStorage.getItem('auth_token');
+      if (token) {
+        authHeader = { 'Authorization': `Bearer ${token}` };
+      }
+    } catch (e) {
+      console.warn('[ApiClient] Failed to get token from storage', e);
+    }
+
     const url = `${this.baseUrl}${endpoint}`;
     console.log(`[API] ${method} ${url}`);
 
@@ -30,6 +42,7 @@ class ApiClient {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          ...authHeader,
           ...headers,
         },
         body: body ? JSON.stringify(body) : undefined,

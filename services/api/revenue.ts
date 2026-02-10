@@ -1,15 +1,24 @@
 import { apiClient } from './client';
-import { API_ENDPOINTS } from './config';
 
-export interface RevenueData {
-  id: string;
+export interface RevenueChartParams {
   hotelId: string;
-  date: string;
-  roomRevenue: number;
-  serviceRevenue: number;
+  period?: 'day' | 'week' | 'month';
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface RevenueChartData {
+  message: string;
+  labels: string[];
+  revenueData: number[];
+  paymentData: number[];
+  expenseData: number[];
   totalRevenue: number;
-  bookingsCount: number;
-  occupancyRate: number;
+  totalPayment: number;
+  totalExpense: number;
+  period: string;
+  startDate: string;
+  endDate: string;
 }
 
 export interface RevenueSummary {
@@ -17,128 +26,148 @@ export interface RevenueSummary {
   yesterdayRevenue: number;
   weeklyRevenue: number;
   monthlyRevenue: number;
-  yearlyRevenue: number;
-  totalBookings: number;
-  totalGuests: number;
-  averageBookingValue: number;
-  averageOccupancy: number;
-  averageRoomRate: number;
   revenueGrowth: number;
   roomRevenue: number;
   serviceRevenue: number;
 }
 
-export interface RevenueByPeriod {
+export interface DailyRevenue {
   period: string;
   revenue: number;
-  bookings: number;
-  occupancyRate: number;
 }
 
-const defaultRevenueSummary: RevenueSummary = {
-  todayRevenue: 0,
-  yesterdayRevenue: 0,
-  weeklyRevenue: 0,
-  monthlyRevenue: 0,
-  yearlyRevenue: 0,
-  totalBookings: 0,
-  totalGuests: 0,
-  averageBookingValue: 0,
-  averageOccupancy: 0,
-  averageRoomRate: 0,
-  revenueGrowth: 0,
-  roomRevenue: 0,
-  serviceRevenue: 0,
-};
-
 export const revenueApi = {
-  getSummary: async (hotelId?: string): Promise<RevenueSummary> => {
+  getRevenueByPeriod: async (params: RevenueChartParams): Promise<RevenueChartData> => {
     try {
-      const endpoint = hotelId 
-        ? `${API_ENDPOINTS.REVENUE.BY_HOTEL(hotelId)}/summary`
-        : API_ENDPOINTS.REVENUE.SUMMARY;
-      const response = await apiClient.get<RevenueSummary>(endpoint);
+      const endpoint = '/shift-handover/revenue/period';
+      const queryParams = new URLSearchParams({
+        hotelId: params.hotelId,
+      });
+      
+      if (params.period) {
+        queryParams.append('period', params.period);
+      }
+      if (params.startDate) {
+        queryParams.append('startDate', params.startDate);
+      }
+      if (params.endDate) {
+        queryParams.append('endDate', params.endDate);
+      }
+
+      const response = await apiClient.get<RevenueChartData>(`${endpoint}?${queryParams.toString()}`);
       return response;
     } catch (error) {
-      console.error('[revenueApi.getSummary] Error:', error);
-      return defaultRevenueSummary;
+      console.error('[revenueApi.getRevenueByPeriod] Error:', error);
+      return {
+        message: 'Error',
+        labels: [],
+        revenueData: [],
+        paymentData: [],
+        expenseData: [],
+        totalRevenue: 0,
+        totalPayment: 0,
+        totalExpense: 0,
+        period: params.period || 'day',
+        startDate: new Date().toISOString(),
+        endDate: new Date().toISOString()
+      };
     }
   },
 
-  getDaily: async (hotelId?: string, startDate?: string, endDate?: string): Promise<RevenueByPeriod[]> => {
+  getDaily: async (hotelId?: string): Promise<DailyRevenue[]> => {
+    if (!hotelId) return [];
     try {
-      let endpoint = API_ENDPOINTS.REVENUE.DAILY;
-      const params = new URLSearchParams();
-      if (hotelId) params.append('hotelId', hotelId);
-      if (startDate) params.append('startDate', startDate);
-      if (endDate) params.append('endDate', endDate);
-      
-      if (params.toString()) {
-        endpoint += `?${params.toString()}`;
-      }
-      
-      const response = await apiClient.get<RevenueByPeriod[]>(endpoint);
-      return Array.isArray(response) ? response : [];
+      // Get last 7 days
+      const endDate = new Date();
+      const startDate = new Date();
+      startDate.setDate(endDate.getDate() - 6);
+
+      const response = await revenueApi.getRevenueByPeriod({
+        hotelId,
+        period: 'day',
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0]
+      });
+
+      if (!response || !response.labels) return [];
+
+      return response.labels.map((label, index) => ({
+        period: label, // label from backend is usually date string
+        revenue: response.revenueData[index] || 0
+      }));
     } catch (error) {
       console.error('[revenueApi.getDaily] Error:', error);
       return [];
     }
   },
 
-  getMonthly: async (hotelId?: string, year?: number): Promise<RevenueByPeriod[]> => {
+  getSummary: async (hotelId?: string): Promise<RevenueSummary> => {
+    if (!hotelId) return {
+      todayRevenue: 0,
+      yesterdayRevenue: 0,
+      weeklyRevenue: 0,
+      monthlyRevenue: 0,
+      revenueGrowth: 0,
+      roomRevenue: 0,
+      serviceRevenue: 0
+    };
+
     try {
-      let endpoint = API_ENDPOINTS.REVENUE.MONTHLY;
-      const params = new URLSearchParams();
-      if (hotelId) params.append('hotelId', hotelId);
-      if (year) params.append('year', year.toString());
+      // We'll approximate this by calling getRevenueByPeriod for different ranges
+      // This is not ideal but ensures compatibility with the new backend logic
       
-      if (params.toString()) {
-        endpoint += `?${params.toString()}`;
-      }
+      const today = new Date().toISOString().split('T')[0];
       
-      const response = await apiClient.get<RevenueByPeriod[]>(endpoint);
-      return Array.isArray(response) ? response : [];
-    } catch (error) {
-      console.error('[revenueApi.getMonthly] Error:', error);
-      return [];
-    }
-  },
+      // Today
+      const todayData = await revenueApi.getRevenueByPeriod({
+        hotelId,
+        period: 'day',
+        startDate: today,
+        endDate: today
+      });
 
-  getYearly: async (hotelId?: string): Promise<RevenueByPeriod[]> => {
-    try {
-      let endpoint = API_ENDPOINTS.REVENUE.YEARLY;
-      if (hotelId) {
-        endpoint += `?hotelId=${hotelId}`;
-      }
-      const response = await apiClient.get<RevenueByPeriod[]>(endpoint);
-      return Array.isArray(response) ? response : [];
-    } catch (error) {
-      console.error('[revenueApi.getYearly] Error:', error);
-      return [];
-    }
-  },
+      // Yesterday
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      const yesterdayData = await revenueApi.getRevenueByPeriod({
+        hotelId,
+        period: 'day',
+        startDate: yesterdayStr,
+        endDate: yesterdayStr
+      });
 
-  getByHotel: async (hotelId: string): Promise<RevenueData[]> => {
-    try {
-      const response = await apiClient.get<RevenueData[]>(API_ENDPOINTS.REVENUE.BY_HOTEL(hotelId));
-      return Array.isArray(response) ? response : [];
-    } catch (error) {
-      console.error('[revenueApi.getByHotel] Error:', error);
-      return [];
-    }
-  },
+      // This Month
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
+      const monthData = await revenueApi.getRevenueByPeriod({
+        hotelId,
+        period: 'month',
+        startDate: startOfMonthStr,
+        endDate: today
+      });
 
-  getByDateRange: async (startDate: string, endDate: string, hotelId?: string): Promise<RevenueByPeriod[]> => {
-    try {
-      let endpoint = `${API_ENDPOINTS.REVENUE.BY_DATE_RANGE}?startDate=${startDate}&endDate=${endDate}`;
-      if (hotelId) {
-        endpoint += `&hotelId=${hotelId}`;
-      }
-      const response = await apiClient.get<RevenueByPeriod[]>(endpoint);
-      return Array.isArray(response) ? response : [];
+      return {
+        todayRevenue: todayData.totalRevenue || 0,
+        yesterdayRevenue: yesterdayData.totalRevenue || 0,
+        weeklyRevenue: 0, // Placeholder
+        monthlyRevenue: monthData.totalRevenue || 0,
+        revenueGrowth: 0, // Placeholder
+        roomRevenue: 0, // Placeholder
+        serviceRevenue: 0 // Placeholder
+      };
     } catch (error) {
-      console.error('[revenueApi.getByDateRange] Error:', error);
-      return [];
+      console.error('[revenueApi.getSummary] Error:', error);
+      return {
+        todayRevenue: 0,
+        yesterdayRevenue: 0,
+        weeklyRevenue: 0,
+        monthlyRevenue: 0,
+        revenueGrowth: 0,
+        roomRevenue: 0,
+        serviceRevenue: 0
+      };
     }
-  },
+  }
 };

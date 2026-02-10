@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
+import { extractId, extractIds } from './utils';
 
 export type UserRole = 'superadmin' | 'admin' | 'business' | 'manager' | 'receptionist' | 'staff';
 
@@ -12,6 +13,7 @@ export interface User {
   avatar?: string;
   hotelIds?: string[];
   hotelId?: string;
+  businessId?: string;
 }
 
 export interface ApiUser {
@@ -22,8 +24,9 @@ export interface ApiUser {
   role: string;
   phone?: string;
   avatar?: string;
-  hotels?: string[];
-  hotelId?: string;
+  hotels?: any[]; // Allow any for robustness
+  hotelId?: any;  // Allow any for robustness
+  businessId?: any; // Allow any for robustness
 }
 
 export interface LoginRequest {
@@ -61,8 +64,9 @@ const mapApiUserToUser = (apiUser: ApiUser): User => ({
   role: (apiUser.role as UserRole) || 'staff',
   phone: apiUser.phone,
   avatar: apiUser.avatar,
-  hotelIds: apiUser.hotels,
-  hotelId: apiUser.hotelId,
+  hotelIds: extractIds(apiUser.hotels),
+  hotelId: extractId(apiUser.hotelId),
+  businessId: extractId(apiUser.businessId),
 });
 
 export const authApi = {
@@ -90,6 +94,12 @@ export const authApi = {
     };
   },
 
+  getProfile: async (): Promise<User> => {
+    console.log('[authApi.getProfile] Fetching user profile');
+    const response = await apiClient.get<ApiUser>(API_ENDPOINTS.AUTH.PROFILE);
+    return mapApiUserToUser(response);
+  },
+
   forgotPassword: async (data: ForgotPasswordRequest): Promise<{ message: string }> => {
     console.log('[authApi.forgotPassword] Requesting password reset for:', data.email);
     const response = await apiClient.post<{ message: string }>(API_ENDPOINTS.AUTH.FORGOT_PASSWORD, data);
@@ -100,12 +110,6 @@ export const authApi = {
     console.log('[authApi.resetPassword] Resetting password');
     const response = await apiClient.post<{ message: string }>(API_ENDPOINTS.AUTH.RESET_PASSWORD, data);
     return response;
-  },
-
-  getProfile: async (token: string): Promise<User> => {
-    console.log('[authApi.getProfile] Getting user profile');
-    const response = await apiClient.getWithAuth<ApiUser>(API_ENDPOINTS.AUTH.PROFILE, token);
-    return mapApiUserToUser(response);
   },
 
   updateProfile: async (userId: string, data: Partial<User>, token: string): Promise<User> => {

@@ -53,10 +53,12 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_ITEM_WIDTH = (SCREEN_WIDTH - 60) / 2;
 
 const statusConfig: Record<RoomStatus, { label: string; labelEn: string; color: string; icon: typeof CheckCircle }> = {
-  available: { label: 'Trống', labelEn: 'Available', color: Colors.status.available, icon: CheckCircle },
+  vacant: { label: 'Trống', labelEn: 'Vacant', color: Colors.status.vacant, icon: CheckCircle },
   occupied: { label: 'Đang ở', labelEn: 'Occupied', color: Colors.status.occupied, icon: User },
   cleaning: { label: 'Dọn dẹp', labelEn: 'Cleaning', color: Colors.status.cleaning, icon: Sparkles },
+  dirty: { label: 'Bẩn', labelEn: 'Dirty', color: Colors.status.dirty, icon: Brush },
   maintenance: { label: 'Bảo trì', labelEn: 'Maintenance', color: Colors.status.maintenance, icon: Wrench },
+  booked: { label: 'Đã đặt', labelEn: 'Booked', color: Colors.status.booked, icon: Calendar },
 };
 
 const roomTypeLabels: Record<string, string> = {
@@ -195,15 +197,17 @@ export default function RoomsScreen() {
   }, [rooms, searchQuery, selectedFilter]);
 
   const availableRoomsForTransfer = useMemo(() => {
-    return rooms.filter(r => r.status === 'available' && r.id !== selectedRoom?.id);
+    return rooms.filter(r => r.status === 'vacant' && r.id !== selectedRoom?.id);
   }, [rooms, selectedRoom]);
 
   const statusCounts = useMemo(() => ({
     all: rooms.length,
-    available: rooms.filter((r) => r.status === 'available').length,
+    vacant: rooms.filter((r) => r.status === 'vacant').length,
     occupied: rooms.filter((r) => r.status === 'occupied').length,
     cleaning: rooms.filter((r) => r.status === 'cleaning').length,
+    dirty: rooms.filter((r) => r.status === 'dirty').length,
     maintenance: rooms.filter((r) => r.status === 'maintenance').length,
+    booked: rooms.filter((r) => r.status === 'booked').length,
   }), [rooms]);
 
   const formatCurrency = useCallback((amount: number) => {
@@ -294,6 +298,10 @@ export default function RoomsScreen() {
 
   const renderGridItem = useCallback((room: Room) => {
     const status = statusConfig[room.status];
+    if (!status) {
+      console.warn(`Unknown room status: ${room.status}`);
+      return null;
+    }
     const StatusIcon = status.icon;
 
     return (
@@ -328,6 +336,10 @@ export default function RoomsScreen() {
 
   const renderListItem = useCallback((room: Room) => {
     const status = statusConfig[room.status];
+    if (!status) {
+      console.warn(`Unknown room status: ${room.status}`);
+      return null;
+    }
     const StatusIcon = status.icon;
 
     return (
@@ -378,9 +390,9 @@ export default function RoomsScreen() {
         )}
 
         <View style={styles.quickActions}>
-          {room.status === 'available' && (
+          {room.status === 'vacant' && (
             <TouchableOpacity
-              style={[styles.quickActionBtn, { backgroundColor: Colors.status.available }]}
+              style={[styles.quickActionBtn, { backgroundColor: Colors.status.vacant }]}
               onPress={() => { setSelectedRoom(room); setModalMode('checkin'); setModalVisible(true); }}
             >
               <LogIn size={14} color="#fff" />
@@ -406,7 +418,7 @@ export default function RoomsScreen() {
           )}
           {room.status === 'cleaning' && (
             <TouchableOpacity
-              style={[styles.quickActionBtn, { backgroundColor: Colors.status.available }]}
+              style={[styles.quickActionBtn, { backgroundColor: Colors.status.vacant }]}
               onPress={() => { setSelectedRoom(room); doMarkClean(room.id); }}
             >
               <CheckCircle size={14} color="#fff" />
@@ -484,9 +496,9 @@ export default function RoomsScreen() {
           )}
 
           <View style={styles.modalActionsRow}>
-            {selectedRoom.status === 'available' && (
+            {selectedRoom.status === 'vacant' && (
               <TouchableOpacity
-                style={[styles.modalActionBtn, { backgroundColor: Colors.status.available }]}
+                style={[styles.modalActionBtn, { backgroundColor: Colors.status.vacant }]}
                 onPress={handleShowCheckIn}
               >
                 <LogIn size={18} color="#fff" />
@@ -513,7 +525,7 @@ export default function RoomsScreen() {
             )}
             {selectedRoom.status === 'cleaning' && (
               <TouchableOpacity
-                style={[styles.modalActionBtn, { backgroundColor: Colors.status.available }]}
+                style={[styles.modalActionBtn, { backgroundColor: Colors.status.vacant }]}
                 onPress={handleMarkClean}
               >
                 <CheckCircle size={18} color="#fff" />
@@ -522,7 +534,7 @@ export default function RoomsScreen() {
             )}
             {selectedRoom.status === 'maintenance' && (
               <TouchableOpacity
-                style={[styles.modalActionBtn, { backgroundColor: Colors.status.available }]}
+                style={[styles.modalActionBtn, { backgroundColor: Colors.status.vacant }]}
                 onPress={handleMarkClean}
               >
                 <CheckCircle size={18} color="#fff" />
@@ -532,7 +544,7 @@ export default function RoomsScreen() {
           </View>
 
           <View style={styles.secondaryActions}>
-            {(selectedRoom.status === 'available' || selectedRoom.status === 'occupied') && (
+            {(selectedRoom.status === 'vacant' || selectedRoom.status === 'occupied') && (
               <TouchableOpacity
                 style={[styles.secondaryActionBtn, { borderColor: '#f59e0b' }]}
                 onPress={handleCleaning}
@@ -560,7 +572,7 @@ export default function RoomsScreen() {
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={[styles.checkInHeader, { borderBottomColor: colors.divider }]}>
-              <LogIn size={24} color={Colors.status.available} />
+              <LogIn size={24} color={Colors.status.vacant} />
               <Text style={[styles.checkInTitle, { color: colors.text }]}>
                 {t('checkIn')} - {t('roomNumber')} {selectedRoom.number}
               </Text>
@@ -1385,7 +1397,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 14,
     borderRadius: 12,
-    backgroundColor: Colors.status.available,
+    backgroundColor: Colors.status.vacant,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,

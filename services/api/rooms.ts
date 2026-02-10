@@ -11,6 +11,7 @@ export interface ApiRoom {
   capacity: number;
   amenities: string[];
   status: string;
+  guestStatus?: 'in' | 'out';
   currentGuest?: {
     name: string;
     checkOutDate?: string;
@@ -20,11 +21,16 @@ export interface ApiRoom {
   updatedAt: string;
 }
 
-const mapRoomStatus = (status: string, isAvailable: boolean): RoomStatus => {
-  if (status === 'maintenance') return 'maintenance';
-  if (status === 'cleaning') return 'cleaning';
-  if (!isAvailable || status === 'occupied') return 'occupied';
-  return 'available';
+const mapRoomStatus = (status: string): RoomStatus => {
+  const normalizedStatus = status?.toLowerCase();
+  if (normalizedStatus === 'maintenance') return 'maintenance';
+  if (normalizedStatus === 'cleaning') return 'cleaning';
+  if (normalizedStatus === 'dirty') return 'dirty';
+  if (normalizedStatus === 'booked') return 'booked';
+  if (normalizedStatus === 'occupied') return 'occupied';
+  if (normalizedStatus === 'vacant') return 'vacant';
+  // Fallback
+  return 'vacant';
 };
 
 const mapApiRoomToRoom = (apiRoom: ApiRoom): Room => ({
@@ -32,7 +38,8 @@ const mapApiRoomToRoom = (apiRoom: ApiRoom): Room => ({
   number: apiRoom.roomNumber,
   floor: apiRoom.floor || 1,
   type: (apiRoom.roomType?.toLowerCase() || 'standard') as Room['type'],
-  status: mapRoomStatus(apiRoom.status, apiRoom.isAvailable),
+  status: mapRoomStatus(apiRoom.status),
+  guestStatus: apiRoom.guestStatus,
   price: apiRoom.price || 0,
   capacity: apiRoom.capacity || 2,
   amenities: apiRoom.amenities || [],
@@ -96,77 +103,6 @@ export const roomsApi = {
     } catch (error) {
       console.error('[roomsApi.update] Error:', error);
       return null;
-    }
-  },
-
-  checkIn: async (id: string, guestData: unknown): Promise<Room | null> => {
-    try {
-      const response = await apiClient.post<ApiRoom>(API_ENDPOINTS.ROOMS.CHECKIN(id), guestData);
-      return mapApiRoomToRoom(response);
-    } catch (error) {
-      console.error('[roomsApi.checkIn] Error:', error);
-      return null;
-    }
-  },
-
-  checkOut: async (id: string): Promise<Room | null> => {
-    try {
-      const response = await apiClient.post<ApiRoom>(API_ENDPOINTS.ROOMS.CHECKOUT(id), {});
-      return mapApiRoomToRoom(response);
-    } catch (error) {
-      console.error('[roomsApi.checkOut] Error:', error);
-      return null;
-    }
-  },
-
-  updateStatus: async (id: string, status: string): Promise<Room | null> => {
-    try {
-      const response = await apiClient.patch<ApiRoom>(API_ENDPOINTS.ROOMS.BY_ID(id), { status });
-      return mapApiRoomToRoom(response);
-    } catch (error) {
-      console.error('[roomsApi.updateStatus] Error:', error);
-      return null;
-    }
-  },
-
-  transferRoom: async (fromRoomId: string, toRoomId: string, guestData: unknown): Promise<boolean> => {
-    try {
-      await apiClient.post<ApiRoom>(API_ENDPOINTS.ROOMS.CHECKOUT(fromRoomId), {});
-      await apiClient.post<ApiRoom>(API_ENDPOINTS.ROOMS.CHECKIN(toRoomId), guestData);
-      return true;
-    } catch (error) {
-      console.error('[roomsApi.transferRoom] Error:', error);
-      return false;
-    }
-  },
-
-  markCleaning: async (id: string): Promise<Room | null> => {
-    try {
-      const response = await apiClient.patch<ApiRoom>(API_ENDPOINTS.ROOMS.BY_ID(id), { status: 'cleaning' });
-      return mapApiRoomToRoom(response);
-    } catch (error) {
-      console.error('[roomsApi.markCleaning] Error:', error);
-      return null;
-    }
-  },
-
-  markClean: async (id: string): Promise<Room | null> => {
-    try {
-      const response = await apiClient.patch<ApiRoom>(API_ENDPOINTS.ROOMS.BY_ID(id), { status: 'available', isAvailable: true });
-      return mapApiRoomToRoom(response);
-    } catch (error) {
-      console.error('[roomsApi.markClean] Error:', error);
-      return null;
-    }
-  },
-
-  delete: async (id: string): Promise<boolean> => {
-    try {
-      await apiClient.delete(API_ENDPOINTS.ROOMS.BY_ID(id));
-      return true;
-    } catch (error) {
-      console.error('[roomsApi.delete] Error:', error);
-      return false;
     }
   },
 };
