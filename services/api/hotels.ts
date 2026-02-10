@@ -1,6 +1,5 @@
-import { apiClient, shouldUseMockData, CORS_SKIP_ERROR } from './client';
+import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
-import { mockHotels } from '@/mocks/hotelData';
 
 export interface Hotel {
   id: string;
@@ -36,19 +35,13 @@ const mapApiHotelToHotel = (apiHotel: ApiHotel): Hotel => ({
 
 export const hotelsApi = {
   getAll: async (): Promise<Hotel[]> => {
-    if (shouldUseMockData()) {
-      return mockHotels;
-    }
     try {
       const response = await apiClient.get<ApiHotel[] | { data: ApiHotel[] }>(API_ENDPOINTS.HOTELS.BASE);
       const hotels = Array.isArray(response) ? response : (response?.data || []);
       return hotels.map(mapApiHotelToHotel);
     } catch (error) {
-      if (error instanceof Error && error.message === CORS_SKIP_ERROR) {
-        return mockHotels;
-      }
       console.error('[hotelsApi.getAll] Error:', error);
-      return mockHotels;
+      return [];
     }
   },
 
@@ -59,6 +52,36 @@ export const hotelsApi = {
     } catch (error) {
       console.error('[hotelsApi.getById] Error:', error);
       return null;
+    }
+  },
+
+  create: async (hotelData: Partial<Hotel>): Promise<Hotel | null> => {
+    try {
+      const response = await apiClient.post<ApiHotel>(API_ENDPOINTS.HOTELS.BASE, hotelData);
+      return mapApiHotelToHotel(response);
+    } catch (error) {
+      console.error('[hotelsApi.create] Error:', error);
+      return null;
+    }
+  },
+
+  update: async (id: string, hotelData: Partial<Hotel>): Promise<Hotel | null> => {
+    try {
+      const response = await apiClient.put<ApiHotel>(API_ENDPOINTS.HOTELS.BY_ID(id), hotelData);
+      return mapApiHotelToHotel(response);
+    } catch (error) {
+      console.error('[hotelsApi.update] Error:', error);
+      return null;
+    }
+  },
+
+  delete: async (id: string): Promise<boolean> => {
+    try {
+      await apiClient.delete(API_ENDPOINTS.HOTELS.BY_ID(id));
+      return true;
+    } catch (error) {
+      console.error('[hotelsApi.delete] Error:', error);
+      return false;
     }
   },
 };

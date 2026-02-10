@@ -1,7 +1,6 @@
-import { apiClient, shouldUseMockData, CORS_SKIP_ERROR } from './client';
+import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
 import { Guest } from '@/types/hotel';
-import { mockGuests } from '@/mocks/hotelData';
 
 export interface ApiGuest {
   _id: string;
@@ -34,19 +33,13 @@ const mapApiGuestToGuest = (apiGuest: ApiGuest): Guest => ({
 
 export const guestsApi = {
   getAll: async (): Promise<Guest[]> => {
-    if (shouldUseMockData()) {
-      return mockGuests;
-    }
     try {
       const response = await apiClient.get<ApiGuest[] | { data: ApiGuest[] }>(API_ENDPOINTS.GUESTS.BASE);
       const guests = Array.isArray(response) ? response : (response?.data || []);
       return guests.map(mapApiGuestToGuest);
     } catch (error) {
-      if (error instanceof Error && error.message === CORS_SKIP_ERROR) {
-        return mockGuests;
-      }
       console.error('[guestsApi.getAll] Error:', error);
-      return mockGuests;
+      return [];
     }
   },
 
@@ -80,6 +73,16 @@ export const guestsApi = {
     }
   },
 
+  delete: async (id: string): Promise<boolean> => {
+    try {
+      await apiClient.delete(API_ENDPOINTS.GUESTS.BY_ID(id));
+      return true;
+    } catch (error) {
+      console.error('[guestsApi.delete] Error:', error);
+      return false;
+    }
+  },
+
   find: async (query: string): Promise<Guest[]> => {
     try {
       const response = await apiClient.get<ApiGuest[]>(`${API_ENDPOINTS.GUESTS.FIND}?q=${encodeURIComponent(query)}`);
@@ -87,19 +90,11 @@ export const guestsApi = {
       return guests.map(mapApiGuestToGuest);
     } catch (error) {
       console.error('[guestsApi.find] Error:', error);
-      const lowerQuery = query.toLowerCase();
-      return mockGuests.filter(g => 
-        g.name.toLowerCase().includes(lowerQuery) ||
-        g.email.toLowerCase().includes(lowerQuery) ||
-        g.phone.includes(query)
-      );
+      return [];
     }
   },
 
   getByHotel: async (hotelId: string): Promise<Guest[]> => {
-    if (shouldUseMockData()) {
-      return mockGuests;
-    }
     try {
       const response = await apiClient.get<ApiGuest[] | { data: ApiGuest[] }>(
         `${API_ENDPOINTS.GUESTS.BASE}?hotelId=${hotelId}`
@@ -107,11 +102,19 @@ export const guestsApi = {
       const guests = Array.isArray(response) ? response : (response?.data || []);
       return guests.map(mapApiGuestToGuest);
     } catch (error) {
-      if (error instanceof Error && error.message === CORS_SKIP_ERROR) {
-        return mockGuests;
-      }
       console.error('[guestsApi.getByHotel] Error:', error);
-      return mockGuests;
+      return [];
+    }
+  },
+
+  getByRoom: async (roomId: string): Promise<Guest[]> => {
+    try {
+      const response = await apiClient.get<ApiGuest[]>(API_ENDPOINTS.GUESTS.BY_ROOM(roomId));
+      const guests = Array.isArray(response) ? response : [];
+      return guests.map(mapApiGuestToGuest);
+    } catch (error) {
+      console.error('[guestsApi.getByRoom] Error:', error);
+      return [];
     }
   },
 };

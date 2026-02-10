@@ -27,17 +27,36 @@ import {
   DollarSign,
   BarChart3,
   PieChart,
+  Bell,
+  Users,
+  Briefcase,
+  UserCog,
+  ClipboardList,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import Colors from '@/constants/colors';
 import { useHotel } from '@/contexts/HotelContext';
-import { roomsApi, bookingsApi, revenueApi } from '@/services/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { roomsApi, bookingsApi, revenueApi, notificationsApi } from '@/services/api';
+
+interface QuickAccessItem {
+  id: string;
+  title: string;
+  icon: React.ReactNode;
+  route: string;
+  color: string;
+  bgColor: string;
+}
 
 export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [hotelModalVisible, setHotelModalVisible] = useState(false);
-  const { hotels, selectedHotel, selectedHotelId, selectHotel, isLoading: hotelsLoading } = useHotel();
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
+  const { hotels, selectedHotel, selectedHotelId, selectHotel, isLoading: hotelsLoading, canSelectMultipleHotels } = useHotel();
+  const { user } = useAuth();
 
   const { data: rooms = [], isLoading: roomsLoading, refetch: refetchRooms } = useQuery({
     queryKey: ['rooms', selectedHotelId],
@@ -63,6 +82,13 @@ export default function DashboardScreen() {
     enabled: true,
   });
 
+  const { data: notifications = [], refetch: refetchNotifications } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => notificationsApi.getAll(),
+  });
+
+  const unreadCount = notifications.filter(n => !n.isRead).length;
+
   const isLoading = hotelsLoading || roomsLoading || bookingsLoading || revenueLoading;
 
   const today = new Date().toISOString().split('T')[0];
@@ -83,8 +109,15 @@ export default function DashboardScreen() {
   const todayCheckIns = bookings.filter(b => b.checkIn === today && b.status === 'confirmed');
   const todayCheckOuts = bookings.filter(b => b.checkOut === today && b.status === 'checked_in');
 
+  const quickAccessItems: QuickAccessItem[] = [
+    { id: 'bookings', title: 'Đặt phòng', icon: <ClipboardList size={22} color="#6366f1" />, route: '/(tabs)/bookings', color: '#6366f1', bgColor: '#eef2ff' },
+    { id: 'guests', title: 'Khách hàng', icon: <Users size={22} color="#10b981" />, route: '/(tabs)/guests', color: '#10b981', bgColor: '#ecfdf5' },
+    { id: 'services', title: 'Dịch vụ', icon: <Briefcase size={22} color="#f59e0b" />, route: '/(tabs)/services', color: '#f59e0b', bgColor: '#fef3c7' },
+    { id: 'staffs', title: 'Nhân viên', icon: <UserCog size={22} color="#ec4899" />, route: '/(tabs)/staffs', color: '#ec4899', bgColor: '#fce7f3' },
+  ];
+
   const handleRefresh = async () => {
-    await Promise.all([refetchRooms(), refetchBookings(), refetchRevenue(), refetchDailyRevenue()]);
+    await Promise.all([refetchRooms(), refetchBookings(), refetchRevenue(), refetchDailyRevenue(), refetchNotifications()]);
   };
 
   const formatCurrency = (amount: number) => {
@@ -119,6 +152,10 @@ export default function DashboardScreen() {
     setHotelModalVisible(false);
   };
 
+  const handleQuickAccess = (route: string) => {
+    router.push(route as any);
+  };
+
   const revenueGrowth = revenueSummary?.revenueGrowth || 0;
   const isPositiveGrowth = revenueGrowth >= 0;
 
@@ -141,21 +178,45 @@ export default function DashboardScreen() {
       >
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>Xin chào!</Text>
-            <TouchableOpacity 
-              style={styles.hotelSelector}
-              onPress={() => setHotelModalVisible(true)}
-            >
-              <Building2 size={18} color="#fff" />
-              <Text style={styles.hotelName} numberOfLines={1}>
-                {selectedHotel?.name || 'Chọn khách sạn'}
-              </Text>
-              <ChevronDown size={18} color="#fff" />
-            </TouchableOpacity>
+            <Text style={styles.greeting}>Xin chào, {user?.name || 'Quản lý'}!</Text>
+            {canSelectMultipleHotels ? (
+              <TouchableOpacity 
+                style={styles.hotelSelector}
+                onPress={() => setHotelModalVisible(true)}
+              >
+                <Building2 size={18} color="#fff" />
+                <Text style={styles.hotelName} numberOfLines={1}>
+                  {selectedHotel?.name || 'Chọn khách sạn'}
+                </Text>
+                <ChevronDown size={18} color="#fff" />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.hotelInfo}>
+                <Building2 size={16} color="rgba(255,255,255,0.8)" />
+                <Text style={styles.hotelNameStatic} numberOfLines={1}>
+                  {selectedHotel?.name || 'Khách sạn'}
+                </Text>
+              </View>
+            )}
           </View>
-          <View style={styles.dateContainer}>
-            <Text style={styles.dateText}>{dateStr}</Text>
-            <Text style={styles.dayText}>{dayStr}</Text>
+          <View style={styles.headerRight}>
+            <TouchableOpacity 
+              style={styles.notificationBtn}
+              onPress={() => setNotificationModalVisible(true)}
+            >
+              <Bell size={22} color="#fff" />
+              {unreadCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <View style={styles.dateContainer}>
+              <Text style={styles.dateText}>{dateStr}</Text>
+              <Text style={styles.dayText}>{dayStr}</Text>
+            </View>
           </View>
         </View>
 
@@ -194,6 +255,22 @@ export default function DashboardScreen() {
           <RefreshControl refreshing={isLoading} onRefresh={handleRefresh} />
         }
       >
+        <View style={styles.quickAccessSection}>
+          <Text style={styles.quickAccessTitle}>Truy cập nhanh</Text>
+          <View style={styles.quickAccessGrid}>
+            {quickAccessItems.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.quickAccessItem, { backgroundColor: item.bgColor }]}
+                onPress={() => handleQuickAccess(item.route)}
+              >
+                {item.icon}
+                <Text style={[styles.quickAccessText, { color: item.color }]}>{item.title}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
         <View style={styles.quickStats}>
           <View style={[styles.statCard, { backgroundColor: '#ecfdf5' }]}>
             <View style={[styles.statIcon, { backgroundColor: '#d1fae5' }]}>
@@ -303,7 +380,7 @@ export default function DashboardScreen() {
             <View style={styles.chartContainer}>
               <Text style={styles.chartTitle}>Doanh thu 7 ngày qua</Text>
               <View style={styles.chart}>
-                {dailyRevenue.map((day, index) => (
+                {dailyRevenue.slice(-7).map((day) => (
                   <View key={day.period} style={styles.chartBar}>
                     <View style={styles.chartBarContainer}>
                       <View 
@@ -326,7 +403,10 @@ export default function DashboardScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Check-in hôm nay</Text>
-            <TouchableOpacity style={styles.seeAllBtn}>
+            <TouchableOpacity 
+              style={styles.seeAllBtn}
+              onPress={() => router.push('/(tabs)/bookings' as any)}
+            >
               <Text style={styles.seeAllText}>Xem tất cả</Text>
               <ChevronRight size={16} color={Colors.light.tint} />
             </TouchableOpacity>
@@ -362,7 +442,10 @@ export default function DashboardScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Check-out hôm nay</Text>
-            <TouchableOpacity style={styles.seeAllBtn}>
+            <TouchableOpacity 
+              style={styles.seeAllBtn}
+              onPress={() => router.push('/(tabs)/bookings' as any)}
+            >
               <Text style={styles.seeAllText}>Xem tất cả</Text>
               <ChevronRight size={16} color={Colors.light.tint} />
             </TouchableOpacity>
@@ -443,6 +526,53 @@ export default function DashboardScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={notificationModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNotificationModalVisible(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setNotificationModalVisible(false)}
+        >
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Thông báo</Text>
+            <ScrollView style={styles.notificationList}>
+              {notifications.length > 0 ? (
+                notifications.slice(0, 10).map((notification) => (
+                  <View 
+                    key={notification.id} 
+                    style={[
+                      styles.notificationItem,
+                      !notification.isRead && styles.notificationItemUnread
+                    ]}
+                  >
+                    <View style={styles.notificationDot}>
+                      {!notification.isRead && <View style={styles.unreadDot} />}
+                    </View>
+                    <View style={styles.notificationContent}>
+                      <Text style={styles.notificationTitle}>{notification.title}</Text>
+                      <Text style={styles.notificationMessage} numberOfLines={2}>
+                        {notification.message}
+                      </Text>
+                      <Text style={styles.notificationTime}>
+                        {new Date(notification.createdAt).toLocaleDateString('vi-VN')}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.emptyNotifications}>
+                  <Bell size={32} color={Colors.light.textSecondary} />
+                  <Text style={styles.emptyNotificationsText}>Không có thông báo</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -477,6 +607,11 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 12,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
   greeting: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.8)',
@@ -491,17 +626,52 @@ const styles = StyleSheet.create({
     marginTop: 6,
     gap: 8,
   },
+  hotelInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    gap: 6,
+  },
   hotelName: {
     fontSize: 16,
     fontWeight: '600' as const,
     color: '#fff',
     flex: 1,
   },
+  hotelNameStatic: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.9)',
+  },
+  notificationBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: '#fff',
+  },
   dateContainer: {
     alignItems: 'flex-end',
   },
   dateText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600' as const,
     color: '#fff',
   },
@@ -564,6 +734,31 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: -50,
     paddingHorizontal: 16,
+  },
+  quickAccessSection: {
+    marginBottom: 16,
+  },
+  quickAccessTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+    marginBottom: 10,
+  },
+  quickAccessGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  quickAccessItem: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    gap: 6,
+  },
+  quickAccessText: {
+    fontSize: 11,
+    fontWeight: '500' as const,
   },
   quickStats: {
     flexDirection: 'row',
@@ -901,6 +1096,59 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyHotelsText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+  },
+  notificationList: {
+    maxHeight: 400,
+  },
+  notificationItem: {
+    flexDirection: 'row',
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.light.background,
+    marginBottom: 8,
+    gap: 12,
+  },
+  notificationItemUnread: {
+    backgroundColor: '#ecfdf5',
+  },
+  notificationDot: {
+    width: 20,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: 4,
+  },
+  unreadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.light.tint,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+  },
+  notificationMessage: {
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+    marginTop: 4,
+  },
+  notificationTime: {
+    fontSize: 11,
+    color: Colors.light.textSecondary,
+    marginTop: 6,
+  },
+  emptyNotifications: {
+    alignItems: 'center',
+    padding: 40,
+    gap: 12,
+  },
+  emptyNotificationsText: {
     fontSize: 14,
     color: Colors.light.textSecondary,
   },

@@ -1,7 +1,6 @@
-import { apiClient, shouldUseMockData, CORS_SKIP_ERROR } from './client';
+import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
 import { Room, RoomStatus } from '@/types/hotel';
-import { mockRooms } from '@/mocks/hotelData';
 
 export interface ApiRoom {
   _id: string;
@@ -43,9 +42,6 @@ const mapApiRoomToRoom = (apiRoom: ApiRoom): Room => ({
 
 export const roomsApi = {
   getAll: async (hotelId?: string): Promise<Room[]> => {
-    if (shouldUseMockData()) {
-      return mockRooms;
-    }
     try {
       const endpoint = hotelId 
         ? `${API_ENDPOINTS.ROOMS.BASE}?hotelId=${hotelId}` 
@@ -54,11 +50,8 @@ export const roomsApi = {
       const rooms = Array.isArray(response) ? response : [];
       return rooms.map(mapApiRoomToRoom);
     } catch (error) {
-      if (error instanceof Error && error.message === CORS_SKIP_ERROR) {
-        return mockRooms;
-      }
       console.error('[roomsApi.getAll] Error:', error);
-      return mockRooms;
+      return [];
     }
   },
 
@@ -73,9 +66,6 @@ export const roomsApi = {
   },
 
   getAvailable: async (hotelId?: string): Promise<Room[]> => {
-    if (shouldUseMockData()) {
-      return mockRooms.filter(r => r.status === 'available');
-    }
     try {
       const endpoint = hotelId 
         ? `${API_ENDPOINTS.ROOMS.AVAILABLE}?hotelId=${hotelId}` 
@@ -84,11 +74,28 @@ export const roomsApi = {
       const rooms = Array.isArray(response) ? response : [];
       return rooms.map(mapApiRoomToRoom);
     } catch (error) {
-      if (error instanceof Error && error.message === CORS_SKIP_ERROR) {
-        return mockRooms.filter(r => r.status === 'available');
-      }
       console.error('[roomsApi.getAvailable] Error:', error);
-      return mockRooms.filter(r => r.status === 'available');
+      return [];
+    }
+  },
+
+  create: async (roomData: Partial<Room>): Promise<Room | null> => {
+    try {
+      const response = await apiClient.post<ApiRoom>(API_ENDPOINTS.ROOMS.BASE, roomData);
+      return mapApiRoomToRoom(response);
+    } catch (error) {
+      console.error('[roomsApi.create] Error:', error);
+      return null;
+    }
+  },
+
+  update: async (id: string, roomData: Partial<Room>): Promise<Room | null> => {
+    try {
+      const response = await apiClient.put<ApiRoom>(API_ENDPOINTS.ROOMS.BY_ID(id), roomData);
+      return mapApiRoomToRoom(response);
+    } catch (error) {
+      console.error('[roomsApi.update] Error:', error);
+      return null;
     }
   },
 
@@ -150,6 +157,16 @@ export const roomsApi = {
     } catch (error) {
       console.error('[roomsApi.markClean] Error:', error);
       return null;
+    }
+  },
+
+  delete: async (id: string): Promise<boolean> => {
+    try {
+      await apiClient.delete(API_ENDPOINTS.ROOMS.BY_ID(id));
+      return true;
+    } catch (error) {
+      console.error('[roomsApi.delete] Error:', error);
+      return false;
     }
   },
 };

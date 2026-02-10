@@ -1,13 +1,4 @@
 import { API_CONFIG } from './config';
-import { Platform } from 'react-native';
-
-const USE_MOCK_ON_WEB = true;
-
-export const CORS_SKIP_ERROR = 'CORS_SKIP';
-
-export function shouldUseMockData(): boolean {
-  return Platform.OS === 'web' && USE_MOCK_ON_WEB;
-}
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -28,11 +19,6 @@ class ApiClient {
     const { method = 'GET', body, headers = {} } = options;
     
     const url = `${this.baseUrl}${endpoint}`;
-
-    if (shouldUseMockData()) {
-      throw new Error(CORS_SKIP_ERROR);
-    }
-
     console.log(`[API] ${method} ${url}`);
 
     const controller = new AbortController();
@@ -49,10 +35,6 @@ class ApiClient {
         body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       };
-
-      if (Platform.OS === 'web') {
-        fetchOptions.mode = 'cors';
-      }
 
       const response = await fetch(url, fetchOptions);
 
@@ -98,6 +80,21 @@ class ApiClient {
 
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, { method: 'DELETE' });
+  }
+
+  async getWithAuth<T>(endpoint: string, token: string): Promise<T> {
+    return this.request<T>(endpoint, { 
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+  }
+
+  async postWithAuth<T>(endpoint: string, body: unknown, token: string): Promise<T> {
+    return this.request<T>(endpoint, { 
+      method: 'POST', 
+      body,
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
   }
 }
 

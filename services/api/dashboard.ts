@@ -1,4 +1,4 @@
-import { apiClient, shouldUseMockData, CORS_SKIP_ERROR } from './client';
+import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
 import { DashboardStats } from '@/types/hotel';
 import { roomsApi } from './rooms';
@@ -13,11 +13,11 @@ export interface ApiFinancialSummary {
 }
 
 export const dashboardApi = {
-  getStats: async (): Promise<DashboardStats> => {
+  getStats: async (hotelId?: string): Promise<DashboardStats> => {
     try {
       const [rooms, bookings] = await Promise.all([
-        roomsApi.getAll(),
-        bookingsApi.getAll(),
+        roomsApi.getAll(hotelId),
+        hotelId ? bookingsApi.getByHotel(hotelId) : bookingsApi.getAll(),
       ]);
 
       const today = new Date().toISOString().split('T')[0];
@@ -42,31 +42,14 @@ export const dashboardApi = {
       let todayRevenue = 0;
       let monthlyRevenue = 0;
 
-      if (!shouldUseMockData()) {
-        try {
-          const financial = await apiClient.get<ApiFinancialSummary>(API_ENDPOINTS.FINANCIAL.SUMMARY);
-          todayRevenue = financial?.todayRevenue || 0;
-          monthlyRevenue = financial?.monthlyRevenue || 0;
-        } catch (error) {
-          if (!(error instanceof Error && error.message === CORS_SKIP_ERROR)) {
-            console.log('[dashboardApi] Financial summary not available, calculating from bookings');
-          }
+      try {
+        const financial = await apiClient.get<ApiFinancialSummary>(API_ENDPOINTS.FINANCIAL.SUMMARY);
+        todayRevenue = financial?.todayRevenue || 0;
+        monthlyRevenue = financial?.monthlyRevenue || 0;
+      } catch {
         const currentMonth = new Date().getMonth();
         const currentYear = new Date().getFullYear();
         
-          bookings.forEach(booking => {
-            const checkInDate = new Date(booking.checkIn);
-            if (booking.checkIn === today) {
-              todayRevenue += booking.paidAmount;
-            }
-            if (checkInDate.getMonth() === currentMonth && checkInDate.getFullYear() === currentYear) {
-              monthlyRevenue += booking.paidAmount;
-            }
-          });
-        }
-      } else {
-        const currentMonth = new Date().getMonth();
-        const currentYear = new Date().getFullYear();
         bookings.forEach(booking => {
           const checkInDate = new Date(booking.checkIn);
           if (booking.checkIn === today) {
@@ -105,9 +88,11 @@ export const dashboardApi = {
     }
   },
 
-  getTodayBookings: async () => {
+  getTodayBookings: async (hotelId?: string) => {
     try {
-      const bookings = await bookingsApi.getAll();
+      const bookings = hotelId 
+        ? await bookingsApi.getByHotel(hotelId)
+        : await bookingsApi.getAll();
       const today = new Date().toISOString().split('T')[0];
       
       const checkIns = bookings.filter(

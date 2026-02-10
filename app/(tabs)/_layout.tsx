@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { LayoutDashboard, BedDouble, CalendarDays, Users, Briefcase, UserCog, Settings } from 'lucide-react-native';
+import { Home, BedDouble, BarChart3, Settings } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 
 export default function TabLayout() {
@@ -30,8 +30,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="(dashboard)"
         options={{
-          title: 'Tổng quan',
-          tabBarIcon: ({ color, size }) => <LayoutDashboard size={size} color={color} />,
+          title: 'Trang chủ',
+          tabBarIcon: ({ color, size }) => <Home size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -42,31 +42,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="bookings"
+        name="report"
         options={{
-          title: 'Đặt phòng',
-          tabBarIcon: ({ color, size }) => <CalendarDays size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="guests"
-        options={{
-          title: 'Khách hàng',
-          tabBarIcon: ({ color, size }) => <Users size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="services"
-        options={{
-          title: 'Dịch vụ',
-          tabBarIcon: ({ color, size }) => <Briefcase size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="staffs"
-        options={{
-          title: 'Nhân viên',
-          tabBarIcon: ({ color, size }) => <UserCog size={size} color={color} />,
+          title: 'Báo cáo',
+          tabBarIcon: ({ color, size }) => <BarChart3 size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -77,10 +56,20 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="index"
-        options={{
-          href: null,
-        }}
+        name="bookings"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="guests"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="services"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="staffs"
+        options={{ href: null }}
       />
     </Tabs>
   );
