@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, shouldUseMockData, CORS_SKIP_ERROR } from './client';
 import { API_ENDPOINTS } from './config';
 import { mockHotels } from '@/mocks/hotelData';
 
@@ -36,14 +36,18 @@ const mapApiHotelToHotel = (apiHotel: ApiHotel): Hotel => ({
 
 export const hotelsApi = {
   getAll: async (): Promise<Hotel[]> => {
+    if (shouldUseMockData()) {
+      return mockHotels;
+    }
     try {
       const response = await apiClient.get<ApiHotel[] | { data: ApiHotel[] }>(API_ENDPOINTS.HOTELS.BASE);
       const hotels = Array.isArray(response) ? response : (response?.data || []);
-      console.log('[hotelsApi.getAll] Response:', hotels);
       return hotels.map(mapApiHotelToHotel);
     } catch (error) {
+      if (error instanceof Error && error.message === CORS_SKIP_ERROR) {
+        return mockHotels;
+      }
       console.error('[hotelsApi.getAll] Error:', error);
-      console.log('[hotelsApi.getAll] Using mock data as fallback');
       return mockHotels;
     }
   },

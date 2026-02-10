@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, shouldUseMockData, CORS_SKIP_ERROR } from './client';
 import { API_ENDPOINTS } from './config';
 import { Booking, BookingStatus } from '@/types/hotel';
 import { mockBookings } from '@/mocks/hotelData';
@@ -66,13 +66,18 @@ const mapApiBookingToBooking = (apiBooking: ApiBooking): Booking => ({
 
 export const bookingsApi = {
   getAll: async (): Promise<Booking[]> => {
+    if (shouldUseMockData()) {
+      return mockBookings;
+    }
     try {
       const response = await apiClient.get<ApiBooking[] | { data: ApiBooking[] }>(API_ENDPOINTS.BOOKINGS.BASE);
       const bookings = Array.isArray(response) ? response : (response?.data || []);
       return bookings.map(mapApiBookingToBooking);
     } catch (error) {
+      if (error instanceof Error && error.message === CORS_SKIP_ERROR) {
+        return mockBookings;
+      }
       console.error('[bookingsApi.getAll] Error:', error);
-      console.log('[bookingsApi.getAll] Using mock data as fallback');
       return mockBookings;
     }
   },
@@ -118,6 +123,9 @@ export const bookingsApi = {
   },
 
   getByHotel: async (hotelId: string): Promise<Booking[]> => {
+    if (shouldUseMockData()) {
+      return mockBookings;
+    }
     try {
       const response = await apiClient.get<ApiBooking[] | { data: ApiBooking[] }>(
         `${API_ENDPOINTS.BOOKINGS.BASE}?hotelId=${hotelId}`
@@ -125,6 +133,9 @@ export const bookingsApi = {
       const bookings = Array.isArray(response) ? response : (response?.data || []);
       return bookings.map(mapApiBookingToBooking);
     } catch (error) {
+      if (error instanceof Error && error.message === CORS_SKIP_ERROR) {
+        return mockBookings;
+      }
       console.error('[bookingsApi.getByHotel] Error:', error);
       return mockBookings;
     }

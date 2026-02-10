@@ -1,4 +1,4 @@
-import { apiClient } from './client';
+import { apiClient, shouldUseMockData, CORS_SKIP_ERROR } from './client';
 import { API_ENDPOINTS } from './config';
 import { Room, RoomStatus } from '@/types/hotel';
 import { mockRooms } from '@/mocks/hotelData';
@@ -43,6 +43,9 @@ const mapApiRoomToRoom = (apiRoom: ApiRoom): Room => ({
 
 export const roomsApi = {
   getAll: async (hotelId?: string): Promise<Room[]> => {
+    if (shouldUseMockData()) {
+      return mockRooms;
+    }
     try {
       const endpoint = hotelId 
         ? `${API_ENDPOINTS.ROOMS.BASE}?hotelId=${hotelId}` 
@@ -51,8 +54,10 @@ export const roomsApi = {
       const rooms = Array.isArray(response) ? response : [];
       return rooms.map(mapApiRoomToRoom);
     } catch (error) {
+      if (error instanceof Error && error.message === CORS_SKIP_ERROR) {
+        return mockRooms;
+      }
       console.error('[roomsApi.getAll] Error:', error);
-      console.log('[roomsApi.getAll] Using mock data as fallback');
       return mockRooms;
     }
   },
@@ -68,6 +73,9 @@ export const roomsApi = {
   },
 
   getAvailable: async (hotelId?: string): Promise<Room[]> => {
+    if (shouldUseMockData()) {
+      return mockRooms.filter(r => r.status === 'available');
+    }
     try {
       const endpoint = hotelId 
         ? `${API_ENDPOINTS.ROOMS.AVAILABLE}?hotelId=${hotelId}` 
@@ -76,8 +84,10 @@ export const roomsApi = {
       const rooms = Array.isArray(response) ? response : [];
       return rooms.map(mapApiRoomToRoom);
     } catch (error) {
+      if (error instanceof Error && error.message === CORS_SKIP_ERROR) {
+        return mockRooms.filter(r => r.status === 'available');
+      }
       console.error('[roomsApi.getAvailable] Error:', error);
-      console.log('[roomsApi.getAvailable] Using mock data as fallback');
       return mockRooms.filter(r => r.status === 'available');
     }
   },

@@ -3,6 +3,12 @@ import { Platform } from 'react-native';
 
 const USE_MOCK_ON_WEB = true;
 
+export const CORS_SKIP_ERROR = 'CORS_SKIP';
+
+export function shouldUseMockData(): boolean {
+  return Platform.OS === 'web' && USE_MOCK_ON_WEB;
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
@@ -18,21 +24,16 @@ class ApiClient {
     this.timeout = API_CONFIG.TIMEOUT;
   }
 
-  shouldUseMock(): boolean {
-    return Platform.OS === 'web' && USE_MOCK_ON_WEB;
-  }
-
   private async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
     const { method = 'GET', body, headers = {} } = options;
     
     const url = `${this.baseUrl}${endpoint}`;
 
-    console.log(`[API] ${method} ${url}`);
-    
-    if (this.shouldUseMock()) {
-      console.log('[API] Web platform detected - will use mock data fallback');
-      throw new Error('CORS_SKIP');
+    if (shouldUseMockData()) {
+      throw new Error(CORS_SKIP_ERROR);
     }
+
+    console.log(`[API] ${method} ${url}`);
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
