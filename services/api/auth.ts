@@ -57,6 +57,13 @@ export interface AuthResponse {
   accessToken?: string;
 }
 
+export interface UpdateProfileRequest {
+  fullName?: string;
+  phone?: string;
+  avatar?: string;
+  avatarId?: string | null;
+}
+
 const mapApiUserToUser = (apiUser: ApiUser): User => ({
   id: apiUser._id,
   email: apiUser.email,
@@ -112,15 +119,18 @@ export const authApi = {
     return response;
   },
 
-  updateProfile: async (userId: string, data: Partial<User>, token: string): Promise<User> => {
-    console.log('[authApi.updateProfile] Updating profile for:', userId);
+  updateProfile: async (data: UpdateProfileRequest): Promise<User> => {
+    console.log('[authApi.updateProfile] Updating profile');
     try {
-      const response = await apiClient.postWithAuth<ApiUser>(
-        API_ENDPOINTS.USERS.BY_ID(userId),
-        data,
-        token
+      const response = await apiClient.put<{ user?: ApiUser } | ApiUser>(
+        API_ENDPOINTS.AUTH.PROFILE,
+        data
       );
-      return mapApiUserToUser(response);
+      const userData = 'user' in response ? response.user : response;
+      if (!userData) {
+        throw new Error('Invalid profile response');
+      }
+      return mapApiUserToUser(userData);
     } catch (error) {
       console.error('[authApi.updateProfile] Error:', error);
       throw error;

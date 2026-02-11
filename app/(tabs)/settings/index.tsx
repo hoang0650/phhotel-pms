@@ -15,6 +15,7 @@ import {
   Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as ImagePicker from 'expo-image-picker';
 import {
   Bell,
   Moon,
@@ -42,6 +43,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { Language } from '@/contexts/LanguageContext';
+import { API_CONFIG } from '@/services/api';
 
 interface SettingItemProps {
   icon: React.ReactNode;
@@ -79,7 +81,7 @@ const roleLabels: Record<string, string> = {
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const { selectedHotel } = useHotel();
-  const { user, logout, logoutLoading, updateProfile, updateProfileLoading, updateLocalUser } = useAuth();
+  const { user, token, logout, logoutLoading, updateProfile, updateProfileLoading, updateLocalUser } = useAuth();
   const { isDark, toggleTheme, colors } = useTheme();
   const { t, language, setLanguage } = useLanguage();
 
@@ -91,6 +93,25 @@ export default function SettingsScreen() {
   const [editName, setEditName] = useState(user?.name || '');
   const [editEmail, setEditEmail] = useState(user?.email || '');
   const [editPhone, setEditPhone] = useState(user?.phone || '');
+  const [editAvatarValue, setEditAvatarValue] = useState<string | undefined>(user?.avatar);
+  const [editAvatarId, setEditAvatarId] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const getImageUrl = useCallback((value?: string | null) => {
+    if (!value) return undefined;
+    if (value.startsWith('http://') || value.startsWith('https://')) return value;
+    if (value.startsWith('/files/')) return `${API_CONFIG.BASE_URL}${value}`;
+    return `${API_CONFIG.BASE_URL}/files/${value}`;
+  }, []);
+
+  const getImageId = useCallback((value?: string | null) => {
+    if (!value) return null;
+    if (value.includes('/files/')) {
+      const part = value.split('/files/')[1];
+      return part ? part.split('?')[0] : null;
+    }
+    return value;
+  }, []);
 
   const handleLogout = useCallback(() => {
     Alert.alert(
@@ -122,20 +143,74 @@ export default function SettingsScreen() {
     setEditName(user?.name || '');
     setEditEmail(user?.email || '');
     setEditPhone(user?.phone || '');
+    setEditAvatarValue(user?.avatar);
+    setEditAvatarId(getImageId(user?.avatar));
     setEditProfileVisible(true);
-  }, [user]);
+  }, [getImageId, user]);
+
+  const handlePickAvatar = useCallback(async () => {
+    if (avatarUploading) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    if (!token) return;
+
+    try {
+      setAvatarUploading(true);
+      const formData = new FormData();
+      formData.append('image', {
+        uri: asset.uri,
+        name: asset.fileName || 'avatar.jpg',
+        type: asset.mimeType || 'image/jpeg',
+      } as any);
+
+      const response = await fetch(`${API_CONFIG.BASE_URL}/files/upload`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await response.json();
+      const imageId = data.imageId || null;
+      const imageUrl = data.imageUrl || (imageId ? `/files/${imageId}` : undefined);
+      if (imageUrl) {
+        setEditAvatarValue(imageUrl);
+      }
+      if (imageId) {
+        setEditAvatarId(imageId);
+      }
+    } catch (error) {
+      console.error('[Settings] Upload avatar error:', error);
+      Alert.alert(language === 'vi' ? 'Lỗi' : 'Error', language === 'vi' ? 'Không thể tải ảnh lên' : 'Failed to upload image');
+    } finally {
+      setAvatarUploading(false);
+    }
+  }, [avatarUploading, language, token]);
 
   const handleSaveProfile = useCallback(async () => {
     try {
       await updateProfile({
-        name: editName,
-        email: editEmail,
+        fullName: editName,
         phone: editPhone,
+        avatar: editAvatarValue,
+        avatarId: editAvatarId,
       });
       await updateLocalUser({
         name: editName,
         email: editEmail,
         phone: editPhone,
+        avatar: editAvatarId ? `/files/${editAvatarId}` : editAvatarValue,
       });
       setEditProfileVisible(false);
       Alert.alert(t('success'), t('profileUpdated'));
@@ -145,18 +220,19 @@ export default function SettingsScreen() {
         name: editName,
         email: editEmail,
         phone: editPhone,
+        avatar: editAvatarId ? `/files/${editAvatarId}` : editAvatarValue,
       });
       setEditProfileVisible(false);
       Alert.alert(t('success'), t('profileUpdated'));
     }
-  }, [editName, editEmail, editPhone, updateProfile, updateLocalUser, t]);
+  }, [editName, editEmail, editPhone, editAvatarId, editAvatarValue, updateProfile, updateLocalUser, t]);
 
   const handleSelectLanguage = useCallback((lang: Language) => {
     setLanguage(lang);
     setLanguageModalVisible(false);
   }, [setLanguage]);
 
-  const avatarUrl = user?.avatar;
+  const avatarUrl = getImageUrl(user?.avatar);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -387,15 +463,16 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.editAvatarSection}>
-              {avatarUrl ? (
-                <Image source={{ uri: avatarUrl }} style={styles.editAvatarImage} />
+            <TouchableOpacity style={styles.editAvatarSection} onPress={handlePickAvatar} disabled={avatarUploading}>
+              {getImageUrl(editAvatarValue) ? (
+                <Image source={{ uri: getImageUrl(editAvatarValue) }} style={styles.editAvatarImage} />
               ) : (
                 <View style={[styles.editAvatar, { backgroundColor: isDark ? '#334155' : '#f3f4f6' }]}>
                   <User size={40} color={colors.textSecondary} />
                 </View>
               )}
-            </View>
+              {avatarUploading && <ActivityIndicator size="small" color="#0f766e" style={{ marginTop: 10 }} />}
+            </TouchableOpacity>
 
             <View style={styles.editForm}>
               <View style={styles.editField}>

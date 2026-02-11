@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useHotel } from '../../../contexts/HotelContext';
+import { apiClient } from '../../../services/api/client';
 
 interface Device {
   id: string;
@@ -32,110 +34,10 @@ interface Device {
 }
 
 interface Room {
-  roomId: string;
+  roomId?: string;
   roomNumber: string;
   floor?: number;
 }
-
-const MOCK_DEVICES: Device[] = [
-  {
-    id: '1',
-    name: 'Đèn trần phòng 101',
-    deviceId: 'tuya_device_001',
-    type: 'light',
-    status: true,
-    power: 15,
-    voltage: 220,
-    current: 0.07,
-    room: '101',
-    floor: 1,
-    isOnline: true,
-    lastUpdated: '2024-01-15T10:30:00Z',
-    autoMode: false,
-  },
-  {
-    id: '2',
-    name: 'Quạt trần phòng 101',
-    deviceId: 'tuya_device_002',
-    type: 'fan',
-    status: false,
-    power: 0,
-    voltage: 220,
-    current: 0,
-    room: '101',
-    floor: 1,
-    isOnline: true,
-    lastUpdated: '2024-01-15T10:25:00Z',
-    autoMode: true,
-  },
-  {
-    id: '3',
-    name: 'Điều hòa phòng 102',
-    deviceId: 'tuya_device_003',
-    type: 'air_conditioner',
-    status: true,
-    power: 1200,
-    voltage: 220,
-    current: 5.45,
-    room: '102',
-    floor: 1,
-    isOnline: true,
-    lastUpdated: '2024-01-15T10:35:00Z',
-    autoMode: true,
-    timer: { enabled: true, startTime: '18:00', endTime: '06:00' },
-  },
-  {
-    id: '4',
-    name: 'Ổ cắm phòng 201',
-    deviceId: 'tuya_device_004',
-    type: 'outlet',
-    status: false,
-    power: 0,
-    voltage: 220,
-    current: 0,
-    room: '201',
-    floor: 2,
-    isOnline: false,
-    lastUpdated: '2024-01-15T09:00:00Z',
-  },
-  {
-    id: '5',
-    name: 'Đèn sân thượng',
-    deviceId: 'tuya_device_005',
-    type: 'light',
-    status: true,
-    power: 25,
-    voltage: 220,
-    current: 0.11,
-    floor: 3,
-    isOnline: true,
-    lastUpdated: '2024-01-15T10:40:00Z',
-    autoMode: false,
-  },
-  {
-    id: '6',
-    name: 'Máy sưởi phòng 202',
-    deviceId: 'tuya_device_006',
-    type: 'heater',
-    status: false,
-    power: 0,
-    voltage: 220,
-    current: 0,
-    room: '202',
-    floor: 2,
-    isOnline: true,
-    lastUpdated: '2024-01-15T10:20:00Z',
-    autoMode: true,
-  },
-];
-
-const MOCK_ROOMS: Room[] = [
-  { roomId: '1', roomNumber: '101', floor: 1 },
-  { roomId: '2', roomNumber: '102', floor: 1 },
-  { roomId: '3', roomNumber: '201', floor: 2 },
-  { roomId: '4', roomNumber: '202', floor: 2 },
-  { roomId: '5', roomNumber: 'Sân thượng', floor: 3 },
-];
 
 const getDeviceIcon = (type: Device['type']) => {
   switch (type) {
@@ -161,8 +63,9 @@ const getDeviceTypeText = (type: Device['type'], language: string) => {
 
 export default function ElectricityScreen() {
   const { language } = useLanguage();
-  const [devices, setDevices] = useState<Device[]>(MOCK_DEVICES);
-  const [rooms, setRooms] = useState<Room[]>(MOCK_ROOMS);
+  const { selectedHotelId } = useHotel();
+  const [devices, setDevices] = useState<Device[]>([]);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showByRoom, setShowByRoom] = useState(false);
@@ -221,54 +124,84 @@ export default function ElectricityScreen() {
 
   const t = translations[language as keyof typeof translations];
 
-  // Simulate real-time power updates
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setDevices(prev => prev.map(device => {
-        if (device.status && device.isOnline) {
-          // Simulate power fluctuation
-          const basePower = device.type === 'air_conditioner' ? 1200 : 
-                           device.type === 'heater' ? 800 :
-                           device.type === 'light' ? 15 : 50;
-          const variation = (Math.random() - 0.5) * 0.1; // ±5% variation
-          const newPower = Math.round(basePower * (1 + variation));
-          return {
-            ...device,
-            power: newPower,
-            current: newPower > 0 ? +(newPower / 220).toFixed(2) : 0,
-            lastUpdated: new Date().toISOString(),
-          };
-        }
-        return device;
-      }));
-    }, 5000);
+  const loadDevices = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const endpoint = selectedHotelId ? `/tuya/devices?hotelId=${selectedHotelId}` : '/tuya/devices';
+      const response = await apiClient.get<{ data?: any[] } | any[]>(endpoint);
+      const deviceList = Array.isArray(response) ? response : response.data || [];
 
-    return () => clearInterval(interval);
-  }, []);
+      const mappedDevices: Device[] = deviceList.map((device, index) => {
+        const deviceId = device.deviceId || device.id || `${index}`;
+        return {
+          id: deviceId,
+          name: device.name || `Device ${index + 1}`,
+          deviceId,
+          type: 'outlet',
+          status: !!device.state,
+          room: device.roomNumber || device.room?.roomNumber,
+          floor: device.room?.floor,
+          isOnline: device.online !== false,
+          lastUpdated: new Date().toISOString(),
+        };
+      });
+
+      const roomMap = new Map<string, Room>();
+      deviceList.forEach((device) => {
+        const roomNumber = device.roomNumber || device.room?.roomNumber;
+        if (!roomNumber) return;
+        const roomId = device.roomId?._id || device.roomId;
+        const floor = device.room?.floor || device.floor;
+        if (!roomMap.has(roomNumber)) {
+          roomMap.set(roomNumber, { roomId, roomNumber, floor });
+        }
+      });
+
+      setDevices(mappedDevices);
+      setRooms(Array.from(roomMap.values()));
+    } catch (error) {
+      console.error('[Electricity] Load devices error:', error);
+      Alert.alert(language === 'vi' ? 'Lỗi' : 'Error', language === 'vi' ? 'Không thể tải thiết bị' : 'Failed to load devices');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [language, selectedHotelId]);
+
+  useEffect(() => {
+    loadDevices();
+  }, [loadDevices]);
 
   const handleToggle = async (device: Device) => {
-    if (isToggling[device.id] || !device.isOnline) return;
+    if (isToggling[device.deviceId] || !device.isOnline) return;
 
-    setIsToggling(prev => ({ ...prev, [device.id]: true }));
+    setIsToggling(prev => ({ ...prev, [device.deviceId]: true }));
 
-    // Simulate API call
-    setTimeout(() => {
-      setDevices(prev => prev.map(d => 
-        d.id === device.id 
-          ? { 
-              ...d, 
-              status: !d.status,
-              power: !d.status ? (d.power || 50) : 0,
-              current: !d.status ? (d.current || 0.23) : 0,
-              lastUpdated: new Date().toISOString(),
-            }
-          : d
-      ));
-      setIsToggling(prev => ({ ...prev, [device.id]: false }));
-    }, 1000);
+    try {
+      const response = await apiClient.post<{ data?: { state?: boolean } }>(
+        `/tuya/devices/${device.deviceId}/toggle`,
+        {}
+      );
+      const newState = response?.data?.state ?? !device.status;
+      setDevices(prev =>
+        prev.map(d =>
+          d.deviceId === device.deviceId
+            ? {
+                ...d,
+                status: newState,
+                lastUpdated: new Date().toISOString(),
+              }
+            : d
+        )
+      );
+    } catch (error) {
+      console.error('[Electricity] Toggle device error:', error);
+      Alert.alert(language === 'vi' ? 'Lỗi' : 'Error', language === 'vi' ? 'Không thể điều khiển thiết bị' : 'Failed to control device');
+    } finally {
+      setIsToggling(prev => ({ ...prev, [device.deviceId]: false }));
+    }
   };
 
-  const handleTurnOnAll = (roomId: string) => {
+  const handleTurnOnAll = (room: Room) => {
     Alert.alert(
       t.confirmTurnOnAll,
       '',
@@ -276,29 +209,28 @@ export default function ElectricityScreen() {
         { text: 'Hủy', style: 'cancel' },
         {
           text: 'Xác nhận',
-          onPress: () => {
-            setDevices(prev => prev.map(device => 
-              device.room === roomId && device.isOnline
-                ? { 
-                    ...device, 
-                    status: true,
-                    power: device.type === 'air_conditioner' ? 1200 :
-                           device.type === 'heater' ? 800 :
-                           device.type === 'light' ? 15 : 50,
-                    current: device.type === 'air_conditioner' ? 5.45 :
-                            device.type === 'heater' ? 3.64 :
-                            device.type === 'light' ? 0.07 : 0.23,
-                    lastUpdated: new Date().toISOString(),
-                  }
-                : device
-            ));
+          onPress: async () => {
+            if (!room.roomId) return;
+            try {
+              await apiClient.post(`/tuya/rooms/${room.roomId}/auto-turn-on`, {});
+              setDevices(prev =>
+                prev.map(device =>
+                  device.room === room.roomNumber
+                    ? { ...device, status: true, lastUpdated: new Date().toISOString() }
+                    : device
+                )
+              );
+            } catch (error) {
+              console.error('[Electricity] Turn on all error:', error);
+              Alert.alert(language === 'vi' ? 'Lỗi' : 'Error', language === 'vi' ? 'Không thể bật tất cả thiết bị' : 'Failed to turn on all devices');
+            }
           },
         },
       ]
     );
   };
 
-  const handleTurnOffAll = (roomId: string) => {
+  const handleTurnOffAll = (room: Room) => {
     Alert.alert(
       t.confirmTurnOffAll,
       '',
@@ -306,41 +238,31 @@ export default function ElectricityScreen() {
         { text: 'Hủy', style: 'cancel' },
         {
           text: 'Xác nhận',
-          onPress: () => {
-            setDevices(prev => prev.map(device => 
-              device.room === roomId
-                ? { 
-                    ...device, 
-                    status: false,
-                    power: 0,
-                    current: 0,
-                    lastUpdated: new Date().toISOString(),
-                  }
-                : device
-            ));
+          onPress: async () => {
+            if (!room.roomId) return;
+            try {
+              await apiClient.post(`/tuya/rooms/${room.roomId}/auto-turn-off`, {});
+              setDevices(prev =>
+                prev.map(device =>
+                  device.room === room.roomNumber
+                    ? { ...device, status: false, lastUpdated: new Date().toISOString() }
+                    : device
+                )
+              );
+            } catch (error) {
+              console.error('[Electricity] Turn off all error:', error);
+              Alert.alert(language === 'vi' ? 'Lỗi' : 'Error', language === 'vi' ? 'Không thể tắt tất cả thiết bị' : 'Failed to turn off all devices');
+            }
           },
         },
       ]
     );
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
-      setIsRefreshing(false);
-    }, 2000);
-  };
-
-  const groupDevicesByRoom = () => {
-    const grouped: { [key: string]: Device[] } = {};
-    devices.forEach(device => {
-      const roomKey = device.room || 'no-room';
-      if (!grouped[roomKey]) {
-        grouped[roomKey] = [];
-      }
-      grouped[roomKey].push(device);
-    });
-    return grouped;
+    await loadDevices();
+    setIsRefreshing(false);
   };
 
   const renderDeviceItem = (device: Device) => (
@@ -394,7 +316,7 @@ export default function ElectricityScreen() {
         <Switch
           value={device.status}
           onValueChange={() => handleToggle(device)}
-          disabled={!device.isOnline || isToggling[device.id]}
+          disabled={!device.isOnline || isToggling[device.deviceId]}
           trackColor={{ false: '#767577', true: '#4CAF50' }}
           thumbColor={device.status ? '#fff' : '#f4f3f4'}
         />
@@ -403,7 +325,7 @@ export default function ElectricityScreen() {
           <TouchableOpacity
             style={[styles.controlButton, styles.turnOnButton, (!device.isOnline || device.status) && styles.disabledButton]}
             onPress={() => handleToggle(device)}
-            disabled={!device.isOnline || device.status || isToggling[device.id]}
+            disabled={!device.isOnline || device.status || isToggling[device.deviceId]}
           >
             <Ionicons name="power" size={16} color="#fff" />
             <Text style={styles.controlButtonText}>{t.turnOn}</Text>
@@ -412,7 +334,7 @@ export default function ElectricityScreen() {
           <TouchableOpacity
             style={[styles.controlButton, styles.turnOffButton, (!device.isOnline || !device.status) && styles.disabledButton]}
             onPress={() => handleToggle(device)}
-            disabled={!device.isOnline || !device.status || isToggling[device.id]}
+            disabled={!device.isOnline || !device.status || isToggling[device.deviceId]}
           >
             <Ionicons name="power" size={16} color="#fff" />
             <Text style={styles.controlButtonText}>{t.turnOff}</Text>
@@ -420,7 +342,7 @@ export default function ElectricityScreen() {
         </View>
       </View>
       
-      {isToggling[device.id] && (
+      {isToggling[device.deviceId] && (
         <ActivityIndicator size="small" color="#4CAF50" style={styles.loadingIndicator} />
       )}
     </View>
@@ -431,7 +353,7 @@ export default function ElectricityScreen() {
     if (roomDevices.length === 0) return null;
 
     return (
-      <View key={room.roomId} style={styles.roomSection}>
+      <View key={room.roomId || room.roomNumber} style={styles.roomSection}>
         <View style={styles.roomHeader}>
           <Text style={styles.roomTitle}>
             {t.room} {room.roomNumber} {room.floor && `- ${t.floor} ${room.floor}`}
@@ -439,7 +361,7 @@ export default function ElectricityScreen() {
           <View style={styles.roomControls}>
             <TouchableOpacity
               style={[styles.roomControlButton, styles.turnOnAllButton]}
-              onPress={() => handleTurnOnAll(room.roomNumber)}
+              onPress={() => handleTurnOnAll(room)}
             >
               <Ionicons name="power" size={16} color="#fff" />
               <Text style={styles.roomControlButtonText}>{t.turnOnAll}</Text>
@@ -447,7 +369,7 @@ export default function ElectricityScreen() {
             
             <TouchableOpacity
               style={[styles.roomControlButton, styles.turnOffAllButton]}
-              onPress={() => handleTurnOffAll(room.roomNumber)}
+              onPress={() => handleTurnOffAll(room)}
             >
               <Ionicons name="power" size={16} color="#fff" />
               <Text style={styles.roomControlButtonText}>{t.turnOffAll}</Text>

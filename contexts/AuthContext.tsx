@@ -8,10 +8,10 @@ const AUTH_TOKEN_KEY = 'auth_token';
 const AUTH_USER_KEY = 'auth_user';
 
 export interface UpdateProfileData {
-  name?: string;
-  email?: string;
+  fullName?: string;
   phone?: string;
   avatar?: string;
+  avatarId?: string | null;
 }
 
 export const [AuthProvider, useAuth] = createContextHook(() => {
@@ -147,7 +147,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
   const updateProfileMutation = useMutation({
     mutationFn: async (data: UpdateProfileData) => {
       if (!user || !token) throw new Error('Not authenticated');
-      const result = await authApi.updateProfile(user.id, data, token);
+      const result = await authApi.updateProfile(data);
       return result;
     },
     onSuccess: async (updatedUser) => {

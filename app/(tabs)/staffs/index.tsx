@@ -185,6 +185,12 @@ export default function StaffsScreen() {
   const getUserLabel = (userItem: ApiUser) =>
     userItem.fullName || userItem.name || userItem.email || getUserId(userItem);
 
+  const canManageStaff =
+    user?.role === 'superadmin' ||
+    user?.role === 'admin' ||
+    user?.role === 'business' ||
+    user?.role === 'hotel';
+
   const { data: availableUsers = [] } = useQuery({
     queryKey: [
       'users',
@@ -330,12 +336,6 @@ export default function StaffsScreen() {
   });
 
   const isLoading = staffsLoading || salaryLoading;
-
-  const canManageStaff =
-    user?.role === 'superadmin' ||
-    user?.role === 'admin' ||
-    user?.role === 'business' ||
-    user?.role === 'hotel';
 
   const getStaffName = (staff: Staff) => {
     const firstName = staff.personalInfo?.firstName || '';
