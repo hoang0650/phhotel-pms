@@ -11,6 +11,12 @@ export interface ApiService {
   isActive?: boolean;
   hotelId?: string;
   icon?: string;
+  image?: string;
+  currency?: string;
+  isCustom?: boolean;
+  costPrice?: number;
+  importQuantity?: number;
+  salesQuantity?: number;
 }
 
 export interface ApiServiceOrder {
@@ -35,8 +41,12 @@ export interface ApiServiceOrder {
   guestName?: string;
   quantity: number;
   totalPrice: number;
+  totalAmount?: number;
   status: string;
   createdAt: string;
+  orderTime?: string;
+  requestTime?: string;
+  updatedAt?: string;
   completedAt?: string;
 }
 
@@ -45,10 +55,16 @@ const mapApiServiceToService = (apiService: ApiService): Service => ({
   name: apiService.name,
   description: apiService.description || '',
   price: apiService.price || 0,
-  category: apiService.category || 'other',
+  category: apiService.category || 'custom',
   isActive: apiService.isActive ?? true,
   hotelId: apiService.hotelId || '',
   icon: apiService.icon,
+  image: apiService.image,
+  currency: apiService.currency,
+  isCustom: apiService.isCustom,
+  costPrice: apiService.costPrice,
+  importQuantity: apiService.importQuantity,
+  salesQuantity: apiService.salesQuantity,
 });
 
 const mapApiServiceOrderToServiceOrder = (apiOrder: ApiServiceOrder): ServiceOrder => ({
@@ -60,9 +76,11 @@ const mapApiServiceOrderToServiceOrder = (apiOrder: ApiServiceOrder): ServiceOrd
   guestId: apiOrder.guest?._id || apiOrder.guestId || '',
   guestName: apiOrder.guest?.name || apiOrder.guestName || '',
   quantity: apiOrder.quantity || 1,
-  totalPrice: apiOrder.totalPrice || 0,
-  status: apiOrder.status as ServiceOrder['status'] || 'pending',
-  createdAt: apiOrder.createdAt,
+  totalPrice: apiOrder.totalPrice || apiOrder.totalAmount || 0,
+  status:
+    (apiOrder.status === 'delivered' ? 'completed' : apiOrder.status) as ServiceOrder['status'] ||
+    'pending',
+  createdAt: apiOrder.createdAt || apiOrder.orderTime || apiOrder.requestTime || apiOrder.updatedAt || '',
   completedAt: apiOrder.completedAt,
 });
 

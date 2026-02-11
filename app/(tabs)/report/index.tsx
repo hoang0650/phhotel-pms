@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -20,40 +20,265 @@ import {
   Briefcase,
   Calendar,
   ChevronDown,
+  BarChart3,
+  PieChart,
+  CreditCard,
+  Landmark,
+  Wallet,
+  MinusCircle,
+  CheckCircle,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useHotel } from '@/contexts/HotelContext';
-import { revenueApi } from '@/services/api';
+import { useTheme } from '@/contexts/ThemeContext';
+import { revenueApi, roomsApi, bookingsApi } from '@/services/api';
+import { shiftHandoverApi } from '@/services/api/shiftHandover';
+import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, differenceInCalendarDays } from 'date-fns';
+import { ShiftHandover } from '@/types/shift-handover';
 
-type PeriodType = 'daily' | 'weekly' | 'monthly' | 'yearly';
+type PeriodType = 'day' | 'week' | 'month' | 'year';
+
+// Helper function to map payment methods, similar to backend
+const mapPaymentMethod = (method?: string): 'cash' | 'bank_transfer' | 'card' => {
+  const m = (method || 'cash').toLowerCase();
+  if (['transfer', 'banking', 'bank', 'bank_transfer', 'qr', 'vnpay'].includes(m)) {
+    return 'bank_transfer';
+  }
+  if (['card', 'credit_card', 'virtual_card', 'visa'].includes(m)) {
+    return 'card';
+  }
+  return 'cash';
+};
 
 export default function ReportScreen() {
   const insets = useSafeAreaInsets();
   const { selectedHotel, selectedHotelId } = useHotel();
-  const [period, setPeriod] = useState<PeriodType>('monthly');
+  const { isDark, colors } = useTheme();
+  const [period, setPeriod] = useState<PeriodType>('day');
 
-  const { data: revenueSummary, isLoading: summaryLoading, refetch: refetchSummary } = useQuery({
-    queryKey: ['revenue', 'summary', selectedHotelId],
-    queryFn: () => revenueApi.getSummary(selectedHotelId || undefined),
-    enabled: true,
+  const { data: revenueData, isLoading, refetch } = useQuery({
+    queryKey: ['revenue', selectedHotelId, period],
+    queryFn: async () => {
+      const today = new Date();
+      let startDate, endDate;
+
+      switch (period) {
+        case 'day':
+          startDate = subDays(today, 6);
+          endDate = today;
+          break;
+        case 'week':
+          startDate = subDays(today, 27);
+          endDate = today;
+          break;
+        case 'month':
+          startDate = subDays(today, 364);
+          endDate = today;
+          break;
+        case 'year':
+           startDate = subDays(today, 364);
+           endDate = today;
+          break;
+        default:
+          startDate = subDays(today, 6);
+          endDate = today;
+      }
+      
+      return revenueApi.getRevenueByPeriod({
+        hotelId: selectedHotelId || '',
+        period: period,
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: today.toISOString().split('T')[0]
+      });
+    },
+    enabled: !!selectedHotelId,
+  });
+  
+  const { data: breakdownRange } = useQuery({
+    queryKey: ['revenueBreakdownRange', selectedHotelId, period],
+    queryFn: async () => {
+      const today = new Date();
+      let startDate, endDate;
+      switch (period) {
+        case 'day':
+          startDate = subDays(today, 6);
+          endDate = today;
+          break;
+        case 'week':
+          startDate = subDays(today, 27);
+          endDate = today;
+          break;
+        case 'month':
+          startDate = subDays(today, 364);
+          endDate = today;
+          break;
+        case 'year':
+          startDate = subDays(today, 364);
+          endDate = today;
+          break;
+        default:
+          startDate = subDays(today, 6);
+          endDate = today;
+      }
+      return revenueApi.getRevenueByRange(
+        selectedHotelId || '',
+        startDate.toISOString().split('T')[0],
+        endDate.toISOString().split('T')[0]
+      );
+    },
+    enabled: !!selectedHotelId,
+  });
+  
+  const { data: weeklyData, refetch: refetchWeeklyData } = useQuery({
+    queryKey: ['revenueWeekly', selectedHotelId],
+    queryFn: async () => {
+      const today = new Date();
+      const startDate = subDays(today, 27);
+      return revenueApi.getRevenueByPeriod({
+        hotelId: selectedHotelId || '',
+        period: 'week',
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: today.toISOString().split('T')[0],
+      });
+    },
+    enabled: !!selectedHotelId,
+  });
+  
+  const { data: monthlyData, refetch: refetchMonthlyData } = useQuery({
+    queryKey: ['revenueMonthly', selectedHotelId],
+    queryFn: async () => {
+      const today = new Date();
+      const startDate = subDays(today, 364);
+      return revenueApi.getRevenueByPeriod({
+        hotelId: selectedHotelId || '',
+        period: 'month',
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: today.toISOString().split('T')[0],
+      });
+    },
+    enabled: !!selectedHotelId,
+  });
+  
+  const { data: paymentBreakdown } = useQuery({
+    queryKey: ['revenuePaymentBreakdown', selectedHotelId, period],
+    queryFn: async () => {
+      const today = new Date();
+      let startDate, endDate;
+      switch (period) {
+        case 'day':
+          startDate = subDays(today, 6);
+          endDate = today;
+          break;
+        case 'week':
+          startDate = subDays(today, 27);
+          endDate = today;
+          break;
+        case 'month':
+          startDate = subDays(today, 364);
+          endDate = today;
+          break;
+        case 'year':
+          startDate = subDays(today, 364);
+          endDate = today;
+          break;
+        default:
+          startDate = subDays(today, 6);
+          endDate = today;
+      }
+      return shiftHandoverApi.getRevenue(
+        selectedHotelId || '',
+        startDate.toISOString().split('T')[0],
+        endDate.toISOString().split('T')[0]
+      );
+    },
+    enabled: !!selectedHotelId,
   });
 
-  const { data: dailyRevenue = [], isLoading: dailyLoading, refetch: refetchDaily } = useQuery({
-    queryKey: ['revenue', 'daily', selectedHotelId],
-    queryFn: () => revenueApi.getDaily(selectedHotelId || undefined),
-    enabled: true,
+  const totalRevenue = revenueData?.totalRevenue || 0;
+  const totalExpense = revenueData?.totalExpense || 0;
+  const profit = totalRevenue - totalExpense;
+
+  const { data: rooms = [] } = useQuery({
+    queryKey: ['rooms', selectedHotelId],
+    queryFn: () => roomsApi.getAll(selectedHotelId || ''),
+    enabled: !!selectedHotelId,
   });
 
-  const { data: monthlyRevenue = [], isLoading: monthlyLoading, refetch: refetchMonthly } = useQuery({
-    queryKey: ['revenue', 'monthly', selectedHotelId],
-    queryFn: () => revenueApi.getMonthly(selectedHotelId || undefined),
-    enabled: true,
+  const { data: bookings = [] } = useQuery({
+    queryKey: ['bookings', selectedHotelId],
+    queryFn: () => (selectedHotelId ? bookingsApi.getByHotel(selectedHotelId) : bookingsApi.getAll()),
+    enabled: !!selectedHotelId,
   });
 
-  const isLoading = summaryLoading || dailyLoading || monthlyLoading;
+  const computedStats = useMemo(() => {
+    const today = new Date();
+    let startDate: Date;
+    let endDate: Date = today;
+    switch (period) {
+      case 'day':
+        startDate = subDays(today, 6);
+        break;
+      case 'week':
+        startDate = subDays(today, 27);
+        break;
+      case 'month':
+      case 'year':
+        startDate = subDays(today, 364);
+        break;
+      default:
+        startDate = subDays(today, 6);
+    }
+
+    const startStr = startDate.toISOString().split('T')[0];
+    const endStr = endDate.toISOString().split('T')[0];
+    const daysInRange = Math.max(1, differenceInCalendarDays(endDate, startDate) + 1);
+
+    const bookingsInRange = bookings.filter(b => {
+      const ci = new Date(b.checkIn);
+      const co = new Date(b.checkOut);
+      // overlap check: booking intersects [startDate, endDate]
+      return ci <= endDate && co >= startDate;
+    });
+
+    const totalBookings = bookingsInRange.length;
+
+    const uniqueGuests = new Set<string>();
+    let fallbackGuestCount = 0;
+    bookingsInRange.forEach(b => {
+      if (b.guestId) uniqueGuests.add(b.guestId);
+      fallbackGuestCount += (Number(b.adults || 0) + Number(b.children || 0));
+    });
+    const totalGuests = uniqueGuests.size > 0 ? uniqueGuests.size : fallbackGuestCount;
+
+    let occupiedNights = 0;
+    let paidAmountSum = 0;
+    bookingsInRange.forEach(b => {
+      const ci = new Date(b.checkIn);
+      const co = new Date(b.checkOut);
+      const overlapStart = ci > startDate ? ci : startDate;
+      const overlapEnd = co < endDate ? co : endDate;
+      if (overlapEnd >= overlapStart) {
+        const nights = Math.max(1, differenceInCalendarDays(overlapEnd, overlapStart));
+        occupiedNights += nights;
+        paidAmountSum += Number(b.paidAmount || 0);
+      }
+    });
+
+    const totalRooms = rooms.length || 0;
+    const occupancyRate = totalRooms > 0 && daysInRange > 0
+      ? Math.round((occupiedNights / (totalRooms * daysInRange)) * 100)
+      : 0;
+
+    const averageRoomRate = occupiedNights > 0
+      ? Math.round(paidAmountSum / occupiedNights)
+      : Math.round((paidAmountSum || 0) / Math.max(1, totalBookings));
+
+    return { totalBookings, totalGuests, occupancyRate, averageRoomRate };
+  }, [bookings, rooms, period]);
+
 
   const handleRefresh = async () => {
-    await Promise.all([refetchSummary(), refetchDaily(), refetchMonthly()]);
+    await Promise.all([refetch(), refetchWeeklyData(), refetchMonthlyData()]);
   };
 
   const formatCurrency = (amount: number) => {
@@ -70,22 +295,46 @@ export default function ReportScreen() {
     }).format(amount);
   };
 
-  const revenueGrowth = revenueSummary?.revenueGrowth || 0;
+  const revenueGrowth = useMemo(() => {
+    if (!revenueData?.revenueData || revenueData.revenueData.length < 2) return 0;
+    const lastValue = revenueData.revenueData[revenueData.revenueData.length - 1];
+    const prevValue = revenueData.revenueData[revenueData.revenueData.length - 2];
+    if (prevValue === 0) return lastValue > 0 ? 100 : 0;
+    return Math.round(((lastValue - prevValue) / prevValue) * 100);
+  }, [revenueData]);
+  
   const isPositiveGrowth = revenueGrowth >= 0;
-  const maxDailyRevenue = Math.max(...dailyRevenue.map(d => d.revenue), 1);
-  const maxMonthlyRevenue = Math.max(...monthlyRevenue.map(m => m.revenue), 1);
+
+  const maxChartValue = useMemo(() => 
+    revenueData?.revenueData ? Math.max(...revenueData.revenueData, 1) : 1
+  , [revenueData]);
 
   const periodOptions: { key: PeriodType; label: string }[] = [
-    { key: 'daily', label: 'Ngày' },
-    { key: 'weekly', label: 'Tuần' },
-    { key: 'monthly', label: 'Tháng' },
-    { key: 'yearly', label: 'Năm' },
+    { key: 'day', label: 'Ngày' },
+    { key: 'week', label: 'Tuần' },
+    { key: 'month', label: 'Tháng' },
+    { key: 'year', label: 'Năm' },
   ];
 
+  const todayRevenue = useMemo(() => {
+    if (!revenueData?.revenueData || period !== 'day') return 0;
+    return revenueData.revenueData[revenueData.revenueData.length - 1] || 0;
+  }, [revenueData, period]);
+
+  const weeklyRevenue = useMemo(() => {
+    if (!weeklyData?.revenueData || weeklyData.revenueData.length === 0) return 0;
+    return weeklyData.revenueData[weeklyData.revenueData.length - 1] || 0;
+  }, [weeklyData]);
+
+  const monthlyRevenue = useMemo(() => {
+    if (!monthlyData?.revenueData || monthlyData.revenueData.length === 0) return 0;
+    return monthlyData.revenueData[monthlyData.revenueData.length - 1] || 0;
+  }, [monthlyData]);
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient
-        colors={['#0f766e', '#14b8a6']}
+        colors={isDark ? ['#0f766e', '#14b8a6'] : ['#14b8a6', '#0d9488']}
         style={[styles.header, { paddingTop: insets.top + 12 }]}
       >
         <View style={styles.headerContent}>
@@ -93,7 +342,7 @@ export default function ReportScreen() {
             <Text style={styles.headerTitle}>Báo cáo</Text>
             <Text style={styles.hotelName}>{selectedHotel?.name || 'Tất cả khách sạn'}</Text>
           </View>
-          <View style={styles.growthBadge}>
+          <View style={[styles.growthBadge, { backgroundColor: isPositiveGrowth ? '#10b98120' : '#ef444420'}]}>
             {isPositiveGrowth ? (
               <TrendingUp size={16} color="#10b981" />
             ) : (
@@ -111,88 +360,29 @@ export default function ReportScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
         refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={handleRefresh} />
+          <RefreshControl refreshing={isLoading} onRefresh={handleRefresh} tintColor={colors.tint} />
         }
       >
-        {isLoading && !revenueSummary ? (
+        {isLoading && !revenueData ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={Colors.light.tint} />
+            <ActivityIndicator size="large" color={colors.tint} />
           </View>
         ) : (
           <>
-            <View style={styles.summaryCards}>
-              <LinearGradient
-                colors={['#0f766e', '#0d9488']}
-                style={styles.mainRevenueCard}
-              >
-                <View style={styles.mainRevenueIcon}>
-                  <DollarSign size={24} color="#fff" />
-                </View>
-                <Text style={styles.mainRevenueLabel}>Doanh thu hôm nay</Text>
-                <Text style={styles.mainRevenueValue}>
-                  {formatCurrency(revenueSummary?.todayRevenue || 0)}
-                </Text>
-              </LinearGradient>
-
-              <View style={styles.secondaryCards}>
-                <View style={styles.secondaryCard}>
-                  <Calendar size={20} color="#6366f1" />
-                  <Text style={styles.secondaryLabel}>Tuần này</Text>
-                  <Text style={styles.secondaryValue}>
-                    {formatCurrency(revenueSummary?.weeklyRevenue || 0)}
-                  </Text>
-                </View>
-                <View style={styles.secondaryCard}>
-                  <Calendar size={20} color="#f59e0b" />
-                  <Text style={styles.secondaryLabel}>Tháng này</Text>
-                  <Text style={styles.secondaryValue}>
-                    {formatCurrency(revenueSummary?.monthlyRevenue || 0)}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.breakdownSection}>
-              <Text style={styles.sectionTitle}>Phân loại doanh thu</Text>
-              <View style={styles.breakdownCards}>
-                <View style={styles.breakdownCard}>
-                  <View style={[styles.breakdownIcon, { backgroundColor: '#ecfdf5' }]}>
-                    <BedDouble size={20} color="#0d9488" />
-                  </View>
-                  <View style={styles.breakdownInfo}>
-                    <Text style={styles.breakdownLabel}>Doanh thu phòng</Text>
-                    <Text style={styles.breakdownValue}>
-                      {formatCurrency(revenueSummary?.roomRevenue || 0)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.breakdownCard}>
-                  <View style={[styles.breakdownIcon, { backgroundColor: '#fef3c7' }]}>
-                    <Briefcase size={20} color="#f59e0b" />
-                  </View>
-                  <View style={styles.breakdownInfo}>
-                    <Text style={styles.breakdownLabel}>Doanh thu dịch vụ</Text>
-                    <Text style={styles.breakdownValue}>
-                      {formatCurrency(revenueSummary?.serviceRevenue || 0)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.periodSelector}>
+            <View style={[styles.periodSelector, { backgroundColor: colors.cardBackground }]}>
               {periodOptions.map((option) => (
                 <TouchableOpacity
                   key={option.key}
                   style={[
                     styles.periodOption,
-                    period === option.key && styles.periodOptionActive,
+                    period === option.key && [styles.periodOptionActive, { backgroundColor: colors.tint }],
                   ]}
                   onPress={() => setPeriod(option.key)}
                 >
                   <Text
                     style={[
                       styles.periodOptionText,
+                      { color: colors.textSecondary },
                       period === option.key && styles.periodOptionTextActive,
                     ]}
                   >
@@ -201,77 +391,211 @@ export default function ReportScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            <View style={styles.summaryCards}>
+              <LinearGradient
+                colors={isDark ? ['#0f766e', '#0d9488'] : ['#14b8a6', '#0d9488']}
+                style={styles.mainRevenueCard}
+              >
+                <View style={styles.mainRevenueIcon}>
+                  <DollarSign size={24} color="#fff" />
+                </View>
+                <Text style={styles.mainRevenueLabel}>Tổng doanh thu</Text>
+                <Text style={styles.mainRevenueValue}>
+                  {formatCurrency(totalRevenue)}
+                </Text>
+              </LinearGradient>
+
+              <View style={styles.secondaryCards}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setPeriod('week')}
+                  style={[styles.secondaryCard, { backgroundColor: colors.cardBackground }]}
+                >
+                  <Calendar size={20} color="#6366f1" />
+                  <Text style={[styles.secondaryLabel, { color: colors.textSecondary }]}>Tuần này</Text>
+                  <Text style={[styles.secondaryValue, { color: colors.text }]}>
+                    {formatCurrency(weeklyRevenue)}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setPeriod('month')}
+                  style={[styles.secondaryCard, { backgroundColor: colors.cardBackground }]}
+                >
+                  <Calendar size={20} color="#f59e0b" />
+                  <Text style={[styles.secondaryLabel, { color: colors.textSecondary }]}>Tháng này</Text>
+                  <Text style={[styles.secondaryValue, { color: colors.text }]}>
+                    {formatCurrency(monthlyRevenue)}
+                  </Text>
+                </TouchableOpacity>
+                <View style={[styles.secondaryCard, { backgroundColor: colors.cardBackground }]}>
+                  <MinusCircle size={20} color="#ef4444" />
+                  <Text style={[styles.secondaryLabel, { color: colors.textSecondary }]}>Tổng chi phí</Text>
+                  <Text style={[styles.secondaryValue, { color: colors.text }]}>
+                    {formatCurrency(totalExpense)}
+                  </Text>
+                </View>
+                <View style={[styles.secondaryCard, { backgroundColor: colors.cardBackground }]}>
+                  <CheckCircle size={20} color={profit >= 0 ? '#22c55e' : '#ef4444'} />
+                  <Text style={[styles.secondaryLabel, { color: colors.textSecondary }]}>Lợi nhuận</Text>
+                  <Text style={[styles.secondaryValue, { color: colors.text }]}>
+                    {formatCurrency(profit)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.breakdownSection}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Phân loại doanh thu</Text>
+              <View style={styles.breakdownCards}>
+                <View style={[styles.breakdownCard, { backgroundColor: colors.cardBackground }]}>
+                  <View style={[styles.breakdownIcon, { backgroundColor: isDark ? '#052e16' : '#ecfdf5' }]}>
+                    <BedDouble size={20} color="#0d9488" />
+                  </View>
+                  <View style={styles.breakdownInfo}>
+                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Doanh thu phòng</Text>
+                    <Text style={[styles.breakdownValue, { color: colors.text }]}>
+                      {formatCurrency(breakdownRange?.roomRevenue || 0)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.breakdownCard, { backgroundColor: colors.cardBackground }]}>
+                  <View style={[styles.breakdownIcon, { backgroundColor: isDark ? '#422006' : '#fef3c7' }]}>
+                    <Briefcase size={20} color="#f59e0b" />
+                  </View>
+                  <View style={styles.breakdownInfo}>
+                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Doanh thu dịch vụ</Text>
+                    <Text style={[styles.breakdownValue, { color: colors.text }]}>
+                      {formatCurrency(breakdownRange?.serviceRevenue || 0)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.breakdownSection}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Doanh thu theo thanh toán</Text>
+              <View style={styles.breakdownCards}>
+                <View style={[styles.breakdownCard, { backgroundColor: colors.cardBackground }]}>
+                  <View style={[styles.breakdownIcon, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}>
+                    <Wallet size={20} color="#4b5563" />
+                  </View>
+                  <View style={styles.breakdownInfo}>
+                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Tiền mặt</Text>
+                    <Text style={[styles.breakdownValue, { color: colors.text }]}>
+                      {formatCurrency(paymentBreakdown?.cashTotal || 0)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.breakdownCard, { backgroundColor: colors.cardBackground }]}>
+                  <View style={[styles.breakdownIcon, { backgroundColor: isDark ? '#1e293b' : '#e0e7ff' }]}>
+                    <Landmark size={20} color="#4f46e5" />
+                  </View>
+                  <View style={styles.breakdownInfo}>
+                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Chuyển khoản</Text>
+                    <Text style={[styles.breakdownValue, { color: colors.text }]}>
+                      {formatCurrency(paymentBreakdown?.bankTransferTotal || 0)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={[styles.breakdownCard, { backgroundColor: colors.cardBackground }]}>
+                  <View style={[styles.breakdownIcon, { backgroundColor: isDark ? '#312e81' : '#eef2ff' }]}>
+                    <CreditCard size={20} color="#6366f1" />
+                  </View>
+                  <View style={styles.breakdownInfo}>
+                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Thẻ</Text>
+                    <Text style={[styles.breakdownValue, { color: colors.text }]}>
+                      {formatCurrency(paymentBreakdown?.cardTotal || 0)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            
 
             <View style={styles.chartSection}>
-              <Text style={styles.sectionTitle}>Biểu đồ doanh thu</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Biểu đồ doanh thu</Text>
               
-              {period === 'daily' && dailyRevenue.length > 0 && (
-                <View style={styles.chartContainer}>
+              {revenueData?.revenueData && revenueData.revenueData.length > 0 ? (
+                <View style={[styles.chartContainer, { backgroundColor: colors.cardBackground }]}>
                   <View style={styles.chart}>
-                    {dailyRevenue.slice(-7).map((day) => (
-                      <View key={day.period} style={styles.chartBar}>
-                        <View style={styles.chartBarContainer}>
-                          <View
-                            style={[
-                              styles.chartBarFill,
-                              { height: `${(day.revenue / maxDailyRevenue) * 100}%` },
-                            ]}
-                          />
+                    {revenueData.revenueData.map((value, index) => {
+                      let label = '';
+                      const rawLabel = revenueData.labels?.[index];
+                      if (rawLabel) {
+                        const parts = String(rawLabel).split('-');
+                        if (period === 'day') {
+                          if (parts.length === 3) {
+                            label = `${parts[2]}/${parts[1]}`;
+                          } else {
+                            const d = new Date(rawLabel);
+                            label = !isNaN(d.getTime())
+                              ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
+                              : String(rawLabel);
+                          }
+                        } else if (period === 'week') {
+                          label = `W${index + 1}`;
+                        } else if (period === 'month') {
+                          if (parts.length >= 2) {
+                            label = `T${parts[1]}`;
+                          } else {
+                            const d = new Date(rawLabel);
+                            label = !isNaN(d.getTime())
+                              ? `T${String(d.getMonth() + 1).padStart(2, '0')}`
+                              : String(rawLabel);
+                          }
+                        } else if (period === 'year') {
+                          label = parts[0] || String(rawLabel);
+                        }
+                      }
+
+                      return (
+                        <View key={index} style={styles.chartBar}>
+                          <View style={styles.chartBarContainer}>
+                            <View
+                              style={[
+                                styles.chartBarFill,
+                                { height: `${(value / maxChartValue) * 100}%`, backgroundColor: colors.tint },
+                              ]}
+                            />
+                          </View>
+                          <Text style={[styles.chartValue, { color: colors.text }]}>
+                            {formatCurrency(value)}
+                          </Text>
+                          <Text style={[styles.chartLabel, { color: colors.textSecondary }]}>
+                            {label}
+                          </Text>
                         </View>
-                        <Text style={styles.chartLabel}>
-                          {new Date(day.period).getDate()}/{new Date(day.period).getMonth() + 1}
-                        </Text>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 </View>
-              )}
-
-              {period === 'monthly' && monthlyRevenue.length > 0 && (
-                <View style={styles.chartContainer}>
-                  <View style={styles.chart}>
-                    {monthlyRevenue.slice(-6).map((month) => (
-                      <View key={month.period} style={styles.chartBar}>
-                        <View style={styles.chartBarContainer}>
-                          <View
-                            style={[
-                              styles.chartBarFill,
-                              { height: `${(month.revenue / maxMonthlyRevenue) * 100}%` },
-                            ]}
-                          />
-                        </View>
-                        <Text style={styles.chartLabel}>T{month.period.split('-')[1]}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {(period === 'weekly' || period === 'yearly') && (
-                <View style={styles.emptyChart}>
-                  <Text style={styles.emptyChartText}>Chưa có dữ liệu</Text>
+              ) : (
+                <View style={[styles.emptyChart, { backgroundColor: colors.cardBackground }]}>
+                  <Text style={[styles.emptyChartText, { color: colors.textSecondary }]}>Chưa có dữ liệu</Text>
                 </View>
               )}
             </View>
 
             <View style={styles.statsSection}>
-              <Text style={styles.sectionTitle}>Thống kê tổng quan</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Thống kê tổng quan</Text>
               <View style={styles.statsGrid}>
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{revenueSummary?.totalBookings || 0}</Text>
-                  <Text style={styles.statLabel}>Đặt phòng</Text>
+                <View style={[styles.statItem, { backgroundColor: colors.cardBackground }]}>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{computedStats.totalBookings || 0}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Đặt phòng</Text>
                 </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{revenueSummary?.totalGuests || 0}</Text>
-                  <Text style={styles.statLabel}>Khách hàng</Text>
+                <View style={[styles.statItem, { backgroundColor: colors.cardBackground }]}>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{computedStats.totalGuests || 0}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Khách hàng</Text>
                 </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{revenueSummary?.averageOccupancy || 0}%</Text>
-                  <Text style={styles.statLabel}>Tỷ lệ lấp đầy</Text>
+                <View style={[styles.statItem, { backgroundColor: colors.cardBackground }]}>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{computedStats.occupancyRate || 0}%</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Tỷ lệ lấp đầy</Text>
                 </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statValue}>{formatCurrency(revenueSummary?.averageRoomRate || 0)}</Text>
-                  <Text style={styles.statLabel}>Giá TB/đêm</Text>
+                <View style={[styles.statItem, { backgroundColor: colors.cardBackground }]}>
+                  <Text style={[styles.statValue, { color: colors.text }]}>{formatCurrency(computedStats.averageRoomRate || 0)}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Giá TB/đêm</Text>
                 </View>
               </View>
             </View>
@@ -495,6 +819,12 @@ const styles = StyleSheet.create({
   chartLabel: {
     fontSize: 10,
     color: Colors.light.textSecondary,
+    marginTop: 6,
+  },
+  chartValue: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
     marginTop: 6,
   },
   emptyChart: {

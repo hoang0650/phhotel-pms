@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -29,19 +29,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useHotel } from '@/contexts/HotelContext';
-import { staffsApi } from '@/services/api';
-import { Staff } from '@/types/hotel';
+import { useAuth } from '@/contexts/AuthContext';
+import { API_ENDPOINTS, apiClient, authApi, staffsApi } from '@/services/api';
+import { ApiUser } from '@/services/api/auth';
+import { extractId } from '@/services/api/utils';
+import {
+  Staff,
+  StaffContactInfo,
+  StaffEmploymentInfo,
+  StaffPersonalInfo,
+  StaffPermission,
+  StaffSchedule,
+} from '@/types/hotel';
 
 const STATUS_COLORS: Record<string, string> = {
   active: '#10b981',
-  inactive: '#ef4444',
   on_leave: '#f59e0b',
+  terminated: '#ef4444',
 };
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Đang làm',
-  inactive: 'Nghỉ việc',
   on_leave: 'Nghỉ phép',
+  terminated: 'Nghỉ việc',
 };
 
 const DEPARTMENTS = [
@@ -53,15 +63,113 @@ const DEPARTMENTS = [
   { id: 'security', name: 'Bảo vệ' },
 ];
 
+const POSITION_OPTIONS = [
+  { value: 'manager', label: 'Quản lý' },
+  { value: 'receptionist', label: 'Lễ tân' },
+  { value: 'housekeeper', label: 'Buồng phòng' },
+  { value: 'maintenance', label: 'Bảo trì' },
+  { value: 'other', label: 'Khác' },
+];
+
+const STATUS_OPTIONS = [
+  { value: 'active', label: 'Đang làm' },
+  { value: 'on_leave', label: 'Nghỉ phép' },
+  { value: 'terminated', label: 'Nghỉ việc' },
+];
+
+const GENDER_OPTIONS = [
+  { value: 'male', label: 'Nam' },
+  { value: 'female', label: 'Nữ' },
+  { value: 'other', label: 'Khác' },
+];
+
+const PERMISSION_OPTIONS: { value: StaffPermission; label: string }[] = [
+  { value: 'view', label: 'Xem' },
+  { value: 'create', label: 'Tạo' },
+  { value: 'edit', label: 'Sửa' },
+  { value: 'delete', label: 'Xóa' },
+  { value: 'manage_rooms', label: 'Quản lý phòng' },
+  { value: 'manage_bookings', label: 'Quản lý đặt phòng' },
+];
+
+const SHIFT_OPTIONS = [
+  { value: 'morning', label: 'Ca sáng' },
+  { value: 'afternoon', label: 'Ca chiều' },
+  { value: 'night', label: 'Ca tối' },
+  { value: 'full-day', label: 'Cả ngày' },
+];
+
+const SCHEDULE_STATUS_OPTIONS = [
+  { value: 'scheduled', label: 'Đã lên lịch' },
+  { value: 'completed', label: 'Hoàn thành' },
+  { value: 'absent', label: 'Vắng mặt' },
+  { value: 'late', label: 'Đi muộn' },
+];
+
+type StaffFormState = {
+  userId: string;
+  hotelId: string;
+  personalInfo: StaffPersonalInfo;
+  contactInfo: StaffContactInfo;
+  employmentInfo: StaffEmploymentInfo;
+  schedule: StaffSchedule[];
+  permissions: StaffPermission[];
+  notes: string;
+};
+
 export default function StaffsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { selectedHotelId } = useHotel();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'staffs' | 'salary'>('staffs');
   const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [staffModalVisible, setStaffModalVisible] = useState(false);
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
+  const [staffFormVisible, setStaffFormVisible] = useState(false);
+  const [staffFormMode, setStaffFormMode] = useState<'create' | 'edit'>('create');
+  const [userModalVisible, setUserModalVisible] = useState(false);
+  const [userSearch, setUserSearch] = useState('');
+  const [staffForm, setStaffForm] = useState<StaffFormState>({
+    userId: '',
+    hotelId: selectedHotelId || '',
+    personalInfo: {
+      firstName: '',
+      lastName: '',
+      dateOfBirth: '',
+      gender: 'male',
+      nationality: '',
+      idType: 'CMND',
+      idNumber: '',
+      idExpiryDate: '',
+      idScanUrl: '',
+    },
+    contactInfo: {
+      email: '',
+      phone: '',
+      emergencyContact: { name: '', relationship: '', phone: '' },
+      address: { street: '', city: '', state: '', country: 'Việt Nam', postalCode: '' },
+    },
+    employmentInfo: {
+      position: 'receptionist',
+      department: '',
+      startDate: '',
+      endDate: '',
+      status: 'active',
+      salary: 0,
+      allowance: 0,
+      insurance: 0,
+      penalty: 0,
+      bonus: 0,
+      advancePayment: 0,
+      bankAccount: { bankName: '', accountNumber: '', accountName: '' },
+      taxId: '',
+    },
+    schedule: [],
+    permissions: ['view'],
+    notes: '',
+  });
 
   const { data: staffs = [], isLoading: staffsLoading, refetch: refetchStaffs } = useQuery({
     queryKey: ['staffs', selectedHotelId],
@@ -73,6 +181,96 @@ export default function StaffsScreen() {
     queryFn: () => staffsApi.getSalaryRecords(),
   });
 
+  const getUserId = (userItem: ApiUser) => userItem._id || (userItem as { id?: string }).id || '';
+  const getUserLabel = (userItem: ApiUser) =>
+    userItem.fullName || userItem.name || userItem.email || getUserId(userItem);
+
+  const { data: availableUsers = [] } = useQuery({
+    queryKey: [
+      'users',
+      selectedHotelId,
+      staffs.map(staff => staff.userId).join(','),
+      staffForm.userId,
+      staffFormMode,
+    ],
+    queryFn: async () => {
+      if (!selectedHotelId) return [];
+
+      let currentProfile = user;
+      if (!currentProfile) {
+        try {
+          currentProfile = await authApi.getProfile();
+        } catch (error) {
+          currentProfile = null;
+        }
+      }
+
+      const assignedUserIds = staffs.map(staff => staff.userId).filter(Boolean);
+      const isAdmin = currentProfile?.role === 'superadmin' || currentProfile?.role === 'admin';
+
+      const fetchUsers = async (endpoint: string) => {
+        const response = await apiClient.get<ApiUser[] | { data: ApiUser[] }>(endpoint);
+        return Array.isArray(response) ? response : response?.data || [];
+      };
+
+      let usersList: ApiUser[] = [];
+      if (isAdmin) {
+        try {
+          usersList = await fetchUsers(API_ENDPOINTS.USERS.BASE);
+        } catch (error) {
+          usersList = [];
+        }
+      }
+
+      if (!isAdmin || usersList.length === 0) {
+        try {
+          usersList = await fetchUsers(API_ENDPOINTS.USERS.BY_HOTEL(selectedHotelId));
+        } catch (error) {
+          usersList = [];
+        }
+      }
+
+      let filteredUsers = usersList.filter(userItem => {
+        const userId = getUserId(userItem);
+        const isNotAssigned = !assignedUserIds.includes(userId) || userId === staffForm.userId;
+        const hotelId = extractId(userItem.hotelId);
+        const canBeAssigned = !hotelId || hotelId === selectedHotelId;
+        const isValidRole =
+          !userItem.role || ['staff', 'hotel', 'receptionist'].includes(userItem.role);
+        return isNotAssigned && (canBeAssigned || isValidRole);
+      });
+
+      if (staffForm.userId && !filteredUsers.some(userItem => getUserId(userItem) === staffForm.userId)) {
+        try {
+          const selectedUser = await apiClient.get<ApiUser>(API_ENDPOINTS.USERS.BY_ID(staffForm.userId));
+          if (selectedUser) {
+            filteredUsers = [selectedUser, ...filteredUsers];
+          }
+        } catch (error) {
+        }
+      }
+
+      return filteredUsers;
+    },
+    enabled: !!selectedHotelId && canManageStaff,
+  });
+
+  const filteredUsers = useMemo(() => {
+    const keyword = userSearch.trim().toLowerCase();
+    if (!keyword) return availableUsers;
+    return availableUsers.filter(userItem => {
+      const label = getUserLabel(userItem).toLowerCase();
+      const email = userItem.email?.toLowerCase() || '';
+      const role = userItem.role?.toLowerCase() || '';
+      return label.includes(keyword) || email.includes(keyword) || role.includes(keyword);
+    });
+  }, [availableUsers, userSearch]);
+
+  const selectedUser = useMemo(
+    () => availableUsers.find(userItem => getUserId(userItem) === staffForm.userId) || null,
+    [availableUsers, staffForm.userId]
+  );
+
   const paySalaryMutation = useMutation({
     mutationFn: ({ staffId, recordId }: { staffId: string; recordId: string }) =>
       staffsApi.paySalary(staffId, recordId),
@@ -82,12 +280,95 @@ export default function StaffsScreen() {
     },
   });
 
+  const createStaffMutation = useMutation({
+    mutationFn: (payload: Omit<Staff, 'id'>) => staffsApi.create(payload),
+    onSuccess: result => {
+      if (!result) {
+        Alert.alert('Thông báo', 'Không thể thêm nhân viên');
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['staffs'] });
+      setStaffFormVisible(false);
+      Alert.alert('Thông báo', 'Đã thêm nhân viên');
+    },
+    onError: () => {
+      Alert.alert('Thông báo', 'Không thể thêm nhân viên');
+    },
+  });
+
+  const updateStaffMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<Staff> }) =>
+      staffsApi.update(id, payload),
+    onSuccess: result => {
+      if (!result) {
+        Alert.alert('Thông báo', 'Không thể cập nhật nhân viên');
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['staffs'] });
+      setStaffFormVisible(false);
+      Alert.alert('Thông báo', 'Đã cập nhật nhân viên');
+    },
+    onError: () => {
+      Alert.alert('Thông báo', 'Không thể cập nhật nhân viên');
+    },
+  });
+
+  const deleteStaffMutation = useMutation({
+    mutationFn: (id: string) => staffsApi.delete(id),
+    onSuccess: result => {
+      if (!result) {
+        Alert.alert('Thông báo', 'Không thể xóa nhân viên');
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['staffs'] });
+      setStaffModalVisible(false);
+      Alert.alert('Thông báo', 'Đã xóa nhân viên');
+    },
+    onError: () => {
+      Alert.alert('Thông báo', 'Không thể xóa nhân viên');
+    },
+  });
+
   const isLoading = staffsLoading || salaryLoading;
 
+  const canManageStaff =
+    user?.role === 'superadmin' ||
+    user?.role === 'admin' ||
+    user?.role === 'business' ||
+    user?.role === 'hotel';
+
+  const getStaffName = (staff: Staff) => {
+    const firstName = staff.personalInfo?.firstName || '';
+    const lastName = staff.personalInfo?.lastName || '';
+    const fullName = `${firstName} ${lastName}`.trim();
+    return fullName || staff.name || '';
+  };
+
+  const getStaffPhone = (staff: Staff) => staff.contactInfo?.phone || staff.phone || '';
+  const getStaffEmail = (staff: Staff) => staff.contactInfo?.email || staff.email || '';
+  const getStaffPosition = (staff: Staff) =>
+    staff.employmentInfo?.position || staff.position || 'other';
+  const getStaffDepartment = (staff: Staff) =>
+    staff.employmentInfo?.department || staff.department || '';
+  const getStaffStatus = (staff: Staff) => {
+    const status = staff.employmentInfo?.status || staff.status || 'active';
+    return status === 'inactive' ? 'terminated' : status;
+  };
+
   const filteredStaffs = staffs.filter(staff => {
-    const matchesDepartment = selectedDepartment === 'all' || staff.department === selectedDepartment;
-    const matchesSearch = staff.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      staff.position.toLowerCase().includes(searchQuery.toLowerCase());
+    const department = getStaffDepartment(staff);
+    const matchesDepartment = selectedDepartment === 'all' || department === selectedDepartment;
+    const name = getStaffName(staff).toLowerCase();
+    const position = getStaffPosition(staff).toLowerCase();
+    const phone = getStaffPhone(staff).toLowerCase();
+    const email = getStaffEmail(staff).toLowerCase();
+    const query = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !query ||
+      name.includes(query) ||
+      position.includes(query) ||
+      phone.includes(query) ||
+      email.includes(query);
     return matchesDepartment && matchesSearch;
   });
 
@@ -117,23 +398,280 @@ export default function StaffsScreen() {
     );
   };
 
-  const activeStaffs = staffs.filter(s => s.status === 'active').length;
-  const onLeaveStaffs = staffs.filter(s => s.status === 'on_leave').length;
-  const totalSalary = staffs.reduce((sum, s) => sum + s.salary, 0);
+  const activeStaffs = staffs.filter(s => getStaffStatus(s) === 'active').length;
+  const onLeaveStaffs = staffs.filter(s => getStaffStatus(s) === 'on_leave').length;
+  const totalSalary = staffs.reduce((sum, s) => sum + (s.employmentInfo?.salary || s.salary || 0), 0);
 
   const pendingSalaryRecords = salaryRecords.filter(r => r.status === 'pending');
+
+  const resetStaffForm = (hotelId?: string) => {
+    setStaffForm({
+      userId: '',
+      hotelId: hotelId || selectedHotelId || '',
+      personalInfo: {
+        firstName: '',
+        lastName: '',
+        dateOfBirth: '',
+        gender: 'male',
+        nationality: '',
+        idType: 'CMND',
+        idNumber: '',
+        idExpiryDate: '',
+        idScanUrl: '',
+      },
+      contactInfo: {
+        email: '',
+        phone: '',
+        emergencyContact: { name: '', relationship: '', phone: '' },
+        address: { street: '', city: '', state: '', country: 'Việt Nam', postalCode: '' },
+      },
+      employmentInfo: {
+        position: 'receptionist',
+        department: '',
+        startDate: '',
+        endDate: '',
+        status: 'active',
+        salary: 0,
+        allowance: 0,
+        insurance: 0,
+        penalty: 0,
+        bonus: 0,
+        advancePayment: 0,
+        bankAccount: { bankName: '', accountNumber: '', accountName: '' },
+        taxId: '',
+      },
+      schedule: [],
+      permissions: ['view'],
+      notes: '',
+    });
+  };
+
+  const setFormFromStaff = (staff: Staff) => {
+    setStaffForm({
+      userId: staff.userId || '',
+      hotelId: staff.hotelId || selectedHotelId || '',
+      personalInfo: {
+        firstName: staff.personalInfo?.firstName || '',
+        lastName: staff.personalInfo?.lastName || '',
+        dateOfBirth: staff.personalInfo?.dateOfBirth || '',
+        gender: staff.personalInfo?.gender || 'male',
+        nationality: staff.personalInfo?.nationality || '',
+        idType: staff.personalInfo?.idType || 'CMND',
+        idNumber: staff.personalInfo?.idNumber || '',
+        idExpiryDate: staff.personalInfo?.idExpiryDate || '',
+        idScanUrl: staff.personalInfo?.idScanUrl || '',
+      },
+      contactInfo: {
+        email: staff.contactInfo?.email || '',
+        phone: staff.contactInfo?.phone || '',
+        emergencyContact: {
+          name: staff.contactInfo?.emergencyContact?.name || '',
+          relationship: staff.contactInfo?.emergencyContact?.relationship || '',
+          phone: staff.contactInfo?.emergencyContact?.phone || '',
+        },
+        address: {
+          street: staff.contactInfo?.address?.street || '',
+          city: staff.contactInfo?.address?.city || '',
+          state: staff.contactInfo?.address?.state || '',
+          country: staff.contactInfo?.address?.country || 'Việt Nam',
+          postalCode: staff.contactInfo?.address?.postalCode || '',
+        },
+      },
+      employmentInfo: {
+        position: staff.employmentInfo?.position || 'receptionist',
+        department: staff.employmentInfo?.department || '',
+        startDate: staff.employmentInfo?.startDate || '',
+        endDate: staff.employmentInfo?.endDate || '',
+        status: staff.employmentInfo?.status || 'active',
+        salary: staff.employmentInfo?.salary || 0,
+        allowance: staff.employmentInfo?.allowance || 0,
+        insurance: staff.employmentInfo?.insurance || 0,
+        penalty: staff.employmentInfo?.penalty || 0,
+        bonus: staff.employmentInfo?.bonus || 0,
+        advancePayment: staff.employmentInfo?.advancePayment || 0,
+        bankAccount: {
+          bankName: staff.employmentInfo?.bankAccount?.bankName || '',
+          accountNumber: staff.employmentInfo?.bankAccount?.accountNumber || '',
+          accountName: staff.employmentInfo?.bankAccount?.accountName || '',
+        },
+        taxId: staff.employmentInfo?.taxId || '',
+      },
+      schedule: staff.schedule || [],
+      permissions: staff.permissions || ['view'],
+      notes: staff.notes || '',
+    });
+  };
+
+  const openCreateModal = () => {
+    if (!canManageStaff) {
+      Alert.alert('Thông báo', 'Bạn không có quyền thực hiện thao tác này');
+      return;
+    }
+    if (!selectedHotelId) {
+      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn trước');
+      return;
+    }
+    resetStaffForm(selectedHotelId);
+    setStaffFormMode('create');
+    setStaffFormVisible(true);
+  };
+
+  const openEditModal = (staff: Staff) => {
+    if (!canManageStaff) return;
+    setFormFromStaff(staff);
+    setStaffFormMode('edit');
+    setStaffFormVisible(true);
+  };
+
+  const parseNumber = (value: string | number | undefined) => {
+    if (value === undefined || value === null || value === '') return 0;
+    const num = Number(value);
+    return Number.isNaN(num) ? 0 : num;
+  };
+
+  const handleSaveStaff = () => {
+    if (!staffForm.userId.trim()) {
+      Alert.alert(
+        'Thông báo',
+        staffFormMode === 'create' && availableUsers.length === 0
+          ? 'Không có tài khoản khả dụng để gán'
+          : 'Vui lòng chọn tài khoản'
+      );
+      return;
+    }
+    if (
+      staffFormMode === 'create' &&
+      !availableUsers.some(userItem => getUserId(userItem) === staffForm.userId)
+    ) {
+      Alert.alert('Thông báo', 'Tài khoản đã được gán hoặc không hợp lệ');
+      return;
+    }
+    if (!staffForm.hotelId) {
+      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn');
+      return;
+    }
+    if (!staffForm.personalInfo.firstName.trim() || !staffForm.personalInfo.lastName.trim()) {
+      Alert.alert('Thông báo', 'Vui lòng nhập họ và tên');
+      return;
+    }
+    if (!staffForm.contactInfo.phone?.trim()) {
+      Alert.alert('Thông báo', 'Vui lòng nhập số điện thoại');
+      return;
+    }
+
+    const payload: Omit<Staff, 'id'> = {
+      userId: staffForm.userId.trim(),
+      hotelId: staffForm.hotelId,
+      personalInfo: {
+        ...staffForm.personalInfo,
+        firstName: staffForm.personalInfo.firstName.trim(),
+        lastName: staffForm.personalInfo.lastName.trim(),
+        nationality: staffForm.personalInfo.nationality?.trim() || '',
+        idType: staffForm.personalInfo.idType?.trim() || '',
+        idNumber: staffForm.personalInfo.idNumber?.trim() || '',
+        idExpiryDate: staffForm.personalInfo.idExpiryDate || '',
+        idScanUrl: staffForm.personalInfo.idScanUrl || '',
+      },
+      contactInfo: {
+        email: staffForm.contactInfo.email?.trim() || '',
+        phone: staffForm.contactInfo.phone?.trim() || '',
+        emergencyContact: {
+          name: staffForm.contactInfo.emergencyContact?.name?.trim() || '',
+          relationship: staffForm.contactInfo.emergencyContact?.relationship?.trim() || '',
+          phone: staffForm.contactInfo.emergencyContact?.phone?.trim() || '',
+        },
+        address: {
+          street: staffForm.contactInfo.address?.street?.trim() || '',
+          city: staffForm.contactInfo.address?.city?.trim() || '',
+          state: staffForm.contactInfo.address?.state?.trim() || '',
+          country: staffForm.contactInfo.address?.country?.trim() || '',
+          postalCode: staffForm.contactInfo.address?.postalCode?.trim() || '',
+        },
+      },
+      employmentInfo: {
+        ...staffForm.employmentInfo,
+        department: staffForm.employmentInfo.department?.trim() || '',
+        startDate: staffForm.employmentInfo.startDate || '',
+        endDate: staffForm.employmentInfo.endDate || '',
+        salary: parseNumber(staffForm.employmentInfo.salary),
+        allowance: parseNumber(staffForm.employmentInfo.allowance),
+        insurance: parseNumber(staffForm.employmentInfo.insurance),
+        penalty: parseNumber(staffForm.employmentInfo.penalty),
+        bonus: parseNumber(staffForm.employmentInfo.bonus),
+        advancePayment: parseNumber(staffForm.employmentInfo.advancePayment),
+        bankAccount: {
+          bankName: staffForm.employmentInfo.bankAccount?.bankName?.trim() || '',
+          accountNumber: staffForm.employmentInfo.bankAccount?.accountNumber?.trim() || '',
+          accountName: staffForm.employmentInfo.bankAccount?.accountName?.trim() || '',
+        },
+        taxId: staffForm.employmentInfo.taxId?.trim() || '',
+      },
+      schedule: staffForm.schedule.filter(item => item.date),
+      permissions: staffForm.permissions,
+      notes: staffForm.notes.trim(),
+    };
+
+    if (staffFormMode === 'edit' && selectedStaff) {
+      updateStaffMutation.mutate({ id: selectedStaff.id, payload });
+      return;
+    }
+    createStaffMutation.mutate(payload);
+  };
+
+  const handleDeleteStaff = () => {
+    if (!selectedStaff) return;
+    if (!canManageStaff) {
+      Alert.alert('Thông báo', 'Bạn không có quyền thực hiện thao tác này');
+      return;
+    }
+    const staffName = getStaffName(selectedStaff);
+    Alert.alert(
+      'Xác nhận',
+      staffName ? `Bạn có chắc muốn xóa nhân viên ${staffName}?` : 'Bạn có chắc muốn xóa nhân viên này?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        { text: 'Xóa', style: 'destructive', onPress: () => deleteStaffMutation.mutate(selectedStaff.id) },
+      ]
+    );
+  };
+
+  const addScheduleItem = () => {
+    setStaffForm(prev => ({
+      ...prev,
+      schedule: [
+        ...prev.schedule,
+        { date: '', shift: 'morning', startTime: '08:00', endTime: '16:00', status: 'scheduled' },
+      ],
+    }));
+  };
+
+  const updateScheduleItem = (index: number, nextItem: StaffSchedule) => {
+    setStaffForm(prev => ({
+      ...prev,
+      schedule: prev.schedule.map((item, idx) => (idx === index ? nextItem : item)),
+    }));
+  };
+
+  const removeScheduleItem = (index: number) => {
+    setStaffForm(prev => ({
+      ...prev,
+      schedule: prev.schedule.filter((_, idx) => idx !== index),
+    }));
+  };
 
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#0369a1', '#0ea5e9']}
+        colors={['#0f766e', '#14b8a6']}
         style={[styles.header, { paddingTop: insets.top + 12 }]}
       >
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Nhân viên</Text>
-          <TouchableOpacity style={styles.addButton}>
-            <Plus size={20} color="#fff" />
-          </TouchableOpacity>
+          {canManageStaff && (
+            <TouchableOpacity style={styles.addButton} onPress={openCreateModal}>
+              <Plus size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.statsRow}>
@@ -244,25 +782,27 @@ export default function StaffsScreen() {
                     ) : (
                       <View style={styles.avatarPlaceholder}>
                         <Text style={styles.avatarText}>
-                          {staff.name.split(' ').pop()?.charAt(0) || 'N'}
+                          {getStaffName(staff).split(' ').pop()?.charAt(0) || 'N'}
                         </Text>
                       </View>
                     )}
                     <View
                       style={[
                         styles.statusIndicator,
-                        { backgroundColor: STATUS_COLORS[staff.status] },
+                        { backgroundColor: STATUS_COLORS[getStaffStatus(staff)] },
                       ]}
                     />
                   </View>
 
                   <View style={styles.staffInfo}>
-                    <Text style={styles.staffName}>{staff.name}</Text>
-                    <Text style={styles.staffPosition}>{staff.position}</Text>
+                    <Text style={styles.staffName}>{getStaffName(staff)}</Text>
+                    <Text style={styles.staffPosition}>
+                      {POSITION_OPTIONS.find(option => option.value === getStaffPosition(staff))?.label || 'Khác'}
+                    </Text>
                     <View style={styles.staffMeta}>
                       <View style={styles.metaItem}>
                         <Phone size={12} color={Colors.light.textSecondary} />
-                        <Text style={styles.metaText}>{staff.phone}</Text>
+                        <Text style={styles.metaText}>{getStaffPhone(staff)}</Text>
                       </View>
                     </View>
                   </View>
@@ -369,23 +909,23 @@ export default function StaffsScreen() {
                     ) : (
                       <View style={styles.detailAvatarPlaceholder}>
                         <Text style={styles.detailAvatarText}>
-                          {selectedStaff.name.split(' ').pop()?.charAt(0) || 'N'}
+                          {getStaffName(selectedStaff).split(' ').pop()?.charAt(0) || 'N'}
                         </Text>
                       </View>
                     )}
                   </View>
-                  <Text style={styles.staffDetailName}>{selectedStaff.name}</Text>
+                  <Text style={styles.staffDetailName}>{getStaffName(selectedStaff)}</Text>
                   <View
                     style={[
                       styles.statusBadge,
-                      { backgroundColor: `${STATUS_COLORS[selectedStaff.status]}20` },
+                      { backgroundColor: `${STATUS_COLORS[getStaffStatus(selectedStaff)]}20` },
                     ]}
                   >
                     <View
-                      style={[styles.statusDot, { backgroundColor: STATUS_COLORS[selectedStaff.status] }]}
+                      style={[styles.statusDot, { backgroundColor: STATUS_COLORS[getStaffStatus(selectedStaff)] }]}
                     />
-                    <Text style={[styles.statusText, { color: STATUS_COLORS[selectedStaff.status] }]}>
-                      {STATUS_LABELS[selectedStaff.status]}
+                    <Text style={[styles.statusText, { color: STATUS_COLORS[getStaffStatus(selectedStaff)] }]}>
+                      {STATUS_LABELS[getStaffStatus(selectedStaff)]}
                     </Text>
                   </View>
                 </View>
@@ -395,40 +935,888 @@ export default function StaffsScreen() {
                     <Briefcase size={18} color={Colors.light.textSecondary} />
                     <View style={styles.detailItemContent}>
                       <Text style={styles.detailItemLabel}>Chức vụ</Text>
-                      <Text style={styles.detailItemValue}>{selectedStaff.position}</Text>
+                      <Text style={styles.detailItemValue}>
+                        {POSITION_OPTIONS.find(option => option.value === getStaffPosition(selectedStaff))?.label || 'Khác'}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.detailItem}>
                     <Phone size={18} color={Colors.light.textSecondary} />
                     <View style={styles.detailItemContent}>
                       <Text style={styles.detailItemLabel}>Điện thoại</Text>
-                      <Text style={styles.detailItemValue}>{selectedStaff.phone}</Text>
+                      <Text style={styles.detailItemValue}>{getStaffPhone(selectedStaff)}</Text>
                     </View>
                   </View>
                   <View style={styles.detailItem}>
                     <Mail size={18} color={Colors.light.textSecondary} />
                     <View style={styles.detailItemContent}>
                       <Text style={styles.detailItemLabel}>Email</Text>
-                      <Text style={styles.detailItemValue}>{selectedStaff.email}</Text>
+                      <Text style={styles.detailItemValue}>{getStaffEmail(selectedStaff) || '—'}</Text>
                     </View>
                   </View>
                   <View style={styles.detailItem}>
                     <Calendar size={18} color={Colors.light.textSecondary} />
                     <View style={styles.detailItemContent}>
                       <Text style={styles.detailItemLabel}>Ngày bắt đầu</Text>
-                      <Text style={styles.detailItemValue}>{selectedStaff.startDate}</Text>
+                      <Text style={styles.detailItemValue}>
+                        {selectedStaff.employmentInfo?.startDate || selectedStaff.startDate || '—'}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.detailItem}>
                     <DollarSign size={18} color={Colors.light.textSecondary} />
                     <View style={styles.detailItemContent}>
                       <Text style={styles.detailItemLabel}>Lương</Text>
-                      <Text style={styles.detailItemValue}>{formatCurrency(selectedStaff.salary)}</Text>
+                      <Text style={styles.detailItemValue}>
+                        {formatCurrency(selectedStaff.employmentInfo?.salary || selectedStaff.salary || 0)}
+                      </Text>
                     </View>
                   </View>
                 </View>
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Thông tin cá nhân</Text>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Họ</Text>
+                    <Text style={styles.detailValue}>{selectedStaff.personalInfo?.firstName || '—'}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Tên</Text>
+                    <Text style={styles.detailValue}>{selectedStaff.personalInfo?.lastName || '—'}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Giới tính</Text>
+                    <Text style={styles.detailValue}>
+                      {GENDER_OPTIONS.find(option => option.value === selectedStaff.personalInfo?.gender)?.label || '—'}
+                    </Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Quốc tịch</Text>
+                    <Text style={styles.detailValue}>{selectedStaff.personalInfo?.nationality || '—'}</Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Số giấy tờ</Text>
+                    <Text style={styles.detailValue}>{selectedStaff.personalInfo?.idNumber || '—'}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Thông tin liên hệ</Text>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Địa chỉ</Text>
+                    <Text style={styles.detailValue}>
+                      {[
+                        selectedStaff.contactInfo?.address?.street,
+                        selectedStaff.contactInfo?.address?.city,
+                        selectedStaff.contactInfo?.address?.state,
+                        selectedStaff.contactInfo?.address?.country,
+                      ]
+                        .filter(Boolean)
+                        .join(', ') || '—'}
+                    </Text>
+                  </View>
+                  <View style={styles.detailRow}>
+                    <Text style={styles.detailLabel}>Liên hệ khẩn</Text>
+                    <Text style={styles.detailValue}>
+                      {selectedStaff.contactInfo?.emergencyContact?.name || '—'}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Quyền hạn</Text>
+                  <View style={styles.permissionContainer}>
+                    {(selectedStaff.permissions || ['view']).map(permission => (
+                      <View key={permission} style={styles.permissionChip}>
+                        <Text style={styles.permissionChipText}>
+                          {PERMISSION_OPTIONS.find(option => option.value === permission)?.label || permission}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                {selectedStaff.schedule && selectedStaff.schedule.length > 0 && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailSectionTitle}>Lịch làm việc</Text>
+                    {selectedStaff.schedule.map((item, index) => (
+                      <View key={`${item.date}-${index}`} style={styles.scheduleRow}>
+                        <Text style={styles.scheduleDate}>{item.date}</Text>
+                        <Text style={styles.scheduleShift}>
+                          {SHIFT_OPTIONS.find(option => option.value === item.shift)?.label || item.shift}
+                        </Text>
+                        <Text style={styles.scheduleTime}>
+                          {item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : '—'}
+                        </Text>
+                        <Text style={styles.scheduleStatus}>
+                          {SCHEDULE_STATUS_OPTIONS.find(option => option.value === item.status)?.label || item.status}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {!!selectedStaff.notes && (
+                  <View style={styles.detailSection}>
+                    <Text style={styles.detailSectionTitle}>Ghi chú</Text>
+                    <Text style={styles.detailNote}>{selectedStaff.notes}</Text>
+                  </View>
+                )}
+
+                {canManageStaff && (
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => {
+                        setStaffModalVisible(false);
+                        openEditModal(selectedStaff);
+                      }}
+                    >
+                      <Text style={styles.actionButtonText}>Chỉnh sửa</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.actionButton, styles.actionButtonDanger]} onPress={handleDeleteStaff}>
+                      <Text style={[styles.actionButtonText, styles.actionButtonDangerText]}>Xóa</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             )}
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={staffFormVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setStaffFormVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.formModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {staffFormMode === 'create' ? 'Thêm nhân viên' : 'Cập nhật nhân viên'}
+              </Text>
+              <TouchableOpacity onPress={() => setStaffFormVisible(false)}>
+                <X size={24} color={Colors.light.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.formSectionTitle}>Tài khoản</Text>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Tài khoản</Text>
+                <TouchableOpacity
+                  style={[
+                    styles.selectBox,
+                    staffFormMode === 'edit' && styles.selectBoxDisabled,
+                  ]}
+                  onPress={() => {
+                    if (staffFormMode === 'edit') return;
+                    setUserModalVisible(true);
+                  }}
+                  disabled={staffFormMode === 'edit'}
+                >
+                  <Text style={[styles.selectText, staffFormMode === 'edit' && styles.selectTextDisabled]}>
+                    {selectedUser
+                      ? `${getUserLabel(selectedUser)} (${selectedUser.role || 'user'})`
+                      : staffForm.userId || 'Chọn tài khoản'}
+                  </Text>
+                  <ChevronRight size={18} color={Colors.light.textSecondary} />
+                </TouchableOpacity>
+                <Text style={styles.helperText}>
+                  {staffFormMode === 'edit'
+                    ? 'Không thể đổi tài khoản khi chỉnh sửa'
+                    : availableUsers.length > 0
+                      ? `Có ${availableUsers.length} tài khoản khả dụng`
+                      : 'Không có tài khoản khả dụng'}
+                </Text>
+              </View>
+
+              <Text style={styles.formSectionTitle}>Thông tin cá nhân</Text>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Họ</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.personalInfo.firstName}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      personalInfo: { ...prev.personalInfo, firstName: text },
+                    }))
+                  }
+                  placeholder="Nguyễn"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Tên</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.personalInfo.lastName}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      personalInfo: { ...prev.personalInfo, lastName: text },
+                    }))
+                  }
+                  placeholder="Văn A"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Ngày sinh</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.personalInfo.dateOfBirth || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      personalInfo: { ...prev.personalInfo, dateOfBirth: text },
+                    }))
+                  }
+                  placeholder="YYYY-MM-DD"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Giới tính</Text>
+                <View style={styles.chipRow}>
+                  {GENDER_OPTIONS.map(option => (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.chip,
+                        staffForm.personalInfo.gender === option.value && styles.chipActive,
+                      ]}
+                      onPress={() =>
+                        setStaffForm(prev => ({
+                          ...prev,
+                          personalInfo: { ...prev.personalInfo, gender: option.value as StaffPersonalInfo['gender'] },
+                        }))
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          staffForm.personalInfo.gender === option.value && styles.chipTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Quốc tịch</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.personalInfo.nationality || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      personalInfo: { ...prev.personalInfo, nationality: text },
+                    }))
+                  }
+                  placeholder="Việt Nam"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Loại giấy tờ</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.personalInfo.idType || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      personalInfo: { ...prev.personalInfo, idType: text },
+                    }))
+                  }
+                  placeholder="CMND/CCCD"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Số giấy tờ</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.personalInfo.idNumber || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      personalInfo: { ...prev.personalInfo, idNumber: text },
+                    }))
+                  }
+                  placeholder="0123456789"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Hết hạn</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.personalInfo.idExpiryDate || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      personalInfo: { ...prev.personalInfo, idExpiryDate: text },
+                    }))
+                  }
+                  placeholder="YYYY-MM-DD"
+                />
+              </View>
+
+              <Text style={styles.formSectionTitle}>Thông tin liên hệ</Text>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Điện thoại</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.contactInfo.phone || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      contactInfo: { ...prev.contactInfo, phone: text },
+                    }))
+                  }
+                  placeholder="098..."
+                  keyboardType="phone-pad"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Email</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.contactInfo.email || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      contactInfo: { ...prev.contactInfo, email: text },
+                    }))
+                  }
+                  placeholder="email@example.com"
+                  keyboardType="email-address"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Địa chỉ</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.contactInfo.address?.street || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      contactInfo: {
+                        ...prev.contactInfo,
+                        address: { ...prev.contactInfo.address, street: text },
+                      },
+                    }))
+                  }
+                  placeholder="Số nhà, đường"
+                />
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.contactInfo.address?.city || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      contactInfo: {
+                        ...prev.contactInfo,
+                        address: { ...prev.contactInfo.address, city: text },
+                      },
+                    }))
+                  }
+                  placeholder="Thành phố"
+                />
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.contactInfo.address?.state || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      contactInfo: {
+                        ...prev.contactInfo,
+                        address: { ...prev.contactInfo.address, state: text },
+                      },
+                    }))
+                  }
+                  placeholder="Tỉnh/Thành"
+                />
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.contactInfo.address?.country || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      contactInfo: {
+                        ...prev.contactInfo,
+                        address: { ...prev.contactInfo.address, country: text },
+                      },
+                    }))
+                  }
+                  placeholder="Quốc gia"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Liên hệ khẩn</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.contactInfo.emergencyContact?.name || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      contactInfo: {
+                        ...prev.contactInfo,
+                        emergencyContact: { ...prev.contactInfo.emergencyContact, name: text },
+                      },
+                    }))
+                  }
+                  placeholder="Tên người liên hệ"
+                />
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.contactInfo.emergencyContact?.relationship || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      contactInfo: {
+                        ...prev.contactInfo,
+                        emergencyContact: { ...prev.contactInfo.emergencyContact, relationship: text },
+                      },
+                    }))
+                  }
+                  placeholder="Quan hệ"
+                />
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.contactInfo.emergencyContact?.phone || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      contactInfo: {
+                        ...prev.contactInfo,
+                        emergencyContact: { ...prev.contactInfo.emergencyContact, phone: text },
+                      },
+                    }))
+                  }
+                  placeholder="Số điện thoại"
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <Text style={styles.formSectionTitle}>Thông tin công việc</Text>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Chức vụ</Text>
+                <View style={styles.chipRow}>
+                  {POSITION_OPTIONS.map(option => (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.chip,
+                        staffForm.employmentInfo.position === option.value && styles.chipActive,
+                      ]}
+                      onPress={() =>
+                        setStaffForm(prev => ({
+                          ...prev,
+                          employmentInfo: { ...prev.employmentInfo, position: option.value as StaffEmploymentInfo['position'] },
+                        }))
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          staffForm.employmentInfo.position === option.value && styles.chipTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Bộ phận</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.employmentInfo.department || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: { ...prev.employmentInfo, department: text },
+                    }))
+                  }
+                  placeholder="Lễ tân, buồng phòng..."
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Trạng thái</Text>
+                <View style={styles.chipRow}>
+                  {STATUS_OPTIONS.map(option => (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[
+                        styles.chip,
+                        staffForm.employmentInfo.status === option.value && styles.chipActive,
+                      ]}
+                      onPress={() =>
+                        setStaffForm(prev => ({
+                          ...prev,
+                          employmentInfo: { ...prev.employmentInfo, status: option.value as StaffEmploymentInfo['status'] },
+                        }))
+                      }
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          staffForm.employmentInfo.status === option.value && styles.chipTextActive,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Ngày bắt đầu</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.employmentInfo.startDate || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: { ...prev.employmentInfo, startDate: text },
+                    }))
+                  }
+                  placeholder="YYYY-MM-DD"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Lương cơ bản</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={String(staffForm.employmentInfo.salary || 0)}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: { ...prev.employmentInfo, salary: parseNumber(text) },
+                    }))
+                  }
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Phụ cấp</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={String(staffForm.employmentInfo.allowance || 0)}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: { ...prev.employmentInfo, allowance: parseNumber(text) },
+                    }))
+                  }
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Bảo hiểm</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={String(staffForm.employmentInfo.insurance || 0)}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: { ...prev.employmentInfo, insurance: parseNumber(text) },
+                    }))
+                  }
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Phạt</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={String(staffForm.employmentInfo.penalty || 0)}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: { ...prev.employmentInfo, penalty: parseNumber(text) },
+                    }))
+                  }
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Thưởng</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={String(staffForm.employmentInfo.bonus || 0)}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: { ...prev.employmentInfo, bonus: parseNumber(text) },
+                    }))
+                  }
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Tạm ứng</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={String(staffForm.employmentInfo.advancePayment || 0)}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: { ...prev.employmentInfo, advancePayment: parseNumber(text) },
+                    }))
+                  }
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Tài khoản ngân hàng</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.employmentInfo.bankAccount?.bankName || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: {
+                        ...prev.employmentInfo,
+                        bankAccount: { ...prev.employmentInfo.bankAccount, bankName: text },
+                      },
+                    }))
+                  }
+                  placeholder="Ngân hàng"
+                />
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.employmentInfo.bankAccount?.accountNumber || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: {
+                        ...prev.employmentInfo,
+                        bankAccount: { ...prev.employmentInfo.bankAccount, accountNumber: text },
+                      },
+                    }))
+                  }
+                  placeholder="Số tài khoản"
+                />
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.employmentInfo.bankAccount?.accountName || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: {
+                        ...prev.employmentInfo,
+                        bankAccount: { ...prev.employmentInfo.bankAccount, accountName: text },
+                      },
+                    }))
+                  }
+                  placeholder="Tên chủ tài khoản"
+                />
+              </View>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Mã số thuế</Text>
+                <TextInput
+                  style={styles.formInput}
+                  value={staffForm.employmentInfo.taxId || ''}
+                  onChangeText={text =>
+                    setStaffForm(prev => ({
+                      ...prev,
+                      employmentInfo: { ...prev.employmentInfo, taxId: text },
+                    }))
+                  }
+                  placeholder="Mã số thuế"
+                />
+              </View>
+
+              <Text style={styles.formSectionTitle}>Quyền hạn</Text>
+              <View style={styles.chipRow}>
+                {PERMISSION_OPTIONS.map(option => {
+                  const isActive = staffForm.permissions.includes(option.value);
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[styles.chip, isActive && styles.chipActive]}
+                      onPress={() => {
+                        setStaffForm(prev => ({
+                          ...prev,
+                          permissions: isActive
+                            ? prev.permissions.filter(item => item !== option.value)
+                            : [...prev.permissions, option.value],
+                        }));
+                      }}
+                    >
+                      <Text style={[styles.chipText, isActive && styles.chipTextActive]}>
+                        {option.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.formSectionTitle}>Lịch làm việc</Text>
+              {staffForm.schedule.map((item, index) => (
+                <View key={`${item.date}-${index}`} style={styles.scheduleFormCard}>
+                  <View style={styles.formField}>
+                    <Text style={styles.formLabel}>Ngày</Text>
+                    <TextInput
+                      style={styles.formInput}
+                      value={item.date}
+                      onChangeText={text => updateScheduleItem(index, { ...item, date: text })}
+                      placeholder="YYYY-MM-DD"
+                    />
+                  </View>
+                  <View style={styles.formField}>
+                    <Text style={styles.formLabel}>Ca</Text>
+                    <View style={styles.chipRow}>
+                      {SHIFT_OPTIONS.map(option => (
+                        <TouchableOpacity
+                          key={option.value}
+                          style={[
+                            styles.chipSmall,
+                            item.shift === option.value && styles.chipActive,
+                          ]}
+                          onPress={() => updateScheduleItem(index, { ...item, shift: option.value as StaffSchedule['shift'] })}
+                        >
+                          <Text
+                            style={[
+                              styles.chipText,
+                              item.shift === option.value && styles.chipTextActive,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                  <View style={styles.formField}>
+                    <Text style={styles.formLabel}>Giờ bắt đầu</Text>
+                    <TextInput
+                      style={styles.formInput}
+                      value={item.startTime || ''}
+                      onChangeText={text => updateScheduleItem(index, { ...item, startTime: text })}
+                      placeholder="08:00"
+                    />
+                  </View>
+                  <View style={styles.formField}>
+                    <Text style={styles.formLabel}>Giờ kết thúc</Text>
+                    <TextInput
+                      style={styles.formInput}
+                      value={item.endTime || ''}
+                      onChangeText={text => updateScheduleItem(index, { ...item, endTime: text })}
+                      placeholder="16:00"
+                    />
+                  </View>
+                  <View style={styles.formField}>
+                    <Text style={styles.formLabel}>Trạng thái</Text>
+                    <View style={styles.chipRow}>
+                      {SCHEDULE_STATUS_OPTIONS.map(option => (
+                        <TouchableOpacity
+                          key={option.value}
+                          style={[
+                            styles.chipSmall,
+                            item.status === option.value && styles.chipActive,
+                          ]}
+                          onPress={() =>
+                            updateScheduleItem(index, {
+                              ...item,
+                              status: option.value as StaffSchedule['status'],
+                            })
+                          }
+                        >
+                          <Text
+                            style={[
+                              styles.chipText,
+                              item.status === option.value && styles.chipTextActive,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                  <TouchableOpacity style={styles.removeButton} onPress={() => removeScheduleItem(index)}>
+                    <Text style={styles.removeButtonText}>Xóa ca làm</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity style={styles.addScheduleButton} onPress={addScheduleItem}>
+                <Plus size={16} color="#0ea5e9" />
+                <Text style={styles.addScheduleText}>Thêm ca làm</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.formSectionTitle}>Ghi chú</Text>
+              <TextInput
+                style={[styles.formInput, styles.textArea]}
+                value={staffForm.notes}
+                onChangeText={text => setStaffForm(prev => ({ ...prev, notes: text }))}
+                placeholder="Ghi chú thêm"
+                multiline
+              />
+
+              <TouchableOpacity style={styles.submitButton} onPress={handleSaveStaff}>
+                <Text style={styles.submitButtonText}>
+                  {staffFormMode === 'create' ? 'Thêm nhân viên' : 'Lưu thay đổi'}
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={userModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setUserModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.userModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chọn tài khoản</Text>
+              <TouchableOpacity onPress={() => setUserModalVisible(false)}>
+                <X size={24} color={Colors.light.text} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.searchBox}>
+              <Search size={18} color={Colors.light.textSecondary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Tìm theo tên, email hoặc vai trò"
+                value={userSearch}
+                onChangeText={setUserSearch}
+              />
+            </View>
+            <ScrollView style={styles.userList} showsVerticalScrollIndicator={false}>
+              {filteredUsers.map(userItem => (
+                <TouchableOpacity
+                  key={getUserId(userItem)}
+                  style={styles.userItem}
+                  onPress={() => {
+                    setStaffForm(prev => ({ ...prev, userId: getUserId(userItem) }));
+                    setUserModalVisible(false);
+                    setUserSearch('');
+                  }}
+                >
+                  <View style={styles.userItemContent}>
+                    <Text style={styles.userName}>{getUserLabel(userItem)}</Text>
+                    <Text style={styles.userMeta}>
+                      {userItem.email || ''} {userItem.role ? `• ${userItem.role}` : ''}
+                    </Text>
+                  </View>
+                  {staffForm.userId === getUserId(userItem) && (
+                    <View style={styles.userSelectedBadge}>
+                      <Text style={styles.userSelectedText}>Đã chọn</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+              {filteredUsers.length === 0 && (
+                <View style={styles.userEmpty}>
+                  <Text style={styles.emptyText}>Không có tài khoản phù hợp</Text>
+                </View>
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -884,5 +2272,303 @@ const styles = StyleSheet.create({
     fontWeight: '500' as const,
     color: Colors.light.text,
     marginTop: 2,
+  },
+  detailSection: {
+    marginTop: 20,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 12,
+  },
+  detailSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+    marginBottom: 10,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+    gap: 12,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    flex: 1,
+  },
+  detailValue: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+    color: Colors.light.text,
+    flex: 1,
+    textAlign: 'right',
+  },
+  permissionContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  permissionChip: {
+    backgroundColor: '#e0f2fe',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  permissionChipText: {
+    fontSize: 12,
+    color: '#0284c7',
+    fontWeight: '500' as const,
+  },
+  scheduleRow: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+    gap: 4,
+  },
+  scheduleDate: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+  },
+  scheduleShift: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  scheduleTime: {
+    fontSize: 12,
+    color: Colors.light.text,
+  },
+  scheduleStatus: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  detailNote: {
+    fontSize: 13,
+    color: Colors.light.text,
+    lineHeight: 18,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  actionButton: {
+    flex: 1,
+    backgroundColor: '#0ea5e9',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontWeight: '600' as const,
+    fontSize: 14,
+  },
+  actionButtonDanger: {
+    backgroundColor: '#fee2e2',
+  },
+  actionButtonDangerText: {
+    color: '#ef4444',
+  },
+  formModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 30,
+    maxHeight: '90%',
+  },
+  formSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+    marginTop: 12,
+    marginBottom: 10,
+  },
+  formField: {
+    marginBottom: 12,
+  },
+  formLabel: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginBottom: 6,
+  },
+  formInput: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.light.text,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 8,
+  },
+  inputDisabled: {
+    backgroundColor: '#f3f4f6',
+    color: Colors.light.textSecondary,
+  },
+  selectBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  selectBoxDisabled: {
+    backgroundColor: '#f3f4f6',
+  },
+  selectText: {
+    fontSize: 14,
+    color: Colors.light.text,
+    flex: 1,
+    marginRight: 8,
+  },
+  selectTextDisabled: {
+    color: Colors.light.textSecondary,
+  },
+  helperText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 6,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  chipSmall: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  chipActive: {
+    backgroundColor: '#0ea5e9',
+    borderColor: '#0ea5e9',
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+    color: Colors.light.textSecondary,
+  },
+  chipTextActive: {
+    color: '#fff',
+  },
+  scheduleFormCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 12,
+  },
+  removeButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#fee2e2',
+  },
+  removeButtonText: {
+    color: '#ef4444',
+    fontSize: 12,
+    fontWeight: '600' as const,
+  },
+  addScheduleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#0ea5e9',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  addScheduleText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: '#0ea5e9',
+  },
+  textArea: {
+    minHeight: 90,
+    textAlignVertical: 'top',
+  },
+  submitButton: {
+    backgroundColor: '#0ea5e9',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 20,
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600' as const,
+  },
+  userModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 30,
+    maxHeight: '85%',
+  },
+  userList: {
+    marginTop: 12,
+  },
+  userItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  userItemContent: {
+    flex: 1,
+    marginRight: 12,
+  },
+  userName: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+  },
+  userMeta: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginTop: 4,
+  },
+  userSelectedBadge: {
+    backgroundColor: '#e0f2fe',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  userSelectedText: {
+    fontSize: 11,
+    color: '#0284c7',
+    fontWeight: '600' as const,
+  },
+  userEmpty: {
+    paddingVertical: 20,
+    alignItems: 'center',
   },
 });

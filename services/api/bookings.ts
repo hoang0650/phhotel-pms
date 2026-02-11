@@ -11,6 +11,13 @@ export interface ApiBooking {
     phone?: string;
   };
   guestName?: string;
+  guestDetails?: {
+    name?: string;
+    email?: string;
+    phone?: string;
+    idNumber?: string;
+    address?: string;
+  };
   room?: {
     _id: string;
     roomNumber: string;
@@ -18,15 +25,30 @@ export interface ApiBooking {
   roomNumber?: string;
   checkInDate: string;
   checkOutDate: string;
+  actualCheckInDate?: string;
+  actualCheckOutDate?: string;
   status: string;
+  bookingType?: string;
+  rateType?: string;
   totalAmount: number;
+  basePrice?: number;
   paidAmount?: number;
+  paymentStatus?: string;
+  paymentMethod?: string;
+  deposit?: number;
+  advancePayment?: number;
+  additionalCharges?: Array<{ description?: string; amount?: number }> | number;
+  discounts?: Array<{ description?: string; amount?: number }> | number;
   numberOfGuests?: {
     adults: number;
     children: number;
   };
   adults?: number;
   children?: number;
+  source?: string;
+  otaSource?: string;
+  otaBookingId?: string;
+  notes?: string;
   specialRequests?: string;
   createdAt: string;
   updatedAt: string;
@@ -38,8 +60,10 @@ const mapBookingStatus = (status: string): BookingStatus => {
     'pending': 'confirmed',
     'checked_in': 'checked_in',
     'checkedIn': 'checked_in',
+    'checked-in': 'checked_in',
     'checked_out': 'checked_out',
     'checkedOut': 'checked_out',
+    'checked-out': 'checked_out',
     'cancelled': 'cancelled',
     'canceled': 'cancelled',
   };
@@ -47,29 +71,55 @@ const mapBookingStatus = (status: string): BookingStatus => {
 };
 
 const mapApiBookingToBooking = (apiBooking: ApiBooking): Booking => {
-  console.log('Mapping booking:', {
-    adults: apiBooking.adults,
-    children: apiBooking.children,
-    numberOfGuests: apiBooking.numberOfGuests,
-    rawAdults: apiBooking.numberOfGuests?.adults,
-    rawChildren: apiBooking.numberOfGuests?.children
-  });
-  
+  const adults = Number(apiBooking.numberOfGuests?.adults ?? apiBooking.adults ?? 1);
+  const children = Number(apiBooking.numberOfGuests?.children ?? apiBooking.children ?? 0);
+  const bookingType = apiBooking.bookingType || apiBooking.rateType;
+  const guestName = apiBooking.guest?.name || apiBooking.guestDetails?.name || apiBooking.guestName || 'Khách hàng';
+  const guestEmail = apiBooking.guest?.email || apiBooking.guestDetails?.email;
+  const guestPhone = apiBooking.guest?.phone || apiBooking.guestDetails?.phone;
+  const guestIdNumber = apiBooking.guestDetails?.idNumber;
+  const guestAddress = apiBooking.guestDetails?.address;
+  const deposit = apiBooking.deposit ?? apiBooking.advancePayment;
+  const additionalCharges = Array.isArray(apiBooking.additionalCharges) ? apiBooking.additionalCharges : undefined;
+  const discounts = Array.isArray(apiBooking.discounts) ? apiBooking.discounts : undefined;
+
   return {
     id: apiBooking._id,
     guestId: apiBooking.guest?._id || '',
-    guestName: apiBooking.guest?.name || apiBooking.guestName || 'Khách hàng',
+    guestName,
+    guestEmail,
+    guestPhone,
+    guestIdNumber,
+    guestAddress,
     roomId: apiBooking.room?._id || '',
     roomNumber: apiBooking.room?.roomNumber || apiBooking.roomNumber || '',
     checkIn: apiBooking.checkInDate?.split('T')[0] || '',
     checkOut: apiBooking.checkOutDate?.split('T')[0] || '',
     status: mapBookingStatus(apiBooking.status),
+    bookingType: bookingType as Booking['bookingType'],
+    rateType: bookingType as Booking['rateType'],
     totalAmount: apiBooking.totalAmount || 0,
+    basePrice: apiBooking.basePrice,
     paidAmount: apiBooking.paidAmount || 0,
-    adults: Number(apiBooking.numberOfGuests?.adults || apiBooking.adults || 1),
-    children: Number(apiBooking.numberOfGuests?.children || apiBooking.children || 0),
+    paymentStatus: apiBooking.paymentStatus as Booking['paymentStatus'],
+    paymentMethod: apiBooking.paymentMethod as Booking['paymentMethod'],
+    adults,
+    children,
+    numberOfGuests: {
+      adults,
+      children
+    },
+    deposit: typeof deposit === 'number' ? deposit : undefined,
+    advancePayment: typeof deposit === 'number' ? deposit : undefined,
+    additionalCharges,
+    discounts,
+    source: apiBooking.source,
+    otaSource: apiBooking.otaSource,
+    otaBookingId: apiBooking.otaBookingId,
+    notes: apiBooking.notes,
     specialRequests: apiBooking.specialRequests,
     createdAt: apiBooking.createdAt,
+    updatedAt: apiBooking.updatedAt,
   };
 };
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   Platform,
+  FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -40,14 +41,20 @@ import {
   Tv,
   Coffee,
   Bath,
+  ChevronDown,
+  ChevronUp,
+  PlusCircle,
+  MinusCircle,
 } from 'lucide-react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
-import { roomsApi } from '@/services/api';
-import { Room, RoomStatus } from '@/types/hotel';
+import { roomsApi, servicesApi, transactionsApi } from '@/services/api';
+import { calculateRoomPriceLocal, calculateRoomTotalAmount } from '@/services/api/rooms';
+import { Room, RoomStatus, Service } from '@/types/hotel';
 import { useHotel } from '@/contexts/HotelContext';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '../../../contexts/ThemeContext';
+import { useLanguage } from '../../../contexts/LanguageContext';  
+import { useGuestDraftStore } from '@/stores/guestDraft';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_ITEM_WIDTH = (SCREEN_WIDTH - 60) / 2;
@@ -77,7 +84,9 @@ const amenityIcons: Record<string, typeof Wifi> = {
 };
 
 type ViewMode = 'list' | 'grid';
-type ModalMode = 'actions' | 'checkin' | 'details' | 'transfer';
+type ModalMode = 'checkin' | 'checkout' | 'cleaning' | 'details' | 'transfer';
+type RateType = 'hourly' | 'daily' | 'nightly' | 'weekly' | 'monthly';
+type PaymentMethod = 'cash' | 'transfer' | 'card';
 
 interface CheckInFormData {
   guestName: string;
@@ -85,6 +94,32 @@ interface CheckInFormData {
   guestId: string;
   adults: number;
   children: number;
+  rateType: RateType;
+  paymentMethod: PaymentMethod;
+  advancePayment: string;
+  additionalCharges: string;
+  discount: string;
+  notes: string;
+}
+
+interface CheckOutFormData {
+  guestName: string;
+  guestPhone: string;
+  guestId: string;
+  rateType: RateType;
+  paymentMethod: PaymentMethod;
+  advancePayment: string;
+  additionalCharges: string;
+  discount: string;
+  notes: string;
+}
+
+interface SelectedServiceItem {
+  serviceId: string;
+  serviceName: string;
+  price: number;
+  quantity: number;
+  totalPrice: number;
 }
 
 export default function RoomsScreen() {
@@ -95,12 +130,27 @@ export default function RoomsScreen() {
   const { t, language } = useLanguage();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<RoomStatus | 'all'>('all');
+  const [selectedFilter, setSelectedFilter] = useState<RoomStatus | 'all' | 'guest_out'>('all');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [modalMode, setModalMode] = useState<ModalMode>('actions');
+  const [modalMode, setModalMode] = useState<ModalMode>('details');
   const [transferTargetId, setTransferTargetId] = useState<string | null>(null);
+  const [isIncomeModalVisible, setIncomeModalVisible] = useState(false);
+  const [isExpenseModalVisible, setExpenseModalVisible] = useState(false);
+  const [incomeAmount, setIncomeAmount] = useState('');
+  const [incomeMethod, setIncomeMethod] = useState<'cash' | 'bank_transfer' | 'card' | 'other'>('cash');
+  const [incomeCategory, setIncomeCategory] = useState<'service' | 'rental' | 'other'>('service');
+  const [incomeDescription, setIncomeDescription] = useState('');
+  const [incomePayer, setIncomePayer] = useState('');
+  const [incomeNotes, setIncomeNotes] = useState('');
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseMethod, setExpenseMethod] = useState<'cash' | 'bank_transfer' | 'card' | 'other'>('cash');
+  const [expenseCategory, setExpenseCategory] = useState<'supplies' | 'utilities' | 'salary' | 'maintenance' | 'marketing' | 'other'>('supplies');
+  const [expenseDescription, setExpenseDescription] = useState('');
+  const [expenseRecipient, setExpenseRecipient] = useState('');
+  const [expenseNotes, setExpenseNotes] = useState('');
+  const [voucherSubmitting, setVoucherSubmitting] = useState(false);
 
   const [checkInForm, setCheckInForm] = useState<CheckInFormData>({
     guestName: '',
@@ -108,12 +158,58 @@ export default function RoomsScreen() {
     guestId: '',
     adults: 1,
     children: 0,
+    rateType: 'hourly',
+    paymentMethod: 'cash',
+    advancePayment: '',
+    additionalCharges: '',
+    discount: '',
+    notes: '',
   });
+  const [checkOutForm, setCheckOutForm] = useState<CheckOutFormData>({
+    guestName: '',
+    guestPhone: '',
+    guestId: '',
+    rateType: 'hourly',
+    paymentMethod: 'cash',
+    advancePayment: '',
+    additionalCharges: '',
+    discount: '',
+    notes: '',
+  });
+  const [selectedServices, setSelectedServices] = useState<SelectedServiceItem[]>([]);
+  const [isCheckoutServiceOpen, setIsCheckoutServiceOpen] = useState(false);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [selectedServiceQuantity, setSelectedServiceQuantity] = useState(1);
 
   const { data: rooms = [], isLoading, refetch } = useQuery({
     queryKey: ['rooms', selectedHotelId],
     queryFn: () => roomsApi.getAll(selectedHotelId || undefined),
   });
+
+  const { data: availableServices = [], isLoading: isLoadingServiceList } = useQuery({
+    queryKey: ['services', selectedHotelId],
+    queryFn: () => servicesApi.getAll(selectedHotelId || undefined),
+  });
+
+  const { data: serviceOrders = [] } = useQuery({
+    queryKey: ['roomServices', selectedRoom?.id],
+    queryFn: () => (selectedRoom ? servicesApi.getOrdersByRoom(selectedRoom.id) : Promise.resolve([])),
+    enabled: !!selectedRoom && modalMode === 'checkout',
+  });
+
+  const serviceTotal = useMemo(() => {
+    return selectedServices.reduce((sum, service) => sum + (service.totalPrice || 0), 0);
+  }, [selectedServices]);
+
+  const servicePayload = useMemo(() => {
+    return selectedServices.map(service => ({
+      serviceId: service.serviceId,
+      serviceName: service.serviceName,
+      price: service.price,
+      quantity: service.quantity,
+      totalPrice: service.totalPrice,
+    }));
+  }, [selectedServices]);
 
   const updateStatusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
@@ -124,6 +220,29 @@ export default function RoomsScreen() {
     },
     onError: () => {
       Alert.alert(t('error'), t('cannotUpdateStatus'));
+    },
+  });
+
+  const guestOutMutation = useMutation({
+    mutationFn: ({ id, note }: { id: string; note?: string }) => roomsApi.guestOut(id, note),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      closeModal();
+      Alert.alert(language === 'vi' ? 'Thành công' : 'Success', language === 'vi' ? 'Đã ghi nhận khách ra ngoài' : 'Guest marked as out');
+    },
+    onError: (err: any) => {
+      Alert.alert(t('error'), err?.message || t('cannotUpdateStatus'));
+    },
+  });
+  const guestReturnMutation = useMutation({
+    mutationFn: (id: string) => roomsApi.guestReturn(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      closeModal();
+      Alert.alert(language === 'vi' ? 'Thành công' : 'Success', language === 'vi' ? 'Khách đã quay lại' : 'Guest returned');
+    },
+    onError: (err: any) => {
+      Alert.alert(t('error'), err?.message || t('cannotUpdateStatus'));
     },
   });
 
@@ -141,7 +260,7 @@ export default function RoomsScreen() {
   });
 
   const checkOutMutation = useMutation({
-    mutationFn: (id: string) => roomsApi.checkOut(id),
+    mutationFn: ({ id, payload }: { id: string; payload: unknown }) => roomsApi.checkOut(id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       closeModal();
@@ -149,6 +268,17 @@ export default function RoomsScreen() {
     },
     onError: () => {
       Alert.alert(t('error'), t('cannotCheckOut'));
+    },
+  });
+
+  const saveCheckinInfoMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: unknown }) => roomsApi.updateCheckinInfo(id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+      Alert.alert(t('success'), t('save'));
+    },
+    onError: () => {
+      Alert.alert(t('error'), t('cannotUpdateStatus'));
     },
   });
 
@@ -167,9 +297,11 @@ export default function RoomsScreen() {
   const transferMutation = useMutation({
     mutationFn: async ({ fromId, toId }: { fromId: string; toId: string }) => {
       const fromRoom = rooms.find(r => r.id === fromId);
+      const checkInTime = fromRoom?.checkInTime || new Date().toISOString();
       return roomsApi.transferRoom(fromId, toId, {
         guestName: fromRoom?.currentGuest || '',
-        checkInDate: new Date().toISOString(),
+        checkInDate: checkInTime,
+        checkInTime: checkInTime,
       });
     },
     onSuccess: () => {
@@ -184,14 +316,20 @@ export default function RoomsScreen() {
 
   const { mutate: doCheckIn } = checkInMutation;
   const { mutate: doCheckOut } = checkOutMutation;
+  const { mutate: doSaveCheckinInfo } = saveCheckinInfoMutation;
   const { mutate: doTransfer } = transferMutation;
   const { mutate: doUpdateStatus } = updateStatusMutation;
   const { mutate: doMarkClean } = markCleanMutation;
+  const { mutate: doGuestOut } = guestOutMutation;
+  const { mutate: doGuestReturn } = guestReturnMutation;
 
   const filteredRooms = useMemo(() => {
     return rooms.filter((room) => {
       const matchesSearch = room.number.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesFilter = selectedFilter === 'all' || room.status === selectedFilter;
+      const matchesFilter =
+        selectedFilter === 'all'
+          || room.status === selectedFilter
+          || (selectedFilter === 'guest_out' && room.status === 'occupied' && room.guestStatus === 'out');
       return matchesSearch && matchesFilter;
     });
   }, [rooms, searchQuery, selectedFilter]);
@@ -208,6 +346,7 @@ export default function RoomsScreen() {
     dirty: rooms.filter((r) => r.status === 'dirty').length,
     maintenance: rooms.filter((r) => r.status === 'maintenance').length,
     booked: rooms.filter((r) => r.status === 'booked').length,
+    guest_out: rooms.filter((r) => r.status === 'occupied' && r.guestStatus === 'out').length,
   }), [rooms]);
 
   const formatCurrency = useCallback((amount: number) => {
@@ -218,59 +357,317 @@ export default function RoomsScreen() {
     }).format(amount);
   }, []);
 
+  const formatDateTime = useCallback((value?: string) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date);
+  }, [language]);
+
   const closeModal = useCallback(() => {
     setModalVisible(false);
-    setModalMode('actions');
+    setModalMode('details');
     setSelectedRoom(null);
     setTransferTargetId(null);
-    setCheckInForm({ guestName: '', guestPhone: '', guestId: '', adults: 1, children: 0 });
+    setIsCheckoutServiceOpen(false);
+    setSelectedServiceId(null);
+    setSelectedServiceQuantity(1);
+    setCheckInForm({
+      guestName: '',
+      guestPhone: '',
+      guestId: '',
+      adults: 1,
+      children: 0,
+      rateType: 'hourly',
+      paymentMethod: 'cash',
+      advancePayment: '',
+      additionalCharges: '',
+      discount: '',
+      notes: '',
+    });
+    setCheckOutForm({
+      guestName: '',
+      guestPhone: '',
+      guestId: '',
+      rateType: 'hourly',
+      paymentMethod: 'cash',
+      advancePayment: '',
+      additionalCharges: '',
+      discount: '',
+      notes: '',
+    });
+    setSelectedServices([]);
   }, []);
 
-  const handleRoomPress = useCallback((room: Room) => {
-    setSelectedRoom(room);
-    setModalMode('details');
-    setModalVisible(true);
+  const getModalModeForStatus = useCallback((status: RoomStatus): ModalMode => {
+    if (status === 'vacant') return 'checkin';
+    if (status === 'occupied') return 'checkout';
+    if (status === 'dirty' || status === 'cleaning' || status === 'maintenance') return 'cleaning';
+    return 'details';
   }, []);
+
+  const openRoomModal = useCallback((room: Room, mode: ModalMode) => {
+    setSelectedRoom(room);
+    setModalMode(mode);
+    setModalVisible(true);
+    setTransferTargetId(null);
+    setIsCheckoutServiceOpen(true);
+    setSelectedServiceId(null);
+    setSelectedServiceQuantity(1);
+    setCheckInForm(prev => ({
+      ...prev,
+      guestName: '',
+      guestPhone: '',
+      guestId: '',
+      adults: 1,
+      children: 0,
+      rateType: 'hourly',
+      paymentMethod: 'cash',
+      advancePayment: '',
+      additionalCharges: '',
+      discount: '',
+      notes: '',
+    }));
+    setCheckOutForm(prev => ({
+      ...prev,
+      guestName: room.currentGuest || '',
+      guestPhone: room.guestPhone || '',
+      guestId: room.guestIdNumber || '',
+      rateType: (room.rateType as RateType) || 'hourly',
+      paymentMethod: (room.paymentMethod as PaymentMethod) || 'cash',
+      advancePayment: room.advancePayment ? String(room.advancePayment) : '',
+      additionalCharges: room.additionalCharges ? String(room.additionalCharges) : '',
+      discount: room.discount ? String(room.discount) : '',
+      notes: '',
+    }));
+    setSelectedServices([]);
+  }, []);
+
+  useEffect(() => {
+    if (!modalVisible || modalMode !== 'checkout') return;
+    if (selectedServices.length > 0) return;
+    if (!serviceOrders.length) return;
+    setSelectedServices(serviceOrders.map(order => ({
+      serviceId: order.serviceId,
+      serviceName: order.serviceName,
+      price: order.quantity ? order.totalPrice / order.quantity : order.totalPrice,
+      quantity: order.quantity || 1,
+      totalPrice: order.totalPrice || 0,
+    })));
+  }, [modalVisible, modalMode, serviceOrders, selectedServices.length]);
+
+  useEffect(() => {
+    if (!modalVisible || modalMode !== 'checkout') return;
+    if (selectedServices.length > 0) return;
+    if (serviceOrders.length > 0) return;
+    if (!selectedRoom?.selectedServices || selectedRoom.selectedServices.length === 0) return;
+    setSelectedServices(selectedRoom.selectedServices.map(service => ({
+      serviceId: typeof service.serviceId === 'string' ? service.serviceId : (service.serviceId as any)?._id || '',
+      serviceName: service.serviceName || service.name || t('service'),
+      price: Number(service.price || service.unitPrice || 0),
+      quantity: Number(service.quantity || 1),
+      totalPrice: Number(service.totalPrice || (service.price || service.unitPrice || 0) * (service.quantity || 1)),
+    })));
+  }, [modalVisible, modalMode, selectedRoom, selectedServices.length, serviceOrders.length, t]);
+
+  const updateServiceQuantity = useCallback((service: Service, delta: number) => {
+    setSelectedServices(prev => {
+      const existing = prev.find(item => item.serviceId === service.id);
+      const nextQuantity = Math.max(0, (existing?.quantity || 0) + delta);
+      if (nextQuantity === 0) {
+        return prev.filter(item => item.serviceId !== service.id);
+      }
+      const nextItem = {
+        serviceId: service.id,
+        serviceName: service.name,
+        price: service.price,
+        quantity: nextQuantity,
+        totalPrice: service.price * nextQuantity,
+      };
+      if (existing) {
+        return prev.map(item => (item.serviceId === service.id ? nextItem : item));
+      }
+      return [...prev, nextItem];
+    });
+  }, []);
+
+  const selectedServiceOption = useMemo(() => {
+    if (!selectedServiceId) return null;
+    return availableServices.find(service => service.id === selectedServiceId) || null;
+  }, [availableServices, selectedServiceId]);
+
+  const renderServiceDropdownSubtitle = useMemo(() => {
+    if (selectedServiceOption) {
+      return formatCurrency(selectedServiceOption.price);
+    }
+    return `${availableServices.length} ${t('services')}`;
+  }, [selectedServiceOption, availableServices.length, t]);
+
+  const handleAddSelectedService = useCallback(() => {
+    if (!selectedServiceOption) return;
+    setSelectedServices(prev => {
+      const existing = prev.find(item => item.serviceId === selectedServiceOption.id);
+      const nextQuantity = (existing?.quantity || 0) + selectedServiceQuantity;
+      const nextItem = {
+        serviceId: selectedServiceOption.id,
+        serviceName: selectedServiceOption.name,
+        price: selectedServiceOption.price,
+        quantity: nextQuantity,
+        totalPrice: selectedServiceOption.price * nextQuantity,
+      };
+      if (existing) {
+        return prev.map(item => (item.serviceId === selectedServiceOption.id ? nextItem : item));
+      }
+      return [...prev, nextItem];
+    });
+    setSelectedServiceId(null);
+    setSelectedServiceQuantity(1);
+    setIsCheckoutServiceOpen(false);
+  }, [selectedServiceOption, selectedServiceQuantity]);
+
+  const checkoutTotals = useMemo(() => {
+    let roomTotal = selectedRoom?.price || 0;
+    if (selectedRoom?.checkInTime) {
+      const parsedCheckIn = new Date(selectedRoom.checkInTime);
+      if (!isNaN(parsedCheckIn.getTime())) {
+        const computedRoomTotal = calculateRoomPriceLocal(
+          selectedRoom,
+          parsedCheckIn,
+          checkOutForm.rateType
+        );
+        if (!isNaN(computedRoomTotal) && computedRoomTotal > 0) {
+          roomTotal = computedRoomTotal;
+        }
+      }
+    }
+    const additionalCharges = Number(checkOutForm.additionalCharges) || 0;
+    const discount = Number(checkOutForm.discount) || 0;
+    const advancePayment = Number(checkOutForm.advancePayment) || 0;
+    const totalAmount = calculateRoomTotalAmount(
+      roomTotal,
+      serviceTotal,
+      additionalCharges,
+      discount,
+      advancePayment
+    );
+    const grossTotal = roomTotal + serviceTotal + additionalCharges - discount;
+    const remainingAmount = grossTotal - advancePayment;
+    return { roomTotal, additionalCharges, discount, advancePayment, totalAmount, grossTotal, remainingAmount };
+  }, [selectedRoom, checkOutForm, serviceTotal]);
+  const handleRoomPress = useCallback((room: Room) => {
+    openRoomModal(room, getModalModeForStatus(room.status));
+  }, [openRoomModal, getModalModeForStatus]);
 
   const handleShowCheckIn = useCallback(() => {
     setModalMode('checkin');
+    setIsCheckoutServiceOpen(false);
+    setSelectedServiceId(null);
+    setSelectedServiceQuantity(1);
+  }, []);
+
+  const handleShowCheckOut = useCallback(() => {
+    setModalMode('checkout');
+    setIsCheckoutServiceOpen(false);
+    setSelectedServiceId(null);
+    setSelectedServiceQuantity(1);
   }, []);
 
   const handleShowTransfer = useCallback(() => {
     setModalMode('transfer');
     setTransferTargetId(null);
+    setIsCheckoutServiceOpen(false);
   }, []);
 
   const handleCheckIn = useCallback(() => {
     if (!selectedRoom) return;
-    if (!checkInForm.guestName.trim()) {
-      Alert.alert(t('error'), t('enterGuestName'));
-      return;
-    }
+    const guestName = checkInForm.guestName.trim() || t('walkInGuest');
     doCheckIn({
       id: selectedRoom.id,
       guestData: {
-        guestName: checkInForm.guestName,
+        guestName,
         guestPhone: checkInForm.guestPhone,
         guestId: checkInForm.guestId,
         adults: checkInForm.adults,
         children: checkInForm.children,
         checkInDate: new Date().toISOString(),
+        guestInfo: {
+          name: guestName,
+          phone: checkInForm.guestPhone,
+          idNumber: checkInForm.guestId,
+        },
+        numberOfGuests: {
+          adults: checkInForm.adults,
+          children: checkInForm.children,
+        },
+        checkinTime: new Date().toISOString(),
+        rateType: checkInForm.rateType,
+        paymentMethod: checkInForm.paymentMethod,
+        advancePayment: Number(checkInForm.advancePayment) || 0,
+        additionalCharges: Number(checkInForm.additionalCharges) || 0,
+        discount: Number(checkInForm.discount) || 0,
+        selectedServices: servicePayload,
+        servicesTotal: serviceTotal,
+        notes: checkInForm.notes.trim(),
       },
     });
-  }, [selectedRoom, checkInForm, doCheckIn, t]);
+  }, [selectedRoom, checkInForm, doCheckIn, t, servicePayload, serviceTotal]);
+
+  const handleSaveCheckOutInfo = useCallback(() => {
+    if (!selectedRoom) return;
+    doSaveCheckinInfo({
+      id: selectedRoom.id,
+      payload: {
+        guestInfo: {
+          name: checkOutForm.guestName,
+          phone: checkOutForm.guestPhone,
+          idNumber: checkOutForm.guestId,
+          guestSource: 'walkin',
+        },
+        advancePayment: Number(checkOutForm.advancePayment) || 0,
+        rateType: checkOutForm.rateType,
+        additionalCharges: Number(checkOutForm.additionalCharges) || 0,
+        discount: Number(checkOutForm.discount) || 0,
+        selectedServices: servicePayload,
+        advancePaymentMethod: checkOutForm.paymentMethod,
+      },
+    });
+  }, [selectedRoom, checkOutForm, doSaveCheckinInfo, servicePayload]);
 
   const handleCheckOut = useCallback(() => {
     if (!selectedRoom) return;
-    Alert.alert(
-      t('confirmCheckOut'),
-      `${t('confirmCheckOutMsg')} ${selectedRoom.number}?`,
-      [
-        { text: t('cancel'), style: 'cancel' },
-        { text: t('confirm'), onPress: () => doCheckOut(selectedRoom.id) },
-      ]
-    );
-  }, [selectedRoom, doCheckOut, t]);
+    const { additionalCharges, discount, advancePayment, roomTotal, totalAmount } = checkoutTotals;
+    doCheckOut({
+      id: selectedRoom.id,
+      payload: {
+        paymentMethod: checkOutForm.paymentMethod,
+        checkoutTime: new Date().toISOString(),
+        notes: checkOutForm.notes.trim(),
+        additionalCharges,
+        discount,
+        advancePayment,
+        servicesTotal: serviceTotal,
+        services: servicePayload,
+        roomTotal,
+        totalAmount,
+        remainingAmount: totalAmount,
+        rateType: checkOutForm.rateType,
+        guestName: checkOutForm.guestName,
+        guestPhone: checkOutForm.guestPhone,
+        guestId: checkOutForm.guestId,
+        guestInfo: {
+          name: checkOutForm.guestName,
+          phone: checkOutForm.guestPhone,
+          idNumber: checkOutForm.guestId,
+        },
+      },
+    });
+  }, [selectedRoom, doCheckOut, checkOutForm, serviceTotal, servicePayload, checkoutTotals]);
 
   const handleTransfer = useCallback(() => {
     if (!selectedRoom || !transferTargetId) return;
@@ -282,6 +679,11 @@ export default function RoomsScreen() {
     doUpdateStatus({ id: selectedRoom.id, status: 'cleaning' });
   }, [selectedRoom, doUpdateStatus]);
 
+  const handleDirty = useCallback(() => {
+    if (!selectedRoom) return;
+    doUpdateStatus({ id: selectedRoom.id, status: 'dirty' });
+  }, [selectedRoom, doUpdateStatus]);
+
   const handleMarkClean = useCallback(() => {
     if (!selectedRoom) return;
     doMarkClean(selectedRoom.id);
@@ -291,6 +693,16 @@ export default function RoomsScreen() {
     if (!selectedRoom) return;
     doUpdateStatus({ id: selectedRoom.id, status: 'maintenance' });
   }, [selectedRoom, doUpdateStatus]);
+  
+  const handleGuestOut = useCallback(() => {
+    if (!selectedRoom) return;
+    doGuestOut({ id: selectedRoom.id });
+  }, [selectedRoom, doGuestOut]);
+  
+  const handleGuestReturn = useCallback(() => {
+    if (!selectedRoom) return;
+    doGuestReturn(selectedRoom.id);
+  }, [selectedRoom, doGuestReturn]);
 
   const getStatusLabel = useCallback((status: RoomStatus) => {
     return language === 'en' ? statusConfig[status].labelEn : statusConfig[status].label;
@@ -329,6 +741,14 @@ export default function RoomsScreen() {
               </Text>
             </View>
           )}
+          {room.status === 'occupied' && room.guestStatus === 'out' && (
+            <View style={[styles.guestOutBadge, { backgroundColor: Colors.status.guestOut + '20' }]}>
+              <LogOut size={12} color={Colors.status.guestOut} />
+              <Text style={[styles.guestOutBadgeText, { color: Colors.status.guestOut }]}>
+                {language === 'vi' ? 'Khách ra ngoài' : 'Guest Out'}
+              </Text>
+            </View>
+          )}
         </View>
       </TouchableOpacity>
     );
@@ -354,9 +774,19 @@ export default function RoomsScreen() {
             <BedDouble size={18} color={colors.tint} />
             <Text style={[styles.roomNumber, { color: colors.text }]}>{room.number}</Text>
           </View>
-          <View style={[styles.statusBadge, { backgroundColor: status.color + '20' }]}>
-            <StatusIcon size={12} color={status.color} />
-            <Text style={[styles.statusText, { color: status.color }]}>{getStatusLabel(room.status)}</Text>
+          <View style={styles.statusBadgeGroup}>
+            <View style={[styles.statusBadge, { backgroundColor: status.color + '20' }]}>
+              <StatusIcon size={12} color={status.color} />
+              <Text style={[styles.statusText, { color: status.color }]}>{getStatusLabel(room.status)}</Text>
+            </View>
+            {room.status === 'occupied' && room.guestStatus === 'out' && (
+              <View style={[styles.statusBadge, { backgroundColor: Colors.status.guestOut + '20' }]}>
+                <LogOut size={12} color={Colors.status.guestOut} />
+                <Text style={[styles.statusText, { color: Colors.status.guestOut }]}>
+                  {language === 'vi' ? 'Khách ra ngoài' : 'Guest Out'}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -391,32 +821,79 @@ export default function RoomsScreen() {
 
         <View style={styles.quickActions}>
           {room.status === 'vacant' && (
-            <TouchableOpacity
-              style={[styles.quickActionBtn, { backgroundColor: Colors.status.vacant }]}
-              onPress={() => { setSelectedRoom(room); setModalMode('checkin'); setModalVisible(true); }}
-            >
-              <LogIn size={14} color="#fff" />
-              <Text style={styles.quickActionText}>{t('checkIn')}</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={[styles.quickActionBtn, { backgroundColor: Colors.status.vacant }]}
+                onPress={() => openRoomModal(room, 'checkin')}
+              >
+                <LogIn size={14} color="#fff" />
+                <Text style={styles.quickActionText}>{t('checkIn')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.quickActionBtn, { backgroundColor: Colors.status.dirty }]}
+                onPress={() => doUpdateStatus({ id: room.id, status: 'dirty' })}
+              >
+                <Brush size={14} color="#fff" />
+                <Text style={styles.quickActionText}>{language === 'vi' ? 'Bẩn' : 'Dirty'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.quickActionBtn, { backgroundColor: Colors.status.maintenance }]}
+                onPress={() => doUpdateStatus({ id: room.id, status: 'maintenance' })}
+              >
+                <Wrench size={14} color="#fff" />
+                <Text style={styles.quickActionText}>{t('maintenance')}</Text>
+              </TouchableOpacity>
+            </>
           )}
           {room.status === 'occupied' && (
             <>
               <TouchableOpacity
                 style={[styles.quickActionBtn, { backgroundColor: Colors.status.cleaning }]}
-                onPress={() => { setSelectedRoom(room); setModalMode('details'); setModalVisible(true); }}
+                onPress={() => openRoomModal(room, 'checkout')}
               >
                 <LogOut size={14} color="#fff" />
                 <Text style={styles.quickActionText}>{t('checkOut')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.quickActionBtn, { backgroundColor: '#6366f1' }]}
-                onPress={() => { setSelectedRoom(room); setModalMode('transfer'); setModalVisible(true); }}
+                onPress={() => openRoomModal(room, 'transfer')}
               >
                 <ArrowRightLeft size={14} color="#fff" />
               </TouchableOpacity>
+              {room.guestStatus !== 'out' ? (
+                <TouchableOpacity
+                  style={[styles.quickActionBtn, { backgroundColor: Colors.status.guestOut }, guestOutMutation.isPending && { opacity: 0.6 }]}
+                  onPress={() => { if (guestOutMutation.isPending) return; setSelectedRoom(room); handleGuestOut(); }}
+                  disabled={guestOutMutation.isPending}
+                >
+                  {guestOutMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <LogOut size={14} color="#fff" />
+                      <Text style={styles.quickActionText}>{language === 'vi' ? 'Ra ngoài' : 'Guest Out'}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.quickActionBtn, { backgroundColor: Colors.status.vacant }, guestReturnMutation.isPending && { opacity: 0.6 }]}
+                  onPress={() => { if (guestReturnMutation.isPending) return; setSelectedRoom(room); handleGuestReturn(); }}
+                  disabled={guestReturnMutation.isPending}
+                >
+                  {guestReturnMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <LogIn size={14} color="#fff" />
+                      <Text style={styles.quickActionText}>{language === 'vi' ? 'Quay lại' : 'Return'}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </>
           )}
-          {room.status === 'cleaning' && (
+          {(room.status === 'cleaning' || room.status === 'dirty' || room.status === 'maintenance') && (
             <TouchableOpacity
               style={[styles.quickActionBtn, { backgroundColor: Colors.status.vacant }]}
               onPress={() => { setSelectedRoom(room); doMarkClean(room.id); }}
@@ -428,7 +905,7 @@ export default function RoomsScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [handleRoomPress, formatCurrency, getStatusLabel, colors, isDark, t, language, doMarkClean]);
+  }, [handleRoomPress, openRoomModal, formatCurrency, getStatusLabel, colors, isDark, t, language, doMarkClean]);
 
   const renderModalContent = useCallback(() => {
     if (!selectedRoom) return null;
@@ -436,7 +913,13 @@ export default function RoomsScreen() {
 
     if (modalMode === 'details') {
       return (
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView
+          showsVerticalScrollIndicator={true}
+          nestedScrollEnabled
+          contentContainerStyle={{ paddingBottom: 24 }}
+          decelerationRate="normal"
+          scrollEventThrottle={16}
+        >
           <View style={[styles.modalRoomHeader, { borderBottomColor: colors.divider }]}>
             <View style={[styles.modalRoomIcon, { backgroundColor: status.color + '15' }]}>
               <BedDouble size={28} color={status.color} />
@@ -509,7 +992,7 @@ export default function RoomsScreen() {
               <>
                 <TouchableOpacity
                   style={[styles.modalActionBtn, { backgroundColor: Colors.status.cleaning }]}
-                  onPress={handleCheckOut}
+                  onPress={handleShowCheckOut}
                 >
                   <LogOut size={18} color="#fff" />
                   <Text style={styles.modalActionBtnText}>{t('checkOut')}</Text>
@@ -553,6 +1036,48 @@ export default function RoomsScreen() {
                 <Text style={[styles.secondaryActionText, { color: '#f59e0b' }]}>{t('cleanRoom')}</Text>
               </TouchableOpacity>
             )}
+            {selectedRoom.status === 'vacant' && (
+              <TouchableOpacity
+                style={[styles.secondaryActionBtn, { borderColor: Colors.status.dirty }]}
+                onPress={handleDirty}
+              >
+                <Brush size={16} color={Colors.status.dirty} />
+                <Text style={[styles.secondaryActionText, { color: Colors.status.dirty }]}>{language === 'vi' ? 'Đánh dấu bẩn' : 'Mark Dirty'}</Text>
+              </TouchableOpacity>
+            )}
+            {selectedRoom.status === 'occupied' && (
+              selectedRoom.guestStatus !== 'out' ? (
+                <TouchableOpacity
+                  style={[styles.secondaryActionBtn, { borderColor: Colors.status.guestOut }, guestOutMutation.isPending && { opacity: 0.6 }]}
+                  onPress={() => { if (guestOutMutation.isPending) return; handleGuestOut(); }}
+                  disabled={guestOutMutation.isPending}
+                >
+                  {guestOutMutation.isPending ? (
+                    <ActivityIndicator size="small" color={Colors.status.guestOut} />
+                  ) : (
+                    <>
+                      <LogOut size={16} color={Colors.status.guestOut} />
+                      <Text style={[styles.secondaryActionText, { color: Colors.status.guestOut }]}>{language === 'vi' ? 'Khách ra ngoài' : 'Guest Out'}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.secondaryActionBtn, { borderColor: Colors.status.vacant }, guestReturnMutation.isPending && { opacity: 0.6 }]}
+                  onPress={() => { if (guestReturnMutation.isPending) return; handleGuestReturn(); }}
+                  disabled={guestReturnMutation.isPending}
+                >
+                  {guestReturnMutation.isPending ? (
+                    <ActivityIndicator size="small" color={Colors.status.vacant} />
+                  ) : (
+                    <>
+                      <LogIn size={16} color={Colors.status.vacant} />
+                      <Text style={[styles.secondaryActionText, { color: Colors.status.vacant }]}>{language === 'vi' ? 'Khách quay lại' : 'Guest Return'}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )
+            )}
             {selectedRoom.status !== 'maintenance' && (
               <TouchableOpacity
                 style={[styles.secondaryActionBtn, { borderColor: Colors.status.maintenance }]}
@@ -569,8 +1094,16 @@ export default function RoomsScreen() {
 
     if (modalMode === 'checkin') {
       return (
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <ScrollView showsVerticalScrollIndicator={false}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <ScrollView
+            showsVerticalScrollIndicator={true}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            contentContainerStyle={styles.modalScrollContent}
+            scrollEnabled={true}
+            decelerationRate="normal"
+            scrollEventThrottle={16}
+          >
             <View style={[styles.checkInHeader, { borderBottomColor: colors.divider }]}>
               <LogIn size={24} color={Colors.status.vacant} />
               <Text style={[styles.checkInTitle, { color: colors.text }]}>
@@ -582,7 +1115,7 @@ export default function RoomsScreen() {
               <View style={styles.formField}>
                 <View style={styles.formLabelRow}>
                   <User size={16} color={colors.tint} />
-                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('guestName')} *</Text>
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('guestName')}</Text>
                 </View>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
@@ -671,6 +1204,190 @@ export default function RoomsScreen() {
                   </View>
                 </View>
               </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <Calendar size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('rateType')}</Text>
+                </View>
+                <View style={styles.optionRow}>
+                  {(['hourly', 'daily', 'nightly', 'weekly', 'monthly'] as RateType[]).map(option => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.optionChip,
+                        { backgroundColor: colors.cardBackground, borderColor: colors.border },
+                        checkInForm.rateType === option && { backgroundColor: colors.tint, borderColor: colors.tint },
+                      ]}
+                      onPress={() => setCheckInForm(prev => ({ ...prev, rateType: option }))}
+                    >
+                      <Text style={[styles.optionText, { color: checkInForm.rateType === option ? '#fff' : colors.textSecondary }]}>
+                        {t(option)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <CreditCard size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('paymentMethod')}</Text>
+                </View>
+                <View style={styles.optionRow}>
+                  {(['cash', 'transfer', 'card'] as PaymentMethod[]).map(option => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.optionChip,
+                        { backgroundColor: colors.cardBackground, borderColor: colors.border },
+                        checkInForm.paymentMethod === option && { backgroundColor: colors.tint, borderColor: colors.tint },
+                      ]}
+                      onPress={() => setCheckInForm(prev => ({ ...prev, paymentMethod: option }))}
+                    >
+                      <Text style={[styles.optionText, { color: checkInForm.paymentMethod === option ? '#fff' : colors.textSecondary }]}>
+                        {t(option)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <Coffee size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('services')}</Text>
+                </View>
+                {isLoadingServiceList ? (
+                  <ActivityIndicator size="small" color={colors.tint} />
+                ) : (
+                  <>
+                    {availableServices.length === 0 ? (
+                      <Text style={[styles.serviceEmptyText, { color: colors.textSecondary }]}>
+                        {t('noServices')}
+                      </Text>
+                    ) : (
+                      <View style={[styles.serviceList, { borderColor: colors.border, backgroundColor: colors.cardBackground }]}>
+                        <View style={styles.serviceDropdownScroll}>
+                          {availableServices.map((item) => {
+                            const qty = selectedServices.find(s => s.serviceId === item.id)?.quantity ?? 0;
+                            return (
+                              <View key={item.id} style={[styles.serviceListItem, { borderBottomColor: colors.border }]}>
+                                <View style={styles.serviceDropdownInfo}>
+                                  <Text style={[styles.serviceDropdownName, { color: colors.text }]}>{item.name}</Text>
+                                  <Text style={[styles.serviceDropdownPrice, { color: colors.textSecondary }]}>{formatCurrency(item.price)}</Text>
+                                </View>
+                                <View style={styles.serviceListActions}>
+                                  <TouchableOpacity
+                                    style={[styles.counterBtn, { backgroundColor: isDark ? '#334155' : '#f3f4f6' }]}
+                                    onPress={() => updateServiceQuantity(item as Service, -1)}
+                                  >
+                                    <Text style={[styles.counterBtnText, { color: colors.text }]}>-</Text>
+                                  </TouchableOpacity>
+                                  <Text style={[styles.counterValue, { color: colors.text }]}>{qty}</Text>
+                                  <TouchableOpacity
+                                    style={[styles.counterBtn, { backgroundColor: isDark ? '#334155' : '#f3f4f6' }]}
+                                    onPress={() => updateServiceQuantity(item as Service, 1)}
+                                  >
+                                    <Text style={[styles.counterBtnText, { color: colors.text }]}>+</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            );
+                          })}
+                        </View>
+                        {selectedServices.length > 0 && (
+                          <View style={styles.selectedServiceList}>
+                            {selectedServices.map(service => (
+                            <View key={service.serviceId} style={[styles.selectedServiceItem, { borderColor: colors.border }]}>
+                              <View style={styles.selectedServiceInfo}>
+                                <Text style={[styles.selectedServiceName, { color: colors.text }]}>{service.serviceName}</Text>
+                                <Text style={[styles.selectedServiceMeta, { color: colors.textSecondary }]}>
+                                  {service.quantity} × {formatCurrency(service.price)}
+                                </Text>
+                              </View>
+                              <View style={styles.selectedServiceActions}>
+                                <Text style={[styles.selectedServiceTotal, { color: colors.text }]}>{formatCurrency(service.totalPrice)}</Text>
+                                <TouchableOpacity
+                                  style={[styles.removeServiceBtn, { backgroundColor: isDark ? '#374151' : '#f3f4f6' }]}
+                                  onPress={() => updateServiceQuantity({ id: service.serviceId } as Service, -service.quantity)}
+                                >
+                                  <X size={14} color={colors.textSecondary} />
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          ))}
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </>
+                )}
+                <View style={styles.serviceTotalRow}>
+                  <Text style={[styles.serviceTotalLabel, { color: colors.textSecondary }]}>{t('serviceTotal')}</Text>
+                  <Text style={[styles.serviceTotalValue, { color: colors.text }]}>{formatCurrency(serviceTotal)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <CreditCard size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('advancePayment')}</Text>
+                </View>
+                <TextInput
+                  style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={checkInForm.advancePayment}
+                  onChangeText={(v) => setCheckInForm(prev => ({ ...prev, advancePayment: v }))}
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <CreditCard size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('additionalCharges')}</Text>
+                </View>
+                <TextInput
+                  style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={checkInForm.additionalCharges}
+                  onChangeText={(v) => setCheckInForm(prev => ({ ...prev, additionalCharges: v }))}
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <CreditCard size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('discount')}</Text>
+                </View>
+                <TextInput
+                  style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={checkInForm.discount}
+                  onChangeText={(v) => setCheckInForm(prev => ({ ...prev, discount: v }))}
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <CreditCard size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('notes')}</Text>
+                </View>
+                <TextInput
+                  style={[styles.formInput, styles.notesInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={checkInForm.notes}
+                  onChangeText={(v) => setCheckInForm(prev => ({ ...prev, notes: v }))}
+                  placeholder={t('notes')}
+                  placeholderTextColor={colors.textSecondary}
+                  multiline
+                />
+              </View>
             </View>
 
             <View style={styles.formActions}>
@@ -700,9 +1417,429 @@ export default function RoomsScreen() {
       );
     }
 
+    if (modalMode === 'checkout') {
+      const checkInDisplay = formatDateTime(selectedRoom.checkInTime);
+      const guestDisplay = checkOutForm.guestName || selectedRoom.currentGuest || t('walkInGuest');
+      const phoneDisplay = checkOutForm.guestPhone || selectedRoom.guestPhone || '';
+      const idDisplay = checkOutForm.guestId || selectedRoom.guestIdNumber || '';
+      return (
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            nestedScrollEnabled
+            contentContainerStyle={styles.modalScrollContent}
+            scrollEnabled={true}
+            decelerationRate="normal"
+            scrollEventThrottle={16}
+          >
+            <View style={[styles.checkInHeader, { borderBottomColor: colors.divider }]}>
+              <LogOut size={24} color={Colors.status.cleaning} />
+              <Text style={[styles.checkInTitle, { color: colors.text }]}>
+                {t('checkOut')} - {t('roomNumber')} {selectedRoom.number}
+              </Text>
+            </View>
+
+            <View style={[styles.checkoutInfoCard, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+              <View style={styles.checkoutInfoRow}>
+                <Text style={[styles.checkoutInfoLabel, { color: colors.textSecondary }]}>{t('checkIn')}</Text>
+                <Text style={[styles.checkoutInfoValue, { color: colors.text }]}>{checkInDisplay || '-'}</Text>
+              </View>
+              <View style={styles.checkoutInfoRow}>
+                <Text style={[styles.checkoutInfoLabel, { color: colors.textSecondary }]}>{t('guestName')}</Text>
+                <Text style={[styles.checkoutInfoValue, { color: colors.text }]}>{guestDisplay}</Text>
+              </View>
+              {phoneDisplay ? (
+                <View style={styles.checkoutInfoRow}>
+                  <Text style={[styles.checkoutInfoLabel, { color: colors.textSecondary }]}>{t('guestPhone')}</Text>
+                  <Text style={[styles.checkoutInfoValue, { color: colors.text }]}>{phoneDisplay}</Text>
+                </View>
+              ) : null}
+              {idDisplay ? (
+                <View style={styles.checkoutInfoRow}>
+                  <Text style={[styles.checkoutInfoLabel, { color: colors.textSecondary }]}>{t('guestId')}</Text>
+                  <Text style={[styles.checkoutInfoValue, { color: colors.text }]}>{idDisplay}</Text>
+                </View>
+              ) : null}
+              <View style={styles.checkoutInfoRow}>
+                <Text style={[styles.checkoutInfoLabel, { color: colors.textSecondary }]}>{t('rateType')}</Text>
+                <Text style={[styles.checkoutInfoValue, { color: colors.text }]}>{t(checkOutForm.rateType)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.formSection}>
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <User size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('guestName')}</Text>
+                </View>
+                <TextInput
+                  style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={checkOutForm.guestName}
+                  onChangeText={(v) => setCheckOutForm(prev => ({ ...prev, guestName: v }))}
+                  placeholder={t('enterGuestName')}
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <Phone size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('guestPhone')}</Text>
+                </View>
+                <TextInput
+                  style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={checkOutForm.guestPhone}
+                  onChangeText={(v) => setCheckOutForm(prev => ({ ...prev, guestPhone: v }))}
+                  placeholder={t('enterGuestPhone')}
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="phone-pad"
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <CreditCard size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('guestId')}</Text>
+                </View>
+                <TextInput
+                  style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={checkOutForm.guestId}
+                  onChangeText={(v) => setCheckOutForm(prev => ({ ...prev, guestId: v }))}
+                  placeholder={t('enterGuestId')}
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <Calendar size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('rateType')}</Text>
+                </View>
+                <View style={styles.optionRow}>
+                  {(['hourly', 'daily', 'nightly', 'weekly', 'monthly'] as RateType[]).map(option => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.optionChip,
+                        { backgroundColor: colors.cardBackground, borderColor: colors.border },
+                        checkOutForm.rateType === option && { backgroundColor: colors.tint, borderColor: colors.tint },
+                      ]}
+                      onPress={() => setCheckOutForm(prev => ({ ...prev, rateType: option }))}
+                    >
+                      <Text style={[styles.optionText, { color: checkOutForm.rateType === option ? '#fff' : colors.textSecondary }]}>
+                        {t(option)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <CreditCard size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('paymentMethod')}</Text>
+                </View>
+                <View style={styles.optionRow}>
+                  {(['cash', 'transfer', 'card'] as PaymentMethod[]).map(option => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[
+                        styles.optionChip,
+                        { backgroundColor: colors.cardBackground, borderColor: colors.border },
+                        checkOutForm.paymentMethod === option && { backgroundColor: colors.tint, borderColor: colors.tint },
+                      ]}
+                      onPress={() => setCheckOutForm(prev => ({ ...prev, paymentMethod: option }))}
+                    >
+                      <Text style={[styles.optionText, { color: checkOutForm.paymentMethod === option ? '#fff' : colors.textSecondary }]}>
+                        {t(option)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <CreditCard size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('advancePayment')}</Text>
+                </View>
+                <TextInput
+                  style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={checkOutForm.advancePayment}
+                  onChangeText={(v) => setCheckOutForm(prev => ({ ...prev, advancePayment: v }))}
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <Coffee size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('services')}</Text>
+                </View>
+                {isLoadingServiceList ? (
+                  <ActivityIndicator size="small" color={colors.tint} />
+                ) : (
+                  <>
+                    {availableServices.length === 0 ? (
+                      <Text style={[styles.serviceEmptyText, { color: colors.textSecondary }]}>
+                        {t('noServices')}
+                      </Text>
+                    ) : (
+                      <View style={styles.serviceDropdown}>
+                        <TouchableOpacity
+                          style={[styles.serviceDropdownHeader, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}
+                          onPress={() => setIsCheckoutServiceOpen(prev => !prev)}
+                          activeOpacity={0.7}
+                        >
+                          <View>
+                            <Text style={[styles.serviceDropdownTitle, { color: colors.text }]}>
+                              {selectedServiceOption ? selectedServiceOption.name : t('services')}
+                            </Text>
+                            <Text style={[styles.serviceDropdownSubtitle, { color: colors.textSecondary }]}>
+                              {renderServiceDropdownSubtitle}
+                            </Text>
+                          </View>
+                          {isCheckoutServiceOpen ? (
+                            <ChevronUp size={18} color={colors.textSecondary} />
+                          ) : (
+                            <ChevronDown size={18} color={colors.textSecondary} />
+                          )}
+                        </TouchableOpacity>
+                        <View style={[styles.serviceList, { borderColor: colors.border, backgroundColor: colors.cardBackground }]}>
+                          <View style={styles.serviceDropdownScroll}>
+                            {availableServices.map((item) => {
+                              const qty = selectedServices.find(s => s.serviceId === item.id)?.quantity ?? 0;
+                              return (
+                                <View key={item.id} style={[styles.serviceListItem, { borderBottomColor: colors.border }]}>
+                                  <View style={styles.serviceDropdownInfo}>
+                                    <Text style={[styles.serviceDropdownName, { color: colors.text }]}>{item.name}</Text>
+                                    <Text style={[styles.serviceDropdownPrice, { color: colors.textSecondary }]}>{formatCurrency(item.price)}</Text>
+                                  </View>
+                                  <View style={styles.serviceListActions}>
+                                    <TouchableOpacity
+                                      style={[styles.counterBtn, { backgroundColor: isDark ? '#334155' : '#f3f4f6' }]}
+                                      onPress={() => updateServiceQuantity(item as Service, -1)}
+                                    >
+                                      <Text style={[styles.counterBtnText, { color: colors.text }]}>-</Text>
+                                    </TouchableOpacity>
+                                    <Text style={[styles.counterValue, { color: colors.text }]}>{qty}</Text>
+                                    <TouchableOpacity
+                                      style={[styles.counterBtn, { backgroundColor: isDark ? '#334155' : '#f3f4f6' }]}
+                                      onPress={() => updateServiceQuantity(item as Service, 1)}
+                                    >
+                                      <Text style={[styles.counterBtnText, { color: colors.text }]}>+</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        </View>
+                        {selectedServices.length > 0 && (
+                          <View style={styles.selectedServiceList}>
+                            {selectedServices.map(service => (
+                              <View key={service.serviceId} style={[styles.selectedServiceItem, { borderColor: colors.border }]}>
+                                <View style={styles.selectedServiceInfo}>
+                                  <Text style={[styles.selectedServiceName, { color: colors.text }]}>{service.serviceName}</Text>
+                                  <Text style={[styles.selectedServiceMeta, { color: colors.textSecondary }]}>
+                                    {service.quantity} × {formatCurrency(service.price)}
+                                  </Text>
+                                </View>
+                                <View style={styles.selectedServiceActions}>
+                                  <Text style={[styles.selectedServiceTotal, { color: colors.text }]}>{formatCurrency(service.totalPrice)}</Text>
+                                  <TouchableOpacity
+                                    style={[styles.removeServiceBtn, { backgroundColor: isDark ? '#374151' : '#f3f4f6' }]}
+                                    onPress={() => updateServiceQuantity({ id: service.serviceId } as Service, -service.quantity)}
+                                  >
+                                    <X size={14} color={colors.textSecondary} />
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </>
+                )}
+                <View style={styles.serviceTotalRow}>
+                  <Text style={[styles.serviceTotalLabel, { color: colors.textSecondary }]}>{t('serviceTotal')}</Text>
+                  <Text style={[styles.serviceTotalValue, { color: colors.text }]}>{formatCurrency(serviceTotal)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <CreditCard size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('additionalCharges')}</Text>
+                </View>
+                <TextInput
+                  style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={checkOutForm.additionalCharges}
+                  onChangeText={(v) => setCheckOutForm(prev => ({ ...prev, additionalCharges: v }))}
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <CreditCard size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('discount')}</Text>
+                </View>
+                <TextInput
+                  style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={checkOutForm.discount}
+                  onChangeText={(v) => setCheckOutForm(prev => ({ ...prev, discount: v }))}
+                  placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                  keyboardType="numeric"
+                />
+              </View>
+
+              <View style={[styles.summaryCard, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{t('roomTotal')}</Text>
+                  <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(checkoutTotals.roomTotal)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{t('serviceTotal')}</Text>
+                  <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(serviceTotal)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{t('additionalCharges')}</Text>
+                  <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(checkoutTotals.additionalCharges)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{t('discount')}</Text>
+                  <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(checkoutTotals.discount)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{t('totalBeforeAdvance')}</Text>
+                  <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(checkoutTotals.grossTotal)}</Text>
+                </View>
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{t('advancePayment')}</Text>
+                  <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(checkoutTotals.advancePayment)}</Text>
+                </View>
+                <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.summaryRow}>
+                  <Text style={[styles.summaryLabel, { color: colors.text }]}>{t('remainingAmount')}</Text>
+                  <Text style={[styles.summaryValue, { color: colors.tint }]}>{formatCurrency(checkoutTotals.remainingAmount)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <View style={styles.formLabelRow}>
+                  <CreditCard size={16} color={colors.tint} />
+                  <Text style={[styles.formLabel, { color: colors.text }]}>{t('notes')}</Text>
+                </View>
+                <TextInput
+                  style={[styles.formInput, styles.notesInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={checkOutForm.notes}
+                  onChangeText={(v) => setCheckOutForm(prev => ({ ...prev, notes: v }))}
+                  placeholder={t('notes')}
+                  placeholderTextColor={colors.textSecondary}
+                  multiline
+                />
+              </View>
+            </View>
+
+            <View style={styles.formActions}>
+              <TouchableOpacity
+                style={[styles.formCancelBtn, { borderColor: colors.border }]}
+                onPress={() => setModalMode('details')}
+              >
+                <Text style={[styles.formCancelText, { color: colors.textSecondary }]}>{t('cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.formSecondaryBtn, saveCheckinInfoMutation.isPending && { opacity: 0.6 }]}
+                onPress={handleSaveCheckOutInfo}
+                disabled={saveCheckinInfoMutation.isPending}
+              >
+                {saveCheckinInfoMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <CheckCircle size={18} color="#fff" />
+                    <Text style={styles.formSubmitText}>{t('save')}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.formSubmitBtn, checkOutMutation.isPending && { opacity: 0.6 }]}
+                onPress={handleCheckOut}
+                disabled={checkOutMutation.isPending}
+              >
+                {checkOutMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <LogOut size={18} color="#fff" />
+                    <Text style={styles.formSubmitText}>{t('checkOut')}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      );
+    }
+
+    if (modalMode === 'cleaning') {
+      const isMaintenance = selectedRoom.status === 'maintenance';
+      return (
+        <View>
+          <View style={[styles.cleaningHeader, { borderBottomColor: colors.divider }]}>
+            <Brush size={24} color={isMaintenance ? Colors.status.maintenance : Colors.status.cleaning} />
+            <Text style={[styles.cleaningTitle, { color: colors.text }]}>
+              {(isMaintenance ? t('maintenance') : t('cleanRoom'))} - {t('roomNumber')} {selectedRoom.number}
+            </Text>
+          </View>
+          <Text style={[styles.cleaningNote, { color: colors.textSecondary }]}>
+            {isMaintenance ? t('completeMaintenance') : t('completeCleaning')}
+          </Text>
+          <View style={styles.formActions}>
+            <TouchableOpacity
+              style={[styles.formCancelBtn, { borderColor: colors.border }]}
+              onPress={() => setModalMode('details')}
+            >
+              <Text style={[styles.formCancelText, { color: colors.textSecondary }]}>{t('cancel')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.formSubmitBtn, markCleanMutation.isPending && { opacity: 0.6 }]}
+              onPress={handleMarkClean}
+              disabled={markCleanMutation.isPending}
+            >
+              {markCleanMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <CheckCircle size={18} color="#fff" />
+                  <Text style={styles.formSubmitText}>
+                    {isMaintenance ? t('completeMaintenance') : t('completeCleaning')}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
     if (modalMode === 'transfer') {
       return (
-        <ScrollView showsVerticalScrollIndicator={false}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
+          contentContainerStyle={{ paddingBottom: 24 }}
+          decelerationRate="normal"
+          scrollEventThrottle={16}
+        >
           <View style={[styles.transferHeader, { borderBottomColor: colors.divider }]}>
             <ArrowRightLeft size={24} color="#6366f1" />
             <Text style={[styles.transferTitle, { color: colors.text }]}>
@@ -782,9 +1919,34 @@ export default function RoomsScreen() {
     }
 
     return null;
-  }, [selectedRoom, modalMode, checkInForm, transferTargetId, availableRoomsForTransfer, colors, isDark, t, language,
-    handleCheckIn, handleCheckOut, handleShowCheckIn, handleShowTransfer, handleCleaning, handleMarkClean, handleMaintenance, handleTransfer,
-    checkInMutation.isPending, transferMutation.isPending, formatCurrency, getStatusLabel]);
+  }, [selectedRoom, modalMode, checkInForm, checkOutForm, transferTargetId, availableRoomsForTransfer, colors, isDark, t, language,
+    availableServices, isLoadingServiceList, selectedServices, serviceTotal, updateServiceQuantity, checkoutTotals, saveCheckinInfoMutation.isPending,
+    handleCheckIn, handleCheckOut, handleSaveCheckOutInfo, handleShowCheckIn, handleShowCheckOut, handleShowTransfer, handleCleaning, handleMarkClean, handleMaintenance, handleTransfer,
+    checkInMutation.isPending, checkOutMutation.isPending, markCleanMutation.isPending, transferMutation.isPending, formatCurrency, formatDateTime, getStatusLabel]);
+
+  const draft = useGuestDraftStore(s => s.draft);
+  useEffect(() => {
+    if (!draft) return;
+    if (!selectedRoom) return;
+    if (modalMode === 'checkin') {
+      setCheckInForm(prev => ({
+        ...prev,
+        guestName: draft.fullName || prev.guestName,
+        guestPhone: draft.phone || prev.guestPhone,
+        guestId: draft.idNumber || prev.guestId,
+        notes: prev.notes,
+      }));
+    }
+    if (modalMode === 'checkout') {
+      setCheckOutForm(prev => ({
+        ...prev,
+        guestName: draft.fullName || prev.guestName,
+        guestPhone: draft.phone || prev.guestPhone,
+        guestId: draft.idNumber || prev.guestId,
+        notes: prev.notes,
+      }));
+    }
+  }, [draft, modalMode, selectedRoom]);
 
   if (isLoading && rooms.length === 0) {
     return (
@@ -803,19 +1965,35 @@ export default function RoomsScreen() {
             <Text style={[styles.title, { color: colors.text }]}>{t('roomManagement')}</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{rooms.length} {t('rooms')}</Text>
           </View>
-          <View style={[styles.viewToggle, { backgroundColor: colors.cardBackground }]}>
+          <View style={styles.headerActions}>
             <TouchableOpacity
-              style={[styles.viewToggleBtn, viewMode === 'list' && { backgroundColor: colors.tint }]}
-              onPress={() => setViewMode('list')}
+              style={[styles.voucherBtn, { borderColor: colors.tint }]}
+              onPress={() => setIncomeModalVisible(true)}
             >
-              <List size={18} color={viewMode === 'list' ? '#fff' : colors.textSecondary} />
+              <PlusCircle size={16} color={colors.tint} />
+              <Text style={[styles.voucherBtnText, { color: colors.tint }]}>Phiếu thu</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.viewToggleBtn, viewMode === 'grid' && { backgroundColor: colors.tint }]}
-              onPress={() => setViewMode('grid')}
+              style={[styles.voucherBtn, { borderColor: colors.textSecondary }]}
+              onPress={() => setExpenseModalVisible(true)}
             >
-              <Grid3X3 size={18} color={viewMode === 'grid' ? '#fff' : colors.textSecondary} />
+              <MinusCircle size={16} color={colors.textSecondary} />
+              <Text style={[styles.voucherBtnText, { color: colors.textSecondary }]}>Phiếu chi</Text>
             </TouchableOpacity>
+            <View style={[styles.viewToggle, { backgroundColor: colors.cardBackground }]}>
+              <TouchableOpacity
+                style={[styles.viewToggleBtn, viewMode === 'list' && { backgroundColor: colors.tint }]}
+                onPress={() => setViewMode('list')}
+              >
+                <List size={18} color={viewMode === 'list' ? '#fff' : colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.viewToggleBtn, viewMode === 'grid' && { backgroundColor: colors.tint }]}
+                onPress={() => setViewMode('grid')}
+              >
+                <Grid3X3 size={18} color={viewMode === 'grid' ? '#fff' : colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </View>
@@ -868,6 +2046,24 @@ export default function RoomsScreen() {
             </Text>
           </TouchableOpacity>
         ))}
+        <TouchableOpacity
+          style={[
+            styles.filterChip,
+            { backgroundColor: colors.cardBackground },
+            selectedFilter === 'guest_out' && { backgroundColor: Colors.status.guestOut },
+          ]}
+          onPress={() => setSelectedFilter('guest_out')}
+        >
+          <Text
+            style={[
+              styles.filterChipText,
+              { color: colors.textSecondary },
+              selectedFilter === 'guest_out' && styles.filterChipTextActive,
+            ]}
+          >
+            {language === 'vi' ? 'Khách ra ngoài' : 'Guest Out'} ({statusCounts.guest_out})
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
 
       <ScrollView
@@ -909,7 +2105,13 @@ export default function RoomsScreen() {
         onRequestClose={closeModal}
       >
         <Pressable style={[styles.modalOverlay, { backgroundColor: colors.overlay }]} onPress={closeModal}>
-          <Pressable style={[styles.modalContent, { backgroundColor: colors.cardBackground }]} onPress={(e) => e.stopPropagation()}>
+          <Pressable style={[styles.modalContent, { backgroundColor: colors.cardBackground }]} onPress={(e) => {
+            e.stopPropagation();
+            // Close dropdown when clicking outside
+            if (isCheckoutServiceOpen) {
+              setIsCheckoutServiceOpen(false);
+            }
+          }}>
             <View style={styles.modalDragHandle}>
               <View style={[styles.dragBar, { backgroundColor: isDark ? '#475569' : '#d1d5db' }]} />
             </View>
@@ -917,6 +2119,292 @@ export default function RoomsScreen() {
               <X size={24} color={colors.textSecondary} />
             </TouchableOpacity>
             {renderModalContent()}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={isIncomeModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIncomeModalVisible(false)}
+      >
+        <Pressable style={[styles.modalOverlay, { backgroundColor: colors.overlay }]} onPress={() => setIncomeModalVisible(false)}>
+          <Pressable style={[styles.modalContent, { backgroundColor: colors.cardBackground }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalDragHandle}>
+              <View style={[styles.dragBar, { backgroundColor: isDark ? '#475569' : '#d1d5db' }]} />
+            </View>
+            <TouchableOpacity onPress={() => setIncomeModalVisible(false)} style={styles.modalCloseBtn}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <Text style={[styles.checkInTitle, { color: colors.text }]}>Tạo phiếu thu</Text>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Số tiền</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                keyboardType="numeric"
+                value={incomeAmount}
+                onChangeText={setIncomeAmount}
+                placeholder="0"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Hình thức</Text>
+              <View style={styles.chipsRow}>
+                {(['cash','bank_transfer','card','other'] as const).map(m => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[
+                      styles.chip,
+                      { borderColor: colors.border },
+                      incomeMethod === m && { backgroundColor: colors.tint }
+                    ]}
+                    onPress={() => setIncomeMethod(m)}
+                  >
+                    <Text style={[styles.chipText, { color: incomeMethod === m ? '#fff' : colors.textSecondary }]}>
+                      {m === 'cash' ? 'Tiền mặt' : m === 'bank_transfer' ? 'Chuyển khoản' : m === 'card' ? 'Thẻ' : 'Khác'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Loại</Text>
+              <View style={styles.chipsRow}>
+                {(['service','rental','other'] as const).map(c => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[
+                      styles.chip,
+                      { borderColor: colors.border },
+                      incomeCategory === c && { backgroundColor: colors.tint }
+                    ]}
+                    onPress={() => setIncomeCategory(c)}
+                  >
+                    <Text style={[styles.chipText, { color: incomeCategory === c ? '#fff' : colors.textSecondary }]}>
+                      {c === 'service' ? 'Dịch vụ' : c === 'rental' ? 'Thuê' : 'Khác'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Mô tả</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                value={incomeDescription}
+                onChangeText={setIncomeDescription}
+                placeholder="Mô tả"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Người nộp</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                value={incomePayer}
+                onChangeText={setIncomePayer}
+                placeholder="Tên người nộp"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Ghi chú</Text>
+              <TextInput
+                style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
+                multiline
+                value={incomeNotes}
+                onChangeText={setIncomeNotes}
+                placeholder="Ghi chú"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.submitButton, voucherSubmitting && styles.buttonDisabled, { backgroundColor: colors.tint }]}
+              onPress={async () => {
+                if (!selectedHotelId) {
+                  Alert.alert('Lỗi', 'Vui lòng chọn khách sạn');
+                  return;
+                }
+                const amountNum = Number(incomeAmount);
+                if (!amountNum || amountNum <= 0) {
+                  Alert.alert('Lỗi', 'Số tiền không hợp lệ');
+                  return;
+                }
+                setVoucherSubmitting(true);
+                const ok = await transactionsApi.createIncome({
+                  hotelId: selectedHotelId,
+                  amount: amountNum,
+                  method: incomeMethod,
+                  incomeCategory,
+                  description: incomeDescription,
+                  notes: incomeNotes,
+                  payer: incomePayer,
+                });
+                setVoucherSubmitting(false);
+                if (ok) {
+                  setIncomeModalVisible(false);
+                  setIncomeAmount('');
+                  setIncomeDescription('');
+                  setIncomePayer('');
+                  setIncomeNotes('');
+                  Alert.alert('Thành công', 'Đã tạo phiếu thu');
+                } else {
+                  Alert.alert('Lỗi', 'Không thể tạo phiếu thu');
+                }
+              }}
+              disabled={voucherSubmitting}
+            >
+              {voucherSubmitting ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.submitButtonText}>Tạo phiếu thu</Text>
+              )}
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={isExpenseModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExpenseModalVisible(false)}
+      >
+        <Pressable style={[styles.modalOverlay, { backgroundColor: colors.overlay }]} onPress={() => setExpenseModalVisible(false)}>
+          <Pressable style={[styles.modalContent, { backgroundColor: colors.cardBackground }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalDragHandle}>
+              <View style={[styles.dragBar, { backgroundColor: isDark ? '#475569' : '#d1d5db' }]} />
+            </View>
+            <TouchableOpacity onPress={() => setExpenseModalVisible(false)} style={styles.modalCloseBtn}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <Text style={[styles.checkInTitle, { color: colors.text }]}>Tạo phiếu chi</Text>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Số tiền</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                keyboardType="numeric"
+                value={expenseAmount}
+                onChangeText={setExpenseAmount}
+                placeholder="0"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Hình thức</Text>
+              <View style={styles.chipsRow}>
+                {(['cash','bank_transfer','card','other'] as const).map(m => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[
+                      styles.chip,
+                      { borderColor: colors.border },
+                      expenseMethod === m && { backgroundColor: colors.tint }
+                    ]}
+                    onPress={() => setExpenseMethod(m)}
+                  >
+                    <Text style={[styles.chipText, { color: expenseMethod === m ? '#fff' : colors.textSecondary }]}>
+                      {m === 'cash' ? 'Tiền mặt' : m === 'bank_transfer' ? 'Chuyển khoản' : m === 'card' ? 'Thẻ' : 'Khác'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Loại</Text>
+              <View style={styles.chipsRow}>
+                {(['supplies','utilities','salary','maintenance','marketing','other'] as const).map(c => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[
+                      styles.chip,
+                      { borderColor: colors.border },
+                      expenseCategory === c && { backgroundColor: colors.tint }
+                    ]}
+                    onPress={() => setExpenseCategory(c)}
+                  >
+                    <Text style={[styles.chipText, { color: expenseCategory === c ? '#fff' : colors.textSecondary }]}>
+                      {c === 'supplies' ? 'Vật tư' : c === 'utilities' ? 'Tiện ích' : c === 'salary' ? 'Lương' : c === 'maintenance' ? 'Bảo trì' : c === 'marketing' ? 'Marketing' : 'Khác'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Mô tả</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                value={expenseDescription}
+                onChangeText={setExpenseDescription}
+                placeholder="Mô tả"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Người nhận</Text>
+              <TextInput
+                style={[styles.input, { color: colors.text, borderColor: colors.border }]}
+                value={expenseRecipient}
+                onChangeText={setExpenseRecipient}
+                placeholder="Tên người nhận"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Ghi chú</Text>
+              <TextInput
+                style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
+                multiline
+                value={expenseNotes}
+                onChangeText={setExpenseNotes}
+                placeholder="Ghi chú"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.submitButton, voucherSubmitting && styles.buttonDisabled, { backgroundColor: colors.tint }]}
+              onPress={async () => {
+                if (!selectedHotelId) {
+                  Alert.alert('Lỗi', 'Vui lòng chọn khách sạn');
+                  return;
+                }
+                const amountNum = Number(expenseAmount);
+                if (!amountNum || amountNum <= 0) {
+                  Alert.alert('Lỗi', 'Số tiền không hợp lệ');
+                  return;
+                }
+                setVoucherSubmitting(true);
+                const ok = await transactionsApi.createExpense({
+                  hotelId: selectedHotelId,
+                  amount: amountNum,
+                  method: expenseMethod,
+                  expenseCategory,
+                  description: expenseDescription,
+                  notes: expenseNotes,
+                  recipient: expenseRecipient,
+                });
+                setVoucherSubmitting(false);
+                if (ok) {
+                  setExpenseModalVisible(false);
+                  setExpenseAmount('');
+                  setExpenseDescription('');
+                  setExpenseRecipient('');
+                  setExpenseNotes('');
+                  Alert.alert('Thành công', 'Đã tạo phiếu chi');
+                } else {
+                  Alert.alert('Lỗi', 'Không thể tạo phiếu chi');
+                }
+              }}
+              disabled={voucherSubmitting}
+            >
+              {voucherSubmitting ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={styles.submitButtonText}>Tạo phiếu chi</Text>
+              )}
+            </TouchableOpacity>
           </Pressable>
         </Pressable>
       </Modal>
@@ -961,6 +2449,19 @@ const styles = StyleSheet.create({
   viewToggleBtn: {
     padding: 8,
     borderRadius: 8,
+  },
+  voucherBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  voucherBtnText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
   },
   searchContainer: {
     paddingHorizontal: 20,
@@ -1051,6 +2552,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     flex: 1,
   },
+  guestOutBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  guestOutBadgeText: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+  },
   roomCard: {
     borderRadius: 16,
     padding: 16,
@@ -1082,6 +2597,11 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '600' as const,
+  },
+  statusBadgeGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   statusDot: {
     width: 8,
@@ -1172,8 +2692,54 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
-    maxHeight: '85%',
+    maxHeight: '90%',
     minHeight: 300,
+    overflow: 'hidden',
+  },
+  formRow: {
+    marginBottom: 12,
+  },
+  formLabel: {
+    fontSize: 13,
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  textArea: {
+    minHeight: 80,
+  },
+  chipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  chipText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+  },
+  submitButton: {
+    marginTop: 6,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700' as const,
   },
   modalDragHandle: {
     alignItems: 'center',
@@ -1322,9 +2888,32 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700' as const,
   },
+  checkoutInfoCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    gap: 6,
+    marginBottom: 12,
+  },
+  checkoutInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  checkoutInfoLabel: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  checkoutInfoValue: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
   formSection: {
     gap: 16,
     marginBottom: 20,
+  },
+  modalScrollContent: {
+    paddingBottom: 24,
   },
   formField: {
     gap: 8,
@@ -1343,6 +2932,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     fontSize: 15,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  optionChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  optionText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  notesInput: {
+    minHeight: 90,
+    textAlignVertical: 'top' as const,
   },
   guestCountRow: {
     flexDirection: 'row',
@@ -1375,6 +2983,190 @@ const styles = StyleSheet.create({
     minWidth: 24,
     textAlign: 'center',
   },
+  serviceList: {
+    gap: 10,
+  },
+  serviceDropdown: {
+    gap: 10,
+    position: 'relative',
+  },
+  serviceDropdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  serviceDropdownTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  serviceDropdownSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  serviceDropdownList: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    zIndex: 50,
+    elevation: 8,
+  },
+  serviceList: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  serviceDropdownScroll: {
+    maxHeight: 180,
+  },
+  serviceDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  serviceDropdownInfo: {
+    flex: 1,
+  },
+  serviceDropdownName: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  serviceDropdownPrice: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  serviceListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  serviceListActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  serviceDropdownActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  serviceAddBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceAddText: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: '#fff',
+  },
+  selectedServiceList: {
+    gap: 8,
+  },
+  selectedServiceItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 10,
+  },
+  selectedServiceInfo: {
+    flex: 1,
+  },
+  selectedServiceName: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  selectedServiceMeta: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  selectedServiceActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  selectedServiceTotal: {
+    fontSize: 13,
+    fontWeight: '700' as const,
+  },
+  removeServiceBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serviceItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  serviceInfo: {
+    flex: 1,
+  },
+  serviceName: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    marginBottom: 2,
+  },
+  servicePrice: {
+    fontSize: 12,
+  },
+  serviceTotalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  serviceTotalLabel: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  serviceTotalValue: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+  },
+  serviceEmptyText: {
+    fontSize: 13,
+  },
+  summaryCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    gap: 8,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  summaryLabel: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  summaryValue: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+  },
+  summaryDivider: {
+    height: 1,
+    width: '100%',
+  },
   formActions: {
     flexDirection: 'row',
     gap: 12,
@@ -1402,10 +3194,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
+  formSecondaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: '#0ea5e9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   formSubmitText: {
     fontSize: 15,
     fontWeight: '600' as const,
     color: '#fff',
+  },
+  cleaningHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    marginBottom: 16,
+  },
+  cleaningTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+  },
+  cleaningNote: {
+    fontSize: 14,
+    marginBottom: 20,
   },
   transferHeader: {
     flexDirection: 'row',

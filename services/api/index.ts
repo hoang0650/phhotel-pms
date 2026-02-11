@@ -8,5 +8,8 @@ export { hotelsApi } from './hotels';
 export { revenueApi } from './revenue';
 export { servicesApi } from './services';
 export { staffsApi } from './staffs';
+export { shiftHandoverApi } from './shiftHandover';
 export { authApi } from './auth';
 export { notificationsApi } from './notifications';
+export { transactionsApi } from './transactions';
+export { debtsApi } from './debts';

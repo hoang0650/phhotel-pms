@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -26,12 +27,46 @@ import Colors from '@/constants/colors';
 import { guestsApi } from '@/services/api';
 import { Guest } from '@/types/hotel';
 import { useHotel } from '@/contexts/HotelContext';
+import { Modal } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { aiApi } from '@/services/api/ai';
+import { useGuestDraftStore } from '@/stores/guestDraft';
 
 export default function GuestsScreen() {
   const insets = useSafeAreaInsets();
   const { selectedHotelId, selectedHotel } = useHotel();
   const [searchQuery, setSearchQuery] = useState('');
   const [showVipOnly, setShowVipOnly] = useState(false);
+  const [createVisible, setCreateVisible] = useState(false);
+  const [form, setForm] = useState({
+    fullName: '',
+    phone: '',
+    email: '',
+    idNumber: '',
+    nationality: 'Việt Nam',
+    address: '',
+    gender: '',
+    dateOfBirth: '',
+  });
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrStatus, setOcrStatus] = useState('');
+  const [ocrPhase, setOcrPhase] = useState<'upload' | 'scan' | 'process' | ''>('');
+  const [ocrImages, setOcrImages] = useState<string[]>([]);
+  const setGuestDraft = useGuestDraftStore(s => s.setDraft);
+
+  const clearOcrImages = () => {
+    setOcrImages([]);
+  };
+
+  const replaceOcrImageAt = async (index: number) => {
+    const file = await pickSingleImage();
+    if (!file) return;
+    setOcrImages(prev => {
+      const next = [...prev];
+      next[index] = file.uri;
+      return next;
+    });
+  };
 
   const { data: guests = [], isLoading, refetch } = useQuery({
     queryKey: ['guests', selectedHotelId],
@@ -129,6 +164,192 @@ export default function GuestsScreen() {
     );
   };
 
+  const pickSingleImage = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    if (res.canceled || !res.assets?.[0]) return null;
+    const a = res.assets[0];
+    const mime = (a as any).mimeType || 'image/jpeg';
+    return { uri: a.uri, name: a.fileName || 'image.jpg', type: mime };
+  };
+
+  const handleScanOneImage = async () => {
+    setOcrLoading(true);
+    setOcrPhase('upload');
+    setOcrStatus('Đang chọn ảnh...');
+    try {
+      const file = await pickSingleImage();
+      if (!file) return;
+      setOcrImages([file.uri]);
+      setOcrPhase('upload');
+      setOcrStatus('Đang upload ảnh lên AI...');
+      const data = await aiApi.ocr(file);
+      setOcrPhase('scan');
+      setOcrStatus('Đang scan OCR...');
+      setOcrPhase('process');
+      setOcrStatus('Đang xử lý kết quả...');
+      const next = normalizeOcrData(data);
+      setForm(prev => ({ ...prev, ...next }));
+      setGuestDraft({
+        fullName: next.fullName,
+        phone: next.phone,
+        idNumber: next.idNumber,
+        nationality: next.nationality,
+        address: next.address,
+        gender: next.gender,
+        dateOfBirth: next.dateOfBirth,
+      });
+    } catch (e: any) {
+      console.warn('OCR error', e?.message || e);
+    } finally {
+      setOcrLoading(false);
+      setOcrStatus('');
+      setOcrPhase('');
+    }
+  };
+
+  const handleScanTwoImages = async () => {
+    setOcrLoading(true);
+    setOcrPhase('upload');
+    setOcrStatus('Đang chọn ảnh mặt trước...');
+    try {
+      const front = await pickSingleImage();
+      if (!front) return;
+      setOcrImages([front.uri]);
+      setOcrPhase('upload');
+      setOcrStatus('Đang chọn ảnh mặt sau...');
+      const back = await pickSingleImage();
+      if (!back) return;
+      setOcrImages([front.uri, back.uri]);
+      setOcrPhase('upload');
+      setOcrStatus('Đang upload 2 ảnh lên AI...');
+      const data = await aiApi.ocrCard(front, back);
+      setOcrPhase('scan');
+      setOcrStatus('Đang scan OCR...');
+      setOcrPhase('process');
+      setOcrStatus('Đang xử lý kết quả...');
+      const next = normalizeOcrData(data);
+      setForm(prev => ({ ...prev, ...next }));
+      setGuestDraft({
+        fullName: next.fullName,
+        phone: next.phone,
+        idNumber: next.idNumber,
+        nationality: next.nationality,
+        address: next.address,
+        gender: next.gender,
+        dateOfBirth: next.dateOfBirth,
+      });
+    } catch (e: any) {
+      console.warn('OCR error', e?.message || e);
+    } finally {
+      setOcrLoading(false);
+      setOcrStatus('');
+      setOcrPhase('');
+    }
+  };
+
+  const normalizeOcrData = (ocrData: any) => {
+    const fullNameServer = typeof ocrData?.fullName === 'string' ? ocrData.fullName.trim() : '';
+    const idNum = typeof ocrData?.idNumber === 'string' ? ocrData.idNumber.replace(/\s+/g, '').trim() : '';
+    const nationality = ocrData?.nationality || 'Việt Nam';
+    const gender = ocrData?.gender && (ocrData.gender === 'male' || ocrData.gender === 'female') ? ocrData.gender : '';
+    const dateOfBirth = parseDateToISO(ocrData?.dateOfBirth) || '';
+    const rawText = Array.isArray(ocrData?.rawText)
+      ? ocrData.rawText
+      : typeof ocrData?.rawText === 'string'
+        ? ocrData.rawText.split(/\r?\n/)
+        : [];
+    const normLines = rawText.map((l: string) => (l || '').trim()).filter((l: string) => l.length > 0);
+    let address = typeof ocrData?.address === 'string' ? ocrData.address : '';
+    address = address.replace(/\bplace\s*of\s*birth\b/iu, '').replace(/(nơi\s*sinh|quê\s*quán)/iu, '').trim();
+    if (!address && normLines.length) {
+      address = buildAddressFromRaw(normLines);
+    }
+    const next = {
+      fullName: fullNameServer || form.fullName,
+      idNumber: idNum || form.idNumber,
+      nationality,
+      address: address || form.address,
+    gender: gender || form.gender,
+    dateOfBirth: dateOfBirth || form.dateOfBirth,
+      phone: form.phone,
+      email: form.email,
+    };
+    return next;
+  };
+
+  const parseDateToISO = (input: any): string | null => {
+    if (!input) return null;
+    if (typeof input === 'string') {
+      const s = input.replace(/[\.\-\s]/g, '/').trim();
+      const parts = s.split('/');
+      if (parts.length === 3) {
+        const d = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        const y = parseInt(parts[2], 10);
+        if (y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          const dt = new Date(y, m - 1, d);
+          if (!isNaN(dt.getTime())) {
+            const mm = String(m).padStart(2, '0');
+            const dd = String(d).padStart(2, '0');
+            return `${y}-${mm}-${dd}`;
+          }
+        }
+      }
+    }
+    return null;
+  };
+  const buildAddressFromRaw = (lines: string[]) => {
+    const norm = lines.map(l => (l || '').trim()).filter(l => l.length > 0);
+    const drop = /(họ\s*và\s*tên|ho\s*va\s*ten|full\s*name|giới\s*tính|gender|quốc\s*tịch|nationality|date\s*of|ngày|bộ\s*công\s*an|ministry|căn\s*cước|identity|^\d{9,12}$|<<)/iu;
+    const stop = /(TP\.?\s*Hồ\s*Chí\s*Minh|Hà\s*Nội|Đà\s*Nẵng|Cần\s*Thơ|TP\.?|Thành\s*phố|Tỉnh)/iu;
+    const hasKw = /(Thôn|Ấp|Xã|Phường|P\.?|Quận|Q\.?|Huyện|Đường|Số|Khu|KP|Khu\s*phố|Tổ|Block|Residence|Chung\s*cư|Apartment|Ward|District|Street|Road|City|Province|TP\.?|Thành\s*phố|Tỉnh)/iu;
+    const parts: string[] = [];
+    let started = false;
+    for (let i = 0; i < norm.length; i++) {
+      const l = norm[i];
+      if (drop.test(l)) continue;
+      if (!started && hasKw.test(l)) started = true;
+      if (!started) continue;
+      parts.push(l);
+      if (stop.test(l)) break;
+      if (/\bTP\.?\s*[A-ZÀÁẠẢÃÂĂÈÉẸẺẼÊÌÍỊỈĨÒÓỌỎÕÔƠÙÚỤỦŨƯỲÝỴỶỸ]/.test(l)) break;
+      if (/\bTỉnh\b/i.test(l)) break;
+    }
+    let s = parts.join(', ');
+    s = s.replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim();
+    s = s.replace(/Th(ù|ủ)\s*Thi(e|ê)m.*?TP\.\s*H(ồ|o)\s*Ch(i|í)\s*Minh/giu, '').trim();
+    return s;
+  };
+
+  const handleSave = async () => {
+    const payload = {
+      name: form.fullName || 'Khách lẻ',
+      phone: form.phone,
+      email: form.email,
+      idNumber: form.idNumber,
+      nationality: form.nationality,
+    };
+    const created = await guestsApi.create(payload);
+    if (created) {
+      setCreateVisible(false);
+      refetch();
+    }
+  };
+
+  const handleAssignDraft = () => {
+    setGuestDraft({
+      fullName: form.fullName,
+      phone: form.phone,
+      email: form.email,
+      idNumber: form.idNumber,
+      nationality: form.nationality,
+      address: form.address,
+      gender: form.gender,
+      dateOfBirth: form.dateOfBirth,
+    });
+    setCreateVisible(false);
+  };
+
   if (isLoading && guests.length === 0) {
     return (
       <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top }]}>
@@ -145,7 +366,7 @@ export default function GuestsScreen() {
           <Text style={styles.title}>Khách hàng</Text>
           <Text style={styles.subtitle}>{selectedHotel?.name || 'Tất cả'} • {guests.length} khách</Text>
         </View>
-        <TouchableOpacity style={styles.addButton}>
+        <TouchableOpacity style={styles.addButton} onPress={() => setCreateVisible(true)}>
           <Plus size={20} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -209,6 +430,90 @@ export default function GuestsScreen() {
           </View>
         )}
       </ScrollView>
+      <Modal visible={createVisible} transparent animationType="slide" onRequestClose={() => setCreateVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Thêm khách hàng</Text>
+              {ocrLoading && <ActivityIndicator size="small" color={Colors.light.tint} />}
+            </View>
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.scanBtn, { backgroundColor: '#0ea5e9' }]} onPress={handleScanOneImage}>
+                <Text style={styles.scanBtnText}>Scan 1 ảnh</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.scanBtn, { backgroundColor: '#6366f1' }]} onPress={handleScanTwoImages}>
+                <Text style={styles.scanBtnText}>Scan 2 mặt</Text>
+              </TouchableOpacity>
+            </View>
+            {!!ocrStatus && (
+              <View style={styles.ocrStatusRow}>
+                <ActivityIndicator size="small" color={Colors.light.textSecondary} />
+                <Text style={styles.ocrStatusText}>
+                  {ocrPhase === 'upload' ? 'Upload: ' : ocrPhase === 'scan' ? 'Scan: ' : ocrPhase === 'process' ? 'Xử lý: ' : ''}
+                  {ocrStatus}
+                </Text>
+              </View>
+            )}
+            {ocrImages.length > 0 && (
+              <View style={styles.ocrPreviewRow}>
+                <TouchableOpacity style={styles.ocrClearButton} onPress={clearOcrImages}>
+                  <Text style={styles.ocrClearText}>Xóa ảnh đã chọn</Text>
+                </TouchableOpacity>
+                {ocrImages.map((uri, index) => (
+                  <View key={`${uri}-${index}`} style={styles.ocrPreviewItem}>
+                    <Image source={{ uri }} style={styles.ocrPreviewImage} />
+                    {ocrImages.length > 1 && (
+                      <Text style={styles.ocrPreviewLabel}>{index === 0 ? 'Mặt trước' : 'Mặt sau'}</Text>
+                    )}
+                    <TouchableOpacity style={styles.ocrReplaceButton} onPress={() => replaceOcrImageAt(index)}>
+                      <Text style={styles.ocrReplaceText}>Chọn lại</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+            <View style={styles.inputRow}>
+              <Text style={styles.inputLabel}>Họ và tên</Text>
+              <TextInput style={styles.input} value={form.fullName} onChangeText={(v) => setForm({ ...form, fullName: v })} />
+            </View>
+            <View style={styles.inputRow}>
+              <Text style={styles.inputLabel}>SĐT</Text>
+              <TextInput style={styles.input} value={form.phone} onChangeText={(v) => setForm({ ...form, phone: v })} keyboardType="phone-pad" />
+            </View>
+            <View style={styles.inputRow}>
+              <Text style={styles.inputLabel}>CMND/CCCD</Text>
+              <TextInput style={styles.input} value={form.idNumber} onChangeText={(v) => setForm({ ...form, idNumber: v })} />
+            </View>
+            <View style={styles.inputRow}>
+              <Text style={styles.inputLabel}>Giới tính</Text>
+              <TextInput style={styles.input} value={form.gender} onChangeText={(v) => setForm({ ...form, gender: v })} placeholder="male hoặc female" />
+            </View>
+            <View style={styles.inputRow}>
+              <Text style={styles.inputLabel}>Ngày sinh</Text>
+              <TextInput style={styles.input} value={form.dateOfBirth} onChangeText={(v) => setForm({ ...form, dateOfBirth: v })} placeholder="dd/mm/yyyy hoặc yyyy-mm-dd" />
+            </View>
+            <View style={styles.inputRow}>
+              <Text style={styles.inputLabel}>Quốc tịch</Text>
+              <TextInput style={styles.input} value={form.nationality} onChangeText={(v) => setForm({ ...form, nationality: v })} />
+            </View>
+            <View style={styles.inputRow}>
+              <Text style={styles.inputLabel}>Địa chỉ</Text>
+              <TextInput style={styles.input} value={form.address} onChangeText={(v) => setForm({ ...form, address: v })} />
+            </View>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={[styles.footerBtn, { borderColor: Colors.light.border }]} onPress={() => setCreateVisible(false)}>
+                <Text style={[styles.footerBtnText, { color: Colors.light.textSecondary }]}>Đóng</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: Colors.light.tint }]} onPress={handleSave}>
+                <Text style={styles.footerPrimaryText}>Lưu</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: '#13c2c2' }]} onPress={handleAssignDraft}>
+                <Text style={styles.footerPrimaryText}>Assign vào Rooms</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -458,5 +763,135 @@ const styles = StyleSheet.create({
   emptySubtext: {
     fontSize: 13,
     color: Colors.light.textSecondary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    color: Colors.light.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  ocrStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  ocrStatusText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  ocrPreviewRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 12,
+  },
+  ocrClearButton: {
+    width: '100%',
+    alignItems: 'flex-end',
+  },
+  ocrClearText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    textDecorationLine: 'underline',
+  },
+  ocrPreviewItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 6,
+  },
+  ocrPreviewImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 10,
+    backgroundColor: '#eef2f7',
+  },
+  ocrPreviewLabel: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  ocrReplaceButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#eef2ff',
+  },
+  ocrReplaceText: {
+    fontSize: 12,
+    color: Colors.light.tint,
+  },
+  scanBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  scanBtnText: {
+    color: '#fff',
+    fontWeight: '600' as const,
+  },
+  inputRow: {
+    marginBottom: 10,
+  },
+  inputLabel: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginBottom: 4,
+  },
+  input: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: Colors.light.text,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  footerBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  footerBtnText: {
+    fontWeight: '600' as const,
+  },
+  footerPrimary: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  footerPrimaryText: {
+    color: '#fff',
+    fontWeight: '700' as const,
   },
 });

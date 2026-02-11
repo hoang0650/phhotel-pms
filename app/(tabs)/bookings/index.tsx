@@ -139,7 +139,7 @@ export default function BookingsScreen() {
           </View>
           <View style={[styles.paymentBadge, { backgroundColor: isPaid ? '#dcfce7' : '#fef3c7' }]}>
             <Text style={[styles.paymentStatus, { color: isPaid ? Colors.status.available : Colors.status.cleaning }]}>
-              {isPaid ? 'Đã thanh toán' : `Còn nợ ${formatCurrency(Number(booking.totalAmount) - Number(booking.paidAmount))}`}
+              Đã thanh toán
             </Text>
           </View>
         </View>

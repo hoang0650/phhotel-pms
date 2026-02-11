@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,9 @@ import {
   ClipboardList,
   Search,
   X,
+  Wallet,
+  Landmark,
+  CreditCard,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
@@ -42,8 +45,21 @@ import Colors from '@/constants/colors';
 import { useHotel } from '@/contexts/HotelContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { roomsApi, bookingsApi, revenueApi, notificationsApi } from '@/services/api';
+import { roomsApi, bookingsApi, revenueApi, notificationsApi, shiftHandoverApi } from '@/services/api';
 import { TextInput } from 'react-native';
+import { ShiftHandover } from '@/types/shift-handover';
+
+// Helper function to map payment methods, similar to backend
+const mapPaymentMethod = (method?: string): 'cash' | 'bank_transfer' | 'card' => {
+  const m = (method || 'cash').toLowerCase();
+  if (['transfer', 'banking', 'bank', 'bank_transfer', 'qr', 'vnpay'].includes(m)) {
+    return 'bank_transfer';
+  }
+  if (['card', 'credit_card', 'virtual_card', 'visa'].includes(m)) {
+    return 'card';
+  }
+  return 'cash';
+};
 
 interface QuickAccessItem {
   id: string;
@@ -60,6 +76,8 @@ export default function DashboardScreen() {
   const { isDark, colors } = useTheme();
   const [hotelModalVisible, setHotelModalVisible] = useState(false);
   const [notificationModalVisible, setNotificationModalVisible] = useState(false);
+  const [notifTab, setNotifTab] = useState<'all' | 'system' | 'hotel'>('all');
+  const [markingAll, setMarkingAll] = useState(false);
   const [hotelSearchText, setHotelSearchText] = useState('');
   const { hotels, selectedHotel, selectedHotelId, selectHotel, isLoading: hotelsLoading, canSelectMultipleHotels } = useHotel();
   const { user } = useAuth();
@@ -79,6 +97,12 @@ export default function DashboardScreen() {
     queryFn: () => selectedHotelId ? bookingsApi.getByHotel(selectedHotelId) : bookingsApi.getAll(),
     enabled: true,
   });
+  
+  const { data: roomEvents = [], isLoading: eventsLoading, refetch: refetchEvents } = useQuery({
+    queryKey: ['roomEvents', selectedHotelId],
+    queryFn: () => selectedHotelId ? roomsApi.getEventsByHotel(selectedHotelId, { limit: 50, types: ['checkin', 'checkout'] }) : Promise.resolve([]),
+    enabled: !!selectedHotelId,
+  });
 
   const { data: revenueData, isLoading: revenueLoading, refetch: refetchRevenue } = useQuery({
     queryKey: ['revenue', selectedHotelId],
@@ -96,17 +120,67 @@ export default function DashboardScreen() {
     },
     enabled: !!selectedHotelId,
   });
+  
+  const { data: revenueSummary } = useQuery({
+    queryKey: ['revenueSummary', selectedHotelId],
+    queryFn: () => revenueApi.getSummary(selectedHotelId || ''),
+    enabled: !!selectedHotelId,
+  });
+  const { data: breakdownRange } = useQuery({
+    queryKey: ['revenueBreakdownRangeDashboard', selectedHotelId],
+    queryFn: async () => {
+      const today = new Date();
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - 6);
+      return revenueApi.getBreakdownByRange(
+        selectedHotelId || '',
+        startDate.toISOString().split('T')[0],
+        today.toISOString().split('T')[0]
+      );
+    },
+    enabled: !!selectedHotelId,
+  });
+
+  const { data: paymentBreakdown } = useQuery({
+    queryKey: ['shiftRevenueDashboard', selectedHotelId],
+    queryFn: async () => {
+      const today = new Date();
+      const startDate = new Date(today);
+      startDate.setDate(today.getDate() - 6);
+      return shiftHandoverApi.getRevenue(
+        selectedHotelId || '',
+        startDate.toISOString().split('T')[0],
+        today.toISOString().split('T')[0]
+      );
+    },
+    enabled: !!selectedHotelId,
+  });
+
+  const totalRevenuePeriod = revenueData?.totalRevenue || 0;
 
   const { data: notifications = [], refetch: refetchNotifications } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => notificationsApi.getAll(),
   });
+  const { data: unreadSummary = { total: 0, system: 0, hotel: 0 }, refetch: refetchUnread } = useQuery({
+    queryKey: ['notificationsUnread'],
+    queryFn: () => notificationsApi.getUnreadCount(),
+  });
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadCount = unreadSummary?.total ?? notifications.filter(n => !n.isRead).length;
+  const filteredNotifications = useMemo(() => {
+    if (notifTab === 'system') return notifications.filter(n => (n.metadata?.targetType || 'system') === 'system');
+    if (notifTab === 'hotel') return notifications.filter(n => n.metadata?.targetType === 'hotel');
+    return notifications;
+  }, [notifications, notifTab]);
 
-  const isLoading = hotelsLoading || roomsLoading || bookingsLoading || revenueLoading;
+  const isLoading = hotelsLoading || roomsLoading || bookingsLoading || revenueLoading || eventsLoading;
 
   const today = new Date().toISOString().split('T')[0];
+  const isSameDay = (d: string | Date, now: Date) => {
+    const dt = typeof d === 'string' ? new Date(d) : d;
+    return dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth() && dt.getDate() === now.getDate();
+  };
   
   // Calculate stats based on hotelapp logic
   // guestOutRooms: rooms where status is occupied and guestStatus is out
@@ -128,15 +202,12 @@ export default function DashboardScreen() {
     occupancyRate: totalRoomsCount > 0 
       ? Math.round((occupiedRoomsCount / totalRoomsCount) * 100) 
       : 0,
-    // Use revenue data from API
-    totalRevenue: revenueData?.totalRevenue || 0,
-    todayRevenue: revenueData?.revenueData && revenueData.revenueData.length > 0 
-      ? revenueData.revenueData[revenueData.revenueData.length - 1] 
-      : 0
+    totalRevenue: totalRevenuePeriod,
+    todayRevenue: revenueSummary?.todayRevenue || 0
   };
 
-  const todayCheckIns = bookings.filter(b => b.checkIn === today && b.status === 'confirmed');
-  const todayCheckOuts = bookings.filter(b => b.checkOut === today && b.status === 'checked_in');
+  const todayCheckIns = roomEvents.filter(e => e.type === 'checkin' && (e.checkinTime ? isSameDay(e.checkinTime, new Date()) : isSameDay(e.createdAt, new Date())));
+  const todayCheckOuts = roomEvents.filter(e => e.type === 'checkout' && (e.checkoutTime ? isSameDay(e.checkoutTime, new Date()) : isSameDay(e.createdAt, new Date())));
 
   const quickAccessItems: QuickAccessItem[] = [
     { id: 'bookings', title: 'Đặt phòng', icon: <ClipboardList size={22} color="#6366f1" />, route: '/(tabs)/bookings', color: '#6366f1', bgColor: '#eef2ff' },
@@ -146,7 +217,17 @@ export default function DashboardScreen() {
   ];
 
   const handleRefresh = async () => {
-    await Promise.all([refetchRooms(), refetchBookings(), refetchRevenue(), refetchNotifications()]);
+    await Promise.all([refetchRooms(), refetchBookings(), refetchRevenue(), refetchNotifications(), refetchUnread()]);
+  };
+
+  const handleMarkAllRead = async () => {
+    if (markingAll) return;
+    setMarkingAll(true);
+    try {
+      await notificationsApi.markAllAsRead();
+      await Promise.all([refetchNotifications(), refetchUnread()]);
+    } catch {}
+    setMarkingAll(false);
   };
 
   const formatCurrency = (amount: number) => {
@@ -370,7 +451,7 @@ export default function DashboardScreen() {
         <View style={styles.revenueSection}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>Doanh thu</Text>
-            <View style={styles.growthBadge}>
+            <View style={[styles.growthBadge, { backgroundColor: isPositiveGrowth ? '#10b98120' : '#ef444420'}]}>
               {isPositiveGrowth ? (
                 <TrendingUp size={14} color="#10b981" />
               ) : (
@@ -384,7 +465,7 @@ export default function DashboardScreen() {
           
           <View style={styles.revenueCards}>
             <LinearGradient
-              colors={['#0f766e', '#0d9488']}
+              colors={isDark ? ['#0f766e', '#0d9488'] : ['#14b8a6', '#0d9488']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.revenueMainCard}
@@ -394,11 +475,11 @@ export default function DashboardScreen() {
               </View>
               <Text style={styles.revenueMainLabel}>Hôm nay</Text>
               <Text style={styles.revenueMainValue}>
-                {formatFullCurrency(stats.todayRevenue)}
+                {formatCurrency(stats.todayRevenue)}
               </Text>
               <View style={styles.revenueCompare}>
                 <Text style={styles.revenueCompareText}>
-                  Tổng doanh thu: {formatCurrency(revenueData?.totalRevenue || 0)}
+                  Tổng doanh thu: {formatCurrency(totalRevenuePeriod)}
                 </Text>
               </View>
             </LinearGradient>
@@ -426,45 +507,18 @@ export default function DashboardScreen() {
               <View style={[styles.breakdownDot, { backgroundColor: '#0d9488' }]} />
               <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Doanh thu phòng</Text>
               <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                {formatCurrency(revenueData?.totalRevenue || 0)}
+                {formatCurrency((breakdownRange?.roomRevenue ?? revenueSummary?.roomRevenue) || 0)}
               </Text>
             </View>
             <View style={styles.breakdownItem}>
               <View style={[styles.breakdownDot, { backgroundColor: '#f59e0b' }]} />
               <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Doanh thu dịch vụ</Text>
               <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                {formatCurrency(0)}
+                {formatCurrency((breakdownRange?.serviceRevenue ?? revenueSummary?.serviceRevenue) || 0)}
               </Text>
             </View>
           </View>
 
-          {revenueData?.revenueData && revenueData.revenueData.length > 0 && (
-            <View style={[styles.chartContainer, { backgroundColor: colors.cardBackground }]}>
-              <Text style={[styles.chartTitle, { color: colors.text }]}>Doanh thu 7 ngày qua</Text>
-              <View style={styles.chart}>
-                {revenueData.revenueData.map((revenue: number, index: number) => {
-                  const label = revenueData.labels?.[index] 
-                    ? revenueData.labels[index].split('-').slice(1).reverse().join('/')
-                    : '';
-                  return (
-                    <View key={index} style={styles.chartBar}>
-                      <View style={styles.chartBarContainer}>
-                        <View 
-                          style={[
-                            styles.chartBarFill, 
-                            { height: `${(revenue / maxDailyRevenue) * 100}%` }
-                          ]} 
-                        />
-                      </View>
-                      <Text style={styles.chartLabel}>
-                        {label}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          )}
         </View>
 
         <View style={styles.section}>
@@ -479,17 +533,24 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
           {todayCheckIns.length > 0 ? (
-            todayCheckIns.slice(0, 3).map((booking) => (
-              <View key={booking.id} style={[styles.bookingCard, { backgroundColor: colors.cardBackground }]}>
+            todayCheckIns.slice(0, 3).map((ev) => (
+              <View key={ev.id} style={[styles.bookingCard, { backgroundColor: colors.cardBackground }]}>
                 <View style={styles.bookingInfo}>
                   <View style={[styles.roomBadge, { backgroundColor: colors.tint }]}>
                     <BedDouble size={14} color="#fff" />
-                    <Text style={styles.roomBadgeText}>{booking.roomNumber}</Text>
+                    <Text style={styles.roomBadgeText}>{ev.roomNumber}</Text>
                   </View>
                   <View style={styles.bookingDetails}>
-                    <Text style={[styles.guestName, { color: colors.text }]}>{booking.guestName}</Text>
+                    <Text style={[styles.guestName, { color: colors.text }]}>{ev.guestName || 'Khách lẻ'}</Text>
                     <Text style={[styles.bookingMeta, { color: colors.textSecondary }]}>
-                      {booking.adults} người lớn • {booking.checkIn} - {booking.checkOut}
+                      {(() => {
+                        const dt = ev.checkinTime ? new Date(ev.checkinTime) : new Date(ev.createdAt);
+                        const hh = String(dt.getHours()).padStart(2, '0');
+                        const mm = String(dt.getMinutes()).padStart(2, '0');
+                        const dd = String(dt.getDate()).padStart(2, '0');
+                        const mo = String(dt.getMonth() + 1).padStart(2, '0');
+                        return `${hh}:${mm} • ${dd}/${mo}`;
+                      })()}
                     </Text>
                   </View>
                 </View>
@@ -518,18 +579,15 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
           {todayCheckOuts.length > 0 ? (
-            todayCheckOuts.slice(0, 3).map((booking) => (
-              <View key={booking.id} style={[styles.bookingCard, { backgroundColor: colors.cardBackground }]}>
+            todayCheckOuts.slice(0, 3).map((ev) => (
+              <View key={ev.id} style={[styles.bookingCard, { backgroundColor: colors.cardBackground }]}>
                 <View style={styles.bookingInfo}>
                   <View style={[styles.roomBadge, { backgroundColor: Colors.status.cleaning }]}>
                     <BedDouble size={14} color="#fff" />
-                    <Text style={styles.roomBadgeText}>{booking.roomNumber}</Text>
+                    <Text style={styles.roomBadgeText}>{ev.roomNumber}</Text>
                   </View>
                   <View style={styles.bookingDetails}>
-                    <Text style={[styles.guestName, { color: colors.text }]}>{booking.guestName}</Text>
-                    <Text style={[styles.bookingMeta, { color: colors.textSecondary }]}>
-                      Còn nợ: {formatFullCurrency(booking.totalAmount - booking.paidAmount)}
-                    </Text>
+                    <Text style={[styles.guestName, { color: colors.text }]}>{ev.guestName || 'Khách lẻ'}</Text>
                   </View>
                 </View>
                 <TouchableOpacity style={[styles.checkInBtn, { backgroundColor: Colors.status.cleaning }]}>
@@ -626,10 +684,50 @@ export default function DashboardScreen() {
           onPress={() => setNotificationModalVisible(false)}
         >
           <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Thông báo</Text>
+            <View style={styles.modalHeaderRow}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Thông báo</Text>
+              <TouchableOpacity
+                style={[styles.markAllBtn, { borderColor: colors.tint }]}
+                onPress={handleMarkAllRead}
+                disabled={markingAll}
+              >
+                {markingAll ? (
+                  <ActivityIndicator size="small" color={colors.tint} />
+                ) : (
+                  <Text style={[styles.markAllBtnText, { color: colors.tint }]}>Mark all as read</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+            <View style={styles.tabsRow}>
+              <TouchableOpacity
+                style={[styles.tabItem, notifTab === 'all' && styles.tabItemActive]}
+                onPress={() => setNotifTab('all')}
+              >
+                <Text style={[styles.tabText, notifTab === 'all' && styles.tabTextActive]}>All</Text>
+                <View style={[styles.tabUnderline, notifTab === 'all' && styles.tabUnderlineActive]} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tabItem, notifTab === 'system' && styles.tabItemActive]}
+                onPress={() => setNotifTab('system')}
+              >
+                <Text style={[styles.tabText, notifTab === 'system' && styles.tabTextActive]}>
+                  System {unreadSummary?.system ? `(${unreadSummary.system})` : ''}
+                </Text>
+                <View style={[styles.tabUnderline, notifTab === 'system' && styles.tabUnderlineActive]} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tabItem, notifTab === 'hotel' && styles.tabItemActive]}
+                onPress={() => setNotifTab('hotel')}
+              >
+                <Text style={[styles.tabText, notifTab === 'hotel' && styles.tabTextActive]}>
+                  Hotel {unreadSummary?.hotel ? `(${unreadSummary.hotel})` : ''}
+                </Text>
+                <View style={[styles.tabUnderline, notifTab === 'hotel' && styles.tabUnderlineActive]} />
+              </TouchableOpacity>
+            </View>
             <ScrollView style={styles.notificationList}>
-              {notifications.length > 0 ? (
-                notifications.slice(0, 10).map((notification) => (
+              {filteredNotifications.length > 0 ? (
+                filteredNotifications.slice(0, 10).map((notification) => (
                   <View 
                     key={notification.id} 
                     style={[
@@ -1047,6 +1145,12 @@ const styles = StyleSheet.create({
     color: Colors.light.textSecondary,
     marginTop: 6,
   },
+  chartValue: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    color: Colors.light.text,
+    marginTop: 6,
+  },
   section: {
     marginBottom: 24,
   },
@@ -1253,5 +1357,52 @@ const styles = StyleSheet.create({
   emptyNotificationsText: {
     fontSize: 14,
     color: Colors.light.textSecondary,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 12,
+  },
+  markAllBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  markAllBtnText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+  },
+  tabItem: {
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  tabItemActive: {
+    opacity: 1,
+  },
+  tabText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+  },
+  tabTextActive: {
+    color: Colors.light.text,
+    fontWeight: '600' as const,
+  },
+  tabUnderline: {
+    height: 2,
+    width: 24,
+    backgroundColor: 'transparent',
+    marginTop: 6,
+    borderRadius: 1,
+  },
+  tabUnderlineActive: {
+    backgroundColor: Colors.light.tint,
   },
 });

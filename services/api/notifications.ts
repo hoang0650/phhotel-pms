@@ -59,7 +59,7 @@ export interface ApiNotification {
 }
 
 export interface ApiAnnouncement {
-  _id: string;
+  id: string;
   type: string;
   title: string;
   message: string;
@@ -108,7 +108,7 @@ const mapApiNotificationToNotification = (apiNotif: ApiNotification): Notificati
 });
 
 const mapApiAnnouncementToAnnouncement = (apiAnn: ApiAnnouncement): Announcement => ({
-  id: apiAnn._id,
+  id: apiAnn.id,
   type: (apiAnn.type as Announcement['type']) || 'info',
   title: apiAnn.title,
   message: apiAnn.message,
@@ -131,11 +131,21 @@ export const notificationsApi = {
   // Get all user notifications
   getAll: async (): Promise<Notification[]> => {
     try {
-      const response = await apiClient.get<ApiNotification[] | { data: ApiNotification[] }>(
-        API_ENDPOINTS.NOTIFICATIONS.BASE
-      );
-      const notifications = Array.isArray(response) ? response : (response?.data || []);
-      return notifications.map(mapApiNotificationToNotification);
+      const response = await apiClient.get<NotificationResponse>(API_ENDPOINTS.NOTIFICATIONS.BASE);
+      const announcements = response?.data ? response.data.map(mapApiAnnouncementToAnnouncement) : [];
+      return announcements.map(a => ({
+        id: a.id,
+        title: a.title,
+        message: a.message,
+        type: (a.type as Notification['type']) || 'info',
+        isRead: !!a.isRead,
+        priority: a.priority,
+        userId: a.userId,
+        action: undefined,
+        metadata: { targetType: a.targetType, notificationType: a.notificationType },
+        createdAt: a.createdAt,
+        expiresAt: a.endDate,
+      }));
     } catch (error) {
       console.error('[notificationsApi.getAll] Error:', error);
       return [];
@@ -145,9 +155,7 @@ export const notificationsApi = {
   // Get all announcements (admin/system notifications)
   getAnnouncements: async (): Promise<Announcement[]> => {
     try {
-      const response = await apiClient.get<NotificationResponse>(
-        `${API_ENDPOINTS.NOTIFICATIONS.BASE}/announcements`
-      );
+      const response = await apiClient.get<NotificationResponse>(API_ENDPOINTS.NOTIFICATIONS.BASE);
       if (response.success && response.data) {
         return response.data.map(mapApiAnnouncementToAnnouncement);
       }
@@ -186,7 +194,7 @@ export const notificationsApi = {
   // Mark announcement as read
   markAnnouncementAsRead: async (id: string): Promise<void> => {
     try {
-      await apiClient.post(`${API_ENDPOINTS.NOTIFICATIONS.BASE}/announcements/${id}/read`, {});
+      await apiClient.post(`${API_ENDPOINTS.NOTIFICATIONS.BASE}/${id}/read`, {});
     } catch (error) {
       console.error('[notificationsApi.markAnnouncementAsRead] Error:', error);
     }
@@ -195,7 +203,7 @@ export const notificationsApi = {
   // Mark all notifications as read
   markAllAsRead: async (): Promise<void> => {
     try {
-      await apiClient.put(`${API_ENDPOINTS.NOTIFICATIONS.BASE}/mark-all-read`, {});
+      await apiClient.post(`${API_ENDPOINTS.NOTIFICATIONS.BASE}/read-all`, {});
     } catch (error) {
       console.error('[notificationsApi.markAllAsRead] Error:', error);
     }

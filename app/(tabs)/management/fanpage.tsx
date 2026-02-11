@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,17 +7,22 @@ import {
   TextInput,
   TouchableOpacity,
   SafeAreaView,
+  ActivityIndicator,
   Alert,
   Modal,
   Image,
-  Platform,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { aiApi } from '@/services/api/ai';
 
 interface FacebookMessage {
   id: string;
+  page_id?: string;
   sender_id: string;
+  recipient_id?: string;
   sender_name?: string;
   sender_avatar?: string;
   text: string;
@@ -48,101 +53,12 @@ interface Conversation {
   unreadCount: number;
 }
 
-const MOCK_PAGES: FacebookPage[] = [
-  {
-    id: '1',
-    name: 'Khách Sạn Phương Hoàng',
-    access_token: 'mock_token_1',
-    category: 'Hotel',
-    picture: { data: { url: 'https://via.placeholder.com/150' } },
-  },
-  {
-    id: '2',
-    name: 'Resort Paradise',
-    access_token: 'mock_token_2',
-    category: 'Resort',
-    picture: { data: { url: 'https://via.placeholder.com/150' } },
-  },
-];
-
-const MOCK_MESSAGES: FacebookMessage[] = [
-  {
-    id: '1',
-    sender_id: 'user_123',
-    sender_name: 'Nguyễn Văn A',
-    sender_avatar: 'https://via.placeholder.com/50',
-    text: 'Xin chào, tôi muốn đặt phòng cho cuối tuần này',
-    direction: 'in',
-    timestamp: Date.now() - 3600000, // 1 hour ago
-    mid: 'mid_1',
-  },
-  {
-    id: '2',
-    sender_id: 'page_1',
-    text: 'Chào anh! Chúng tôi có thể giúp gì cho anh về đặt phòng?',
-    direction: 'out',
-    timestamp: Date.now() - 3300000, // 55 minutes ago
-    mid: 'mid_2',
-  },
-  {
-    id: '3',
-    sender_id: 'user_123',
-    sender_name: 'Nguyễn Văn A',
-    sender_avatar: 'https://via.placeholder.com/50',
-    text: 'Tôi cần 1 phòng đôi cho 2 người, từ thứ 6 đến chủ nhật',
-    direction: 'in',
-    timestamp: Date.now() - 3000000, // 50 minutes ago
-    mid: 'mid_3',
-  },
-  {
-    id: '4',
-    sender_id: 'user_456',
-    sender_name: 'Trần Thị B',
-    sender_avatar: 'https://via.placeholder.com/50',
-    text: 'Phòng có view biển không ạ?',
-    direction: 'in',
-    timestamp: Date.now() - 7200000, // 2 hours ago
-    mid: 'mid_4',
-  },
-  {
-    id: '5',
-    sender_id: 'page_1',
-    text: 'Dạ có ạ, chúng tôi có phòng hướng biển rất đẹp',
-    direction: 'out',
-    timestamp: Date.now() - 6900000, // 1 hour 55 minutes ago
-    mid: 'mid_5',
-  },
-  {
-    id: '6',
-    sender_id: 'user_789',
-    sender_name: 'Lê Văn C',
-    sender_avatar: 'https://via.placeholder.com/50',
-    text: 'Giá phòng bao nhiêu 1 đêm?',
-    direction: 'in',
-    timestamp: Date.now() - 10800000, // 3 hours ago
-    mid: 'mid_6',
-  },
-  {
-    id: '7',
-    sender_id: 'user_789',
-    sender_name: 'Lê Văn C',
-    sender_avatar: 'https://via.placeholder.com/50',
-    attachments: [{
-      type: 'image',
-      payload: { url: 'https://via.placeholder.com/300x200' }
-    }],
-    text: 'Tôi gửi ảnh chụp màn hình giá nhé',
-    direction: 'in',
-    timestamp: Date.now() - 10500000, // 2 hours 55 minutes ago
-    mid: 'mid_7',
-  },
-];
-
 export default function FanpageManagementScreen() {
   const { language } = useLanguage();
-  const [pages, setPages] = useState<FacebookPage[]>(MOCK_PAGES);
-  const [selectedPageId, setSelectedPageId] = useState<string>('1');
-  const [messages, setMessages] = useState<FacebookMessage[]>(MOCK_MESSAGES);
+  const { user } = useAuth();
+  const [pages, setPages] = useState<FacebookPage[]>([]);
+  const [selectedPageId, setSelectedPageId] = useState<string>('');
+  const [messages, setMessages] = useState<FacebookMessage[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedSenderId, setSelectedSenderId] = useState<string>('');
   const [displayedMessages, setDisplayedMessages] = useState<FacebookMessage[]>([]);
@@ -152,6 +68,7 @@ export default function FanpageManagementScreen() {
   const [isBotActive, setIsBotActive] = useState<boolean>(false);
   const [showConversations, setShowConversations] = useState<boolean>(false);
   const [showConnectModal, setShowConnectModal] = useState<boolean>(false);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const translations = {
     vi: {
@@ -179,8 +96,6 @@ export default function FanpageManagementScreen() {
       connectedPages: 'Fanpage đã kết nối',
       noPages: 'Chưa có Fanpage nào được kết nối',
       addPage: 'Thêm Fanpage',
-      disconnect: 'Ngắt kết nối',
-      confirmDisconnect: 'Bạn có chắc chắn muốn ngắt kết nối Fanpage này?',
       yesterday: 'Hôm qua',
       today: 'Hôm nay',
       image: 'Hình ảnh',
@@ -188,6 +103,9 @@ export default function FanpageManagementScreen() {
       audio: 'Âm thanh',
       file: 'Tệp tin',
       attachment: 'Tệp đính kèm',
+      loadFailed: 'Không thể tải dữ liệu Fanpage.',
+      connectFailed: 'Không thể kết nối Fanpage.',
+      sendFailed: 'Không thể gửi tin nhắn.',
     },
     en: {
       title: 'Fanpage Management',
@@ -214,8 +132,6 @@ export default function FanpageManagementScreen() {
       connectedPages: 'Connected Pages',
       noPages: 'No pages connected yet',
       addPage: 'Add Page',
-      disconnect: 'Disconnect',
-      confirmDisconnect: 'Are you sure you want to disconnect this fanpage?',
       yesterday: 'Yesterday',
       today: 'Today',
       image: 'Image',
@@ -223,21 +139,71 @@ export default function FanpageManagementScreen() {
       audio: 'Audio',
       file: 'File',
       attachment: 'Attachment',
+      loadFailed: 'Failed to load fanpage data.',
+      connectFailed: 'Failed to connect fanpage.',
+      sendFailed: 'Failed to send message.',
     },
   };
 
   const t = translations[language as keyof typeof translations];
+  const tenantId = (user?.hotelId || user?.businessId || 'default').toString();
 
   useEffect(() => {
     buildConversations();
-    loadBotStatus();
-  }, [messages, selectedPageId]);
+  }, [messages, selectedSenderId, t.attachment]);
 
   useEffect(() => {
     if (selectedSenderId) {
       filterDisplayedMessages();
     }
   }, [selectedSenderId, messages]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    refreshData();
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    const wsUrl = aiApi.getWebSocketUrl(tenantId);
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onmessage = event => {
+      try {
+        const data = JSON.parse(event.data);
+        if (!data) return;
+        if (selectedPageId && data.page_id && data.page_id !== selectedPageId) return;
+
+        const incoming: FacebookMessage = {
+          id: data.mid || Date.now().toString(),
+          page_id: data.page_id,
+          sender_id: data.sender_id,
+          recipient_id: data.recipient_id,
+          sender_name: data.sender_name,
+          sender_avatar: data.sender_avatar,
+          text: data.text || '',
+          attachments: data.attachments,
+          direction: data.direction === 'out' ? 'out' : 'in',
+          timestamp: typeof data.timestamp === 'number' ? data.timestamp : Date.now(),
+          mid: data.mid,
+        };
+
+        setMessages(prev => {
+          if (incoming.mid && prev.some(m => m.mid === incoming.mid)) return prev;
+          return [...prev, incoming];
+        });
+      } catch {}
+    };
+
+    ws.onclose = () => {
+      wsRef.current = null;
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [tenantId, selectedPageId]);
 
   const buildConversations = () => {
     const conversationMap = new Map<string, Conversation>();
@@ -269,7 +235,10 @@ export default function FanpageManagementScreen() {
       }
     });
     
-    setConversations(Array.from(conversationMap.values()));
+    const nextConversations = Array.from(conversationMap.values()).map(c =>
+      c.sender_id === selectedSenderId ? { ...c, unreadCount: 0 } : c
+    );
+    setConversations(nextConversations);
   };
 
   const filterDisplayedMessages = () => {
@@ -282,30 +251,69 @@ export default function FanpageManagementScreen() {
     setDisplayedMessages(filtered);
   };
 
-  const loadBotStatus = async () => {
-    if (!selectedPageId) return;
-    // Simulate API call
-    setTimeout(() => {
-      setIsBotActive(Math.random() > 0.5);
-    }, 500);
+  const loadBotStatus = async (pageId: string) => {
+    try {
+      const status = await aiApi.getBotStatus(tenantId, pageId);
+      setIsBotActive(!!status?.active);
+    } catch {
+      setIsBotActive(false);
+    }
   };
 
   const toggleBot = async (enabled: boolean) => {
     setIsBotActive(enabled);
-    // Simulate API call
-    setTimeout(() => {
-      // Handle success/error
-    }, 1000);
+    if (!selectedPageId) return;
+    try {
+      await aiApi.toggleBot(tenantId, selectedPageId, enabled);
+    } catch (error) {
+      setIsBotActive(!enabled);
+    }
   };
+
+  const loadPages = useCallback(async () => {
+    const response = await aiApi.getFacebookPages(tenantId);
+    const nextPages = Array.isArray(response?.pages) ? response.pages : [];
+    setPages(nextPages);
+    return nextPages;
+  }, [tenantId]);
+
+  const loadMessages = useCallback(async (pageId: string) => {
+    const response = await aiApi.getFacebookMessages(tenantId, pageId);
+    const rawMessages = Array.isArray(response?.messages) ? response.messages : [];
+    const normalized: FacebookMessage[] = rawMessages.map((m: any) => ({
+      id: m.mid || String(m.timestamp || Date.now()),
+      page_id: m.page_id,
+      sender_id: m.sender_id,
+      recipient_id: m.recipient_id,
+      sender_name: m.sender_name,
+      sender_avatar: m.sender_avatar,
+      text: m.text || '',
+      attachments: m.attachments,
+      direction: m.direction === 'out' ? 'out' : 'in',
+      timestamp: typeof m.timestamp === 'number' ? m.timestamp : Date.now(),
+      mid: m.mid,
+    }));
+    setMessages(normalized);
+  }, [tenantId]);
 
   const refreshData = async () => {
     setIsLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      // In real implementation, this would fetch new messages
+      const nextPages = await loadPages();
+      const nextPageId = nextPages.find(p => p.id === selectedPageId)?.id || nextPages[0]?.id || '';
+      setSelectedPageId(nextPageId);
+      setSelectedSenderId('');
+      setDisplayedMessages([]);
+      if (nextPageId) {
+        await loadMessages(nextPageId);
+        await loadBotStatus(nextPageId);
+      } else {
+        setMessages([]);
+        setConversations([]);
+        setIsBotActive(false);
+      }
     } catch (error) {
-      console.error('Error refreshing data:', error);
+      Alert.alert(t.refresh, t.loadFailed);
     } finally {
       setIsLoading(false);
     }
@@ -315,11 +323,15 @@ export default function FanpageManagementScreen() {
     setSelectedPageId(pageId);
     setSelectedSenderId('');
     setDisplayedMessages([]);
-    // Simulate loading messages for new page
     setIsLoading(true);
-    setTimeout(() => {
+    try {
+      await loadMessages(pageId);
+      await loadBotStatus(pageId);
+    } catch {
+      Alert.alert(t.refresh, t.loadFailed);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const selectConversation = (senderId: string) => {
@@ -340,61 +352,48 @@ export default function FanpageManagementScreen() {
 
     setIsSending(true);
     try {
+      const response = await aiApi.sendFacebookMessage(
+        tenantId,
+        selectedPageId,
+        selectedSenderId,
+        replyText.trim()
+      );
+      const mid = response?.message_id || `out_${Date.now()}`;
       const newMessage: FacebookMessage = {
-        id: Date.now().toString(),
+        id: mid,
+        page_id: selectedPageId,
         sender_id: selectedPageId,
         recipient_id: selectedSenderId,
-        text: replyText,
+        text: replyText.trim(),
         direction: 'out',
         timestamp: Date.now(),
-        mid: `mid_${Date.now()}`,
+        mid,
       };
-      
-      setMessages(prev => [...prev, newMessage]);
+
+      setMessages(prev => {
+        if (newMessage.mid && prev.some(m => m.mid === newMessage.mid)) return prev;
+        return [...prev, newMessage];
+      });
       setReplyText('');
-      
-      // Simulate sending delay
-      await new Promise(resolve => setTimeout(resolve, 500));
     } catch (error) {
-      console.error('Error sending message:', error);
+      Alert.alert(t.send, t.sendFailed);
     } finally {
       setIsSending(false);
     }
   };
 
-  const connectFanpage = async () => {
-    setShowConnectModal(true);
-  };
-
   const handleConnectFanpage = async () => {
-    // Simulate Facebook OAuth flow
-    Alert.alert(
-      t.facebookLogin,
-      'This would open Facebook login in a real implementation',
-      [{ text: 'OK' }]
-    );
-    setShowConnectModal(false);
-  };
-
-  const disconnectFanpage = async (pageId: string) => {
-    Alert.alert(
-      t.confirmDisconnect,
-      '',
-      [
-        { text: t.cancel, style: 'cancel' },
-        {
-          text: t.disconnect,
-          onPress: () => {
-            setPages(prev => prev.filter(p => p.id !== pageId));
-            if (selectedPageId === pageId) {
-              setSelectedPageId('');
-              setSelectedSenderId('');
-              setDisplayedMessages([]);
-            }
-          },
-        },
-      ]
-    );
+    try {
+      const result = await aiApi.getFacebookOAuthUrl(tenantId);
+      if (result?.url) {
+        await Linking.openURL(result.url);
+        setShowConnectModal(false);
+      } else {
+        Alert.alert(t.connectFanpage, t.connectFailed);
+      }
+    } catch {
+      Alert.alert(t.connectFanpage, t.connectFailed);
+    }
   };
 
   const formatTimestamp = (timestamp: number) => {
@@ -523,7 +522,14 @@ export default function FanpageManagementScreen() {
   );
 
   const renderPageItem = (page: FacebookPage) => (
-    <View key={page.id} style={styles.pageItem}>
+    <TouchableOpacity
+      key={page.id}
+      style={styles.pageItem}
+      onPress={() => {
+        changePage(page.id);
+        setShowConnectModal(false);
+      }}
+    >
       <Image
         source={{ uri: page.picture?.data.url || 'https://via.placeholder.com/60' }}
         style={styles.pageAvatar}
@@ -537,14 +543,7 @@ export default function FanpageManagementScreen() {
           {page.category || 'Khách sạn'}
         </Text>
       </View>
-      
-      <TouchableOpacity
-        style={styles.disconnectButton}
-        onPress={() => disconnectFanpage(page.id)}
-      >
-        <Ionicons name="close" size={16} color="#f44336" />
-      </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 
   return (
@@ -571,7 +570,7 @@ export default function FanpageManagementScreen() {
           <Text style={styles.pageSelectorLabel}>{t.selectPage}:</Text>
           <TouchableOpacity
             style={styles.pageSelectorButton}
-            onPress={() => { /* Page selection modal */ }}
+            onPress={() => setShowConnectModal(true)}
           >
             <Text style={styles.pageSelectorText} numberOfLines={1}>
               {pages.find(p => p.id === selectedPageId)?.name || t.selectPage}
@@ -597,7 +596,7 @@ export default function FanpageManagementScreen() {
             <Ionicons name="refresh" size={20} color="#666" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.toolbarButton} onPress={connectFanpage}>
+          <TouchableOpacity style={styles.toolbarButton} onPress={() => setShowConnectModal(true)}>
             <Ionicons name="add" size={20} color="#4CAF50" />
           </TouchableOpacity>
         </View>

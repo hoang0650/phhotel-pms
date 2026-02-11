@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "PHHotel PMS Interface",
+    "name": "PHHotel PMS",
     "slug": "phhotel-pms-interface",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/phgroup_logo_circle.png",
     "scheme": "rork-app",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,

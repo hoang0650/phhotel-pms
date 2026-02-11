@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,15 +9,16 @@ import {
   Modal,
   TextInput,
   Alert,
+  Switch,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Utensils,
-  Shirt,
   Car,
   Heart,
   Wine,
-  Waves,
+  Coffee,
   Plus,
   Search,
   Clock,
@@ -31,25 +32,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useHotel } from '@/contexts/HotelContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { servicesApi } from '@/services/api';
 import { Service, ServiceOrder } from '@/types/hotel';
 
 const SERVICE_ICONS: Record<string, React.ComponentType<{ size: number; color: string }>> = {
+  room_service: Coffee,
   food: Utensils,
-  laundry: Shirt,
+  beverage: Wine,
+  spa: Heart,
   transport: Car,
-  wellness: Heart,
-  wine: Wine,
-  waves: Waves,
+  custom: Package,
 };
 
-const CATEGORIES = [
-  { id: 'all', name: 'Tất cả' },
-  { id: 'food', name: 'Ẩm thực' },
-  { id: 'laundry', name: 'Giặt ủi' },
+const SERVICE_CATEGORY_OPTIONS = [
+  { id: 'room_service', name: 'Dịch vụ phòng' },
+  { id: 'food', name: 'Đồ ăn' },
+  { id: 'beverage', name: 'Đồ uống' },
+  { id: 'spa', name: 'Spa/Massage' },
   { id: 'transport', name: 'Vận chuyển' },
-  { id: 'wellness', name: 'Chăm sóc' },
+  { id: 'custom', name: 'Khác' },
 ];
+
+const CATEGORY_FILTERS = [{ id: 'all', name: 'Tất cả' }, ...SERVICE_CATEGORY_OPTIONS];
 
 const ORDER_STATUS_COLORS: Record<string, string> = {
   pending: '#f59e0b',
@@ -68,43 +73,135 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
 export default function ServicesScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { selectedHotelId } = useHotel();
+  const { selectedHotelId, hotels, selectHotel, canSelectMultipleHotels, isLoading: hotelsLoading } = useHotel();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'services' | 'orders'>('services');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [orderModalVisible, setOrderModalVisible] = useState(false);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
+  const [serviceModalVisible, setServiceModalVisible] = useState(false);
+  const [serviceModalMode, setServiceModalMode] = useState<'create' | 'edit' | 'view'>('view');
+  const [hotelModalVisible, setHotelModalVisible] = useState(false);
+  const [hotelPickerMode, setHotelPickerMode] = useState<'filter' | 'form'>('filter');
+  const [serviceForm, setServiceForm] = useState({
+    hotelId: selectedHotelId || '',
+    name: '',
+    description: '',
+    price: '',
+    category: 'custom',
+    image: '',
+    isActive: true,
+    currency: 'VND',
+    isCustom: false,
+    costPrice: '',
+    importQuantity: '',
+    salesQuantity: '',
+  });
 
   const { data: services = [], isLoading: servicesLoading, refetch: refetchServices } = useQuery({
     queryKey: ['services', selectedHotelId],
     queryFn: () => servicesApi.getAll(selectedHotelId || undefined),
+    enabled: !canSelectMultipleHotels || !!selectedHotelId,
   });
 
   const { data: orders = [], isLoading: ordersLoading, refetch: refetchOrders } = useQuery({
     queryKey: ['serviceOrders', selectedHotelId],
     queryFn: () => servicesApi.getOrders(selectedHotelId || undefined),
+    enabled: !canSelectMultipleHotels || !!selectedHotelId,
   });
 
   const updateOrderMutation = useMutation({
     mutationFn: ({ orderId, status }: { orderId: string; status: ServiceOrder['status'] }) =>
       servicesApi.updateOrderStatus(orderId, status),
-    onSuccess: () => {
+    onSuccess: result => {
+      if (!result) {
+        Alert.alert('Thông báo', 'Không thể cập nhật trạng thái đơn hàng');
+        return;
+      }
       queryClient.invalidateQueries({ queryKey: ['serviceOrders'] });
+      Alert.alert('Thông báo', 'Đã cập nhật trạng thái đơn hàng');
+    },
+    onError: () => {
+      Alert.alert('Thông báo', 'Không thể cập nhật trạng thái đơn hàng');
+    },
+  });
+
+  const createServiceMutation = useMutation({
+    mutationFn: (payload: Omit<Service, 'id'>) => servicesApi.create(payload),
+    onSuccess: result => {
+      if (!result) {
+        Alert.alert('Thông báo', 'Không thể thêm dịch vụ');
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['services'] });
+      setServiceModalVisible(false);
+      Alert.alert('Thông báo', 'Đã thêm dịch vụ');
+    },
+    onError: () => {
+      Alert.alert('Thông báo', 'Không thể thêm dịch vụ');
+    },
+  });
+
+  const updateServiceMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<Service> }) =>
+      servicesApi.update(id, payload),
+    onSuccess: result => {
+      if (!result) {
+        Alert.alert('Thông báo', 'Không thể cập nhật dịch vụ');
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['services'] });
+      setServiceModalVisible(false);
+      Alert.alert('Thông báo', 'Đã cập nhật dịch vụ');
+    },
+    onError: () => {
+      Alert.alert('Thông báo', 'Không thể cập nhật dịch vụ');
+    },
+  });
+
+  const deleteServiceMutation = useMutation({
+    mutationFn: (id: string) => servicesApi.delete(id),
+    onSuccess: result => {
+      if (!result) {
+        Alert.alert('Thông báo', 'Không thể xóa dịch vụ');
+        return;
+      }
+      queryClient.invalidateQueries({ queryKey: ['services'] });
+      setServiceModalVisible(false);
+      Alert.alert('Thông báo', 'Đã xóa dịch vụ');
+    },
+    onError: () => {
+      Alert.alert('Thông báo', 'Không thể xóa dịch vụ');
     },
   });
 
   const isLoading = servicesLoading || ordersLoading;
 
-  const filteredServices = services.filter(service => {
-    const matchesCategory = selectedCategory === 'all' || service.category === selectedCategory;
-    const matchesSearch = service.name.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch && service.isActive;
-  });
+  const filteredServices = useMemo(() => {
+    return services.filter(service => {
+      const matchesCategory = selectedCategory === 'all' || service.category === selectedCategory;
+      const matchesSearch = service.name.toLowerCase().includes(searchQuery.trim().toLowerCase());
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'active' ? service.isActive : !service.isActive);
+      return matchesCategory && matchesSearch && matchesStatus;
+    });
+  }, [services, selectedCategory, searchQuery, statusFilter]);
 
-  const formatCurrency = (amount: number) => {
+  const categoryLabelMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    SERVICE_CATEGORY_OPTIONS.forEach(option => {
+      map[option.id] = option.name;
+    });
+    return map;
+  }, []);
+
+  const formatCurrency = (amount: number, currency?: string) => {
+    const resolvedCurrency = currency || 'VND';
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
-      currency: 'VND',
+      currency: resolvedCurrency,
       maximumFractionDigits: 0,
     }).format(amount);
   };
@@ -132,20 +229,164 @@ export default function ServicesScreen() {
     return IconComponent;
   };
 
+  const canManageServices =
+    user?.role === 'superadmin' ||
+    user?.role === 'admin' ||
+    user?.role === 'business' ||
+    user?.role === 'hotel_manager';
+
+  const isHotelManager = user?.role === 'hotel_manager';
+
+  useEffect(() => {
+    if (serviceModalMode === 'create') {
+      setServiceForm(prev => ({
+        ...prev,
+        hotelId: selectedHotelId || prev.hotelId,
+      }));
+    }
+  }, [selectedHotelId, serviceModalMode]);
+
+  const resetServiceForm = (hotelId?: string | null) => {
+    setServiceForm({
+      hotelId: hotelId || '',
+      name: '',
+      description: '',
+      price: '',
+      category: 'custom',
+      image: '',
+      isActive: true,
+      currency: 'VND',
+      isCustom: false,
+      costPrice: '',
+      importQuantity: '',
+      salesQuantity: '',
+    });
+  };
+
+  const setFormFromService = (service: Service) => {
+    setServiceForm({
+      hotelId: service.hotelId || selectedHotelId || '',
+      name: service.name || '',
+      description: service.description || '',
+      price: String(service.price ?? 0),
+      category: service.category || 'custom',
+      image: service.image || '',
+      isActive: service.isActive ?? true,
+      currency: service.currency || 'VND',
+      isCustom: service.isCustom ?? false,
+      costPrice: String(service.costPrice ?? 0),
+      importQuantity: String(service.importQuantity ?? 0),
+      salesQuantity: String(service.salesQuantity ?? 0),
+    });
+  };
+
+  const openCreateModal = () => {
+    if (!canManageServices) {
+      Alert.alert('Thông báo', 'Bạn không có quyền thực hiện thao tác này');
+      return;
+    }
+    if (!selectedHotelId && canSelectMultipleHotels) {
+      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn trước');
+      return;
+    }
+    resetServiceForm(selectedHotelId);
+    setSelectedService(null);
+    setServiceModalMode('create');
+    setServiceModalVisible(true);
+  };
+
+  const openServiceModal = (service: Service) => {
+    setSelectedService(service);
+    setFormFromService(service);
+    if (canManageServices) {
+      setServiceModalMode('edit');
+    } else {
+      setServiceModalMode('view');
+    }
+    setServiceModalVisible(true);
+  };
+
+  const handleSaveService = () => {
+    const priceValue = Number(serviceForm.price || 0);
+    if (!serviceForm.hotelId) {
+      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn');
+      return;
+    }
+    if (!serviceForm.name.trim()) {
+      Alert.alert('Thông báo', 'Vui lòng nhập tên dịch vụ');
+      return;
+    }
+    if (Number.isNaN(priceValue) || priceValue < 0) {
+      Alert.alert('Thông báo', 'Vui lòng nhập giá hợp lệ');
+      return;
+    }
+    if (!serviceForm.category) {
+      Alert.alert('Thông báo', 'Vui lòng chọn danh mục');
+      return;
+    }
+
+    const payload: Omit<Service, 'id'> = {
+      hotelId: serviceForm.hotelId,
+      name: serviceForm.name.trim(),
+      description: serviceForm.description.trim(),
+      price: priceValue,
+      category: serviceForm.category,
+      image: serviceForm.image || undefined,
+      isActive: serviceForm.isActive,
+      currency: serviceForm.currency || 'VND',
+      isCustom: serviceForm.isCustom,
+      costPrice: Number(serviceForm.costPrice || 0),
+      importQuantity: Number(serviceForm.importQuantity || 0),
+      salesQuantity: Number(serviceForm.salesQuantity || 0),
+      icon: selectedService?.icon,
+    };
+
+    if (serviceModalMode === 'edit' && selectedService) {
+      updateServiceMutation.mutate({ id: selectedService.id, payload });
+    } else if (serviceModalMode === 'create') {
+      createServiceMutation.mutate(payload);
+    }
+  };
+
+  const handleDeleteService = () => {
+    if (!selectedService) return;
+    Alert.alert('Xác nhận', 'Bạn có chắc muốn xóa dịch vụ này?', [
+      { text: 'Hủy', style: 'cancel' },
+      {
+        text: 'Xóa',
+        style: 'destructive',
+        onPress: () => deleteServiceMutation.mutate(selectedService.id),
+      },
+    ]);
+  };
+
+  const handleSelectHotel = (hotelId: string) => {
+    if (hotelPickerMode === 'filter') {
+      selectHotel(hotelId);
+    } else {
+      setServiceForm(prev => ({ ...prev, hotelId }));
+    }
+    setHotelModalVisible(false);
+  };
+
   const pendingOrders = orders.filter(o => o.status === 'pending').length;
   const processingOrders = orders.filter(o => o.status === 'processing').length;
 
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={['#7c3aed', '#a855f7']}
+        colors={['#0f766e', '#14b8a6']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: insets.top + 12 }]}
       >
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Dịch vụ</Text>
-          <TouchableOpacity style={styles.addButton}>
-            <Plus size={20} color="#fff" />
-          </TouchableOpacity>
+          {canManageServices && (
+            <TouchableOpacity style={styles.addButton} onPress={openCreateModal}>
+              <Plus size={20} color="#fff" />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.statsRow}>
@@ -200,6 +441,27 @@ export default function ServicesScreen() {
       >
         {activeTab === 'services' ? (
           <>
+            {canSelectMultipleHotels && (
+              <View style={styles.hotelSelectorRow}>
+                <TouchableOpacity
+                  style={styles.hotelSelector}
+                  onPress={() => {
+                    setHotelPickerMode('filter');
+                    setHotelModalVisible(true);
+                  }}
+                >
+                  <Text style={styles.hotelSelectorText}>
+                    {selectedHotelId
+                      ? hotels.find(hotel => hotel.id === selectedHotelId)?.name || 'Chọn khách sạn'
+                      : 'Chọn khách sạn'}
+                  </Text>
+                  {hotelsLoading ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : null}
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View style={styles.searchContainer}>
               <View style={styles.searchBox}>
                 <Search size={18} color={Colors.light.textSecondary} />
@@ -219,7 +481,7 @@ export default function ServicesScreen() {
               style={styles.categoriesContainer}
               contentContainerStyle={styles.categoriesContent}
             >
-              {CATEGORIES.map(category => (
+              {CATEGORY_FILTERS.map(category => (
                 <TouchableOpacity
                   key={category.id}
                   style={[
@@ -240,6 +502,32 @@ export default function ServicesScreen() {
               ))}
             </ScrollView>
 
+            <View style={styles.statusFilterRow}>
+              {[
+                { id: 'all', name: 'Tất cả' },
+                { id: 'active', name: 'Hoạt động' },
+                { id: 'inactive', name: 'Ngừng' },
+              ].map(status => (
+                <TouchableOpacity
+                  key={status.id}
+                  style={[
+                    styles.statusChip,
+                    statusFilter === status.id && styles.statusChipActive,
+                  ]}
+                  onPress={() => setStatusFilter(status.id as 'all' | 'active' | 'inactive')}
+                >
+                  <Text
+                    style={[
+                      styles.statusChipText,
+                      statusFilter === status.id && styles.statusChipTextActive,
+                    ]}
+                  >
+                    {status.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <View style={styles.servicesGrid}>
               {filteredServices.map(service => {
                 const IconComponent = getServiceIcon(service.category);
@@ -247,10 +535,7 @@ export default function ServicesScreen() {
                   <TouchableOpacity
                     key={service.id}
                     style={styles.serviceCard}
-                    onPress={() => {
-                      setSelectedService(service);
-                      setOrderModalVisible(true);
-                    }}
+                    onPress={() => openServiceModal(service)}
                   >
                     <View style={[styles.serviceIconContainer, { backgroundColor: '#f3e8ff' }]}>
                       <IconComponent size={24} color="#7c3aed" />
@@ -258,7 +543,17 @@ export default function ServicesScreen() {
                     <Text style={styles.serviceName} numberOfLines={2}>
                       {service.name}
                     </Text>
-                    <Text style={styles.servicePrice}>{formatCurrency(service.price)}</Text>
+                    <Text style={styles.serviceCategory}>
+                      {categoryLabelMap[service.category] || 'Khác'}
+                    </Text>
+                    <Text style={styles.servicePrice}>
+                      {formatCurrency(service.price, service.currency)}
+                    </Text>
+                    {!service.isActive && (
+                      <View style={styles.serviceInactiveBadge}>
+                        <Text style={styles.serviceInactiveText}>Ngừng hoạt động</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -359,32 +654,278 @@ export default function ServicesScreen() {
       </ScrollView>
 
       <Modal
-        visible={orderModalVisible}
+        visible={serviceModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setOrderModalVisible(false)}
+        onRequestClose={() => setServiceModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={styles.serviceModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{selectedService?.name}</Text>
-              <TouchableOpacity onPress={() => setOrderModalVisible(false)}>
+              <Text style={styles.modalTitle}>
+                {serviceModalMode === 'create'
+                  ? 'Thêm dịch vụ'
+                  : serviceModalMode === 'edit'
+                    ? 'Cập nhật dịch vụ'
+                    : 'Chi tiết dịch vụ'}
+              </Text>
+              <TouchableOpacity onPress={() => setServiceModalVisible(false)}>
                 <X size={24} color={Colors.light.text} />
               </TouchableOpacity>
             </View>
-            <Text style={styles.modalDescription}>{selectedService?.description}</Text>
-            <Text style={styles.modalPrice}>
-              Giá: {formatCurrency(selectedService?.price || 0)}
-            </Text>
-            <TouchableOpacity
-              style={styles.orderButton}
-              onPress={() => {
-                Alert.alert('Thông báo', 'Tính năng đặt dịch vụ sẽ được cập nhật sau');
-                setOrderModalVisible(false);
-              }}
-            >
-              <Text style={styles.orderButtonText}>Đặt dịch vụ</Text>
-            </TouchableOpacity>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Khách sạn</Text>
+                {canSelectMultipleHotels ? (
+                  <TouchableOpacity
+                    style={styles.selectInput}
+                    onPress={() => {
+                      if (serviceModalMode === 'view' || isHotelManager) return;
+                      setHotelPickerMode('form');
+                      setHotelModalVisible(true);
+                    }}
+                    disabled={serviceModalMode === 'view' || isHotelManager}
+                  >
+                    <Text style={styles.selectInputText}>
+                      {serviceForm.hotelId
+                        ? hotels.find(hotel => hotel.id === serviceForm.hotelId)?.name || 'Chọn khách sạn'
+                        : 'Chọn khách sạn'}
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.readonlyInput}>
+                    <Text style={styles.readonlyText}>
+                      {hotels.find(hotel => hotel.id === (serviceForm.hotelId || selectedHotelId))?.name || 'Chọn khách sạn'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Tên dịch vụ</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={serviceForm.name}
+                  onChangeText={value => setServiceForm(prev => ({ ...prev, name: value }))}
+                  placeholder="Nhập tên dịch vụ"
+                  editable={serviceModalMode !== 'view'}
+                />
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={[styles.formField, styles.formHalf]}>
+                  <Text style={styles.formLabel}>Giá bán</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={serviceForm.price}
+                    onChangeText={value => setServiceForm(prev => ({ ...prev, price: value }))}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    editable={serviceModalMode !== 'view'}
+                  />
+                </View>
+                <View style={[styles.formField, styles.formHalf]}>
+                  <Text style={styles.formLabel}>Đơn vị tiền</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={serviceForm.currency}
+                    onChangeText={value => setServiceForm(prev => ({ ...prev, currency: value }))}
+                    placeholder="VND"
+                    editable={serviceModalMode !== 'view'}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Danh mục</Text>
+                <View style={styles.categoryOptions}>
+                  {SERVICE_CATEGORY_OPTIONS.map(option => (
+                    <TouchableOpacity
+                      key={option.id}
+                      style={[
+                        styles.categoryOption,
+                        serviceForm.category === option.id && styles.categoryOptionActive,
+                      ]}
+                      onPress={() => {
+                        if (serviceModalMode === 'view') return;
+                        setServiceForm(prev => ({ ...prev, category: option.id }));
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.categoryOptionText,
+                          serviceForm.category === option.id && styles.categoryOptionTextActive,
+                        ]}
+                      >
+                        {option.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Mô tả</Text>
+                <TextInput
+                  style={[styles.textInput, styles.textArea]}
+                  value={serviceForm.description}
+                  onChangeText={value => setServiceForm(prev => ({ ...prev, description: value }))}
+                  placeholder="Mô tả chi tiết"
+                  multiline
+                  numberOfLines={3}
+                  editable={serviceModalMode !== 'view'}
+                />
+              </View>
+
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Hình ảnh (URL)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={serviceForm.image}
+                  onChangeText={value => setServiceForm(prev => ({ ...prev, image: value }))}
+                  placeholder="https://"
+                  editable={serviceModalMode !== 'view'}
+                />
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={[styles.formField, styles.formHalf]}>
+                  <Text style={styles.formLabel}>Giá vốn</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={serviceForm.costPrice}
+                    onChangeText={value => setServiceForm(prev => ({ ...prev, costPrice: value }))}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    editable={serviceModalMode !== 'view'}
+                  />
+                </View>
+                <View style={[styles.formField, styles.formHalf]}>
+                  <Text style={styles.formLabel}>Nhập kho</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={serviceForm.importQuantity}
+                    onChangeText={value => setServiceForm(prev => ({ ...prev, importQuantity: value }))}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    editable={serviceModalMode !== 'view'}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={[styles.formField, styles.formHalf]}>
+                  <Text style={styles.formLabel}>Bán ra</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={serviceForm.salesQuantity}
+                    onChangeText={value => setServiceForm(prev => ({ ...prev, salesQuantity: value }))}
+                    keyboardType="numeric"
+                    placeholder="0"
+                    editable={serviceModalMode !== 'view'}
+                  />
+                </View>
+                <View style={[styles.formField, styles.formHalf]}>
+                  <Text style={styles.formLabel}>Tùy chỉnh</Text>
+                  <View style={styles.switchRow}>
+                    <Switch
+                      value={serviceForm.isCustom}
+                      onValueChange={value => setServiceForm(prev => ({ ...prev, isCustom: value }))}
+                      disabled={serviceModalMode === 'view'}
+                    />
+                    <Text style={styles.switchLabel}>{serviceForm.isCustom ? 'Có' : 'Không'}</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>Trạng thái</Text>
+                <View style={styles.switchRow}>
+                  <Switch
+                    value={serviceForm.isActive}
+                    onValueChange={value => setServiceForm(prev => ({ ...prev, isActive: value }))}
+                    disabled={serviceModalMode === 'view'}
+                  />
+                  <Text style={styles.switchLabel}>{serviceForm.isActive ? 'Hoạt động' : 'Không hoạt động'}</Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              {serviceModalMode === 'view' && canManageServices && (
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => setServiceModalMode('edit')}
+                >
+                  <Text style={styles.editButtonText}>Chỉnh sửa</Text>
+                </TouchableOpacity>
+              )}
+              {serviceModalMode !== 'view' && (
+                <TouchableOpacity
+                  style={styles.saveButton}
+                  onPress={handleSaveService}
+                  disabled={createServiceMutation.isPending || updateServiceMutation.isPending}
+                >
+                  <Text style={styles.saveButtonText}>
+                    {serviceModalMode === 'edit' ? 'Cập nhật' : 'Thêm mới'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {serviceModalMode === 'edit' && (
+                <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteService}>
+                  <Text style={styles.deleteButtonText}>Xóa</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={hotelModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setHotelModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.hotelModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chọn khách sạn</Text>
+              <TouchableOpacity onPress={() => setHotelModalVisible(false)}>
+                <X size={24} color={Colors.light.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {hotelsLoading ? (
+                <View style={styles.hotelLoadingRow}>
+                  <ActivityIndicator size="small" color="#7c3aed" />
+                  <Text style={styles.hotelLoadingText}>Đang tải khách sạn...</Text>
+                </View>
+              ) : (
+                hotels.map(hotel => (
+                  <TouchableOpacity
+                    key={hotel.id}
+                    style={[
+                      styles.hotelOption,
+                      (hotelPickerMode === 'filter' ? selectedHotelId : serviceForm.hotelId) === hotel.id &&
+                        styles.hotelOptionSelected,
+                    ]}
+                    onPress={() => handleSelectHotel(hotel.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.hotelOptionText,
+                        (hotelPickerMode === 'filter' ? selectedHotelId : serviceForm.hotelId) === hotel.id &&
+                          styles.hotelOptionTextSelected,
+                      ]}
+                    >
+                      {hotel.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -493,6 +1034,23 @@ const styles = StyleSheet.create({
     marginTop: 32,
     paddingHorizontal: 16,
   },
+  hotelSelectorRow: {
+    marginBottom: 16,
+  },
+  hotelSelector: {
+    backgroundColor: '#7c3aed',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  hotelSelectorText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
   searchContainer: {
     marginBottom: 16,
   },
@@ -520,6 +1078,31 @@ const styles = StyleSheet.create({
   },
   categoriesContent: {
     gap: 8,
+  },
+  statusFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  statusChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  statusChipActive: {
+    backgroundColor: '#ede9fe',
+    borderColor: '#7c3aed',
+  },
+  statusChipText: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+    color: Colors.light.textSecondary,
+  },
+  statusChipTextActive: {
+    color: '#7c3aed',
   },
   categoryChip: {
     paddingHorizontal: 16,
@@ -571,10 +1154,28 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
     marginBottom: 4,
   },
+  serviceCategory: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginBottom: 6,
+  },
   servicePrice: {
     fontSize: 15,
     fontWeight: '700' as const,
     color: '#7c3aed',
+  },
+  serviceInactiveBadge: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  serviceInactiveText: {
+    fontSize: 11,
+    color: '#b91c1c',
+    fontWeight: '600' as const,
   },
   ordersContainer: {
     gap: 12,
@@ -704,7 +1305,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
-  modalContent: {
+  serviceModalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -722,26 +1323,174 @@ const styles = StyleSheet.create({
     fontWeight: '700' as const,
     color: Colors.light.text,
   },
-  modalDescription: {
-    fontSize: 14,
-    color: Colors.light.textSecondary,
-    marginBottom: 12,
+  modalBody: {
+    maxHeight: 520,
   },
-  modalPrice: {
-    fontSize: 18,
-    fontWeight: '700' as const,
-    color: '#7c3aed',
-    marginBottom: 20,
+  modalFooter: {
+    marginTop: 16,
+    flexDirection: 'row',
+    gap: 12,
   },
-  orderButton: {
+  saveButton: {
+    flex: 1,
     backgroundColor: '#7c3aed',
-    paddingVertical: 16,
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
-  orderButtonText: {
+  saveButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600' as const,
+  },
+  deleteButton: {
+    backgroundColor: '#fee2e2',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  deleteButtonText: {
+    color: '#b91c1c',
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  editButton: {
+    flex: 1,
+    backgroundColor: '#ede9fe',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  editButtonText: {
+    color: '#7c3aed',
+    fontSize: 15,
+    fontWeight: '600' as const,
+  },
+  formField: {
+    marginBottom: 14,
+  },
+  formRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  formHalf: {
+    flex: 1,
+  },
+  formLabel: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: Colors.light.textSecondary,
+    marginBottom: 6,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: Colors.light.text,
+    backgroundColor: '#fff',
+  },
+  textArea: {
+    minHeight: 90,
+    textAlignVertical: 'top',
+  },
+  selectInput: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#f9fafb',
+  },
+  selectInputText: {
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  readonlyInput: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#f3f4f6',
+  },
+  readonlyText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
+  },
+  categoryOptions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  categoryOptionActive: {
+    backgroundColor: '#7c3aed',
+    borderColor: '#7c3aed',
+  },
+  categoryOptionText: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+    color: Colors.light.textSecondary,
+  },
+  categoryOptionTextActive: {
+    color: '#fff',
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  switchLabel: {
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  hotelModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    maxHeight: '70%',
+  },
+  hotelOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 10,
+  },
+  hotelOptionSelected: {
+    backgroundColor: '#ede9fe',
+    borderColor: '#7c3aed',
+  },
+  hotelOptionText: {
+    fontSize: 14,
+    color: Colors.light.text,
+    fontWeight: '500' as const,
+  },
+  hotelOptionTextSelected: {
+    color: '#7c3aed',
+  },
+  hotelLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 16,
+  },
+  hotelLoadingText: {
+    fontSize: 14,
+    color: Colors.light.textSecondary,
   },
 });

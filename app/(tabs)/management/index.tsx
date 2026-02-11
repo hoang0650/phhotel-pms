@@ -55,6 +55,14 @@ const managementModules: ManagementModule[] = [
     gradient: ['#FFD93D', '#FF6B6B']
   },
   {
+    id: 'shift-handover',
+    title: 'Quản Lý Giao Ca',
+    description: 'Bàn giao ca làm việc và doanh thu',
+    icon: 'swap-horizontal-outline',
+    route: '/management/shift-handover',
+    gradient: ['#5B8DEF', '#6BCBFF']
+  },
+  {
     id: 'fanpage',
     title: 'Quản Lý Fanpage',
     description: 'Quản lý tin nhắn từ fanpage',

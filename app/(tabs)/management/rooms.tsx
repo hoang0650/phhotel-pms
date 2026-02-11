@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,123 +11,48 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
-interface Room {
-  id: string;
-  roomNumber: string;
-  roomType: string;
-  floor: number;
-  status: 'available' | 'occupied' | 'maintenance' | 'cleaning';
-  price: number;
-  capacity: number;
-  amenities: string[];
-  description?: string;
-  images?: string[];
-  lastCleaned?: string;
-  nextMaintenance?: string;
-  guestName?: string;
-  checkInDate?: string;
-  checkOutDate?: string;
-}
-
-interface RoomFilter {
-  status: string;
-  roomType: string;
-  floor: string;
-  searchQuery: string;
-}
+import { useHotel } from '@/contexts/HotelContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { roomsApi } from '@/services/api/rooms';
+import { Room, RoomStatus } from '@/types/hotel';
 
 export default function RoomManagementScreen() {
+  const { selectedHotelId, hotels, selectHotel, canSelectMultipleHotels, isLoading: hotelsLoading } = useHotel();
+  const { user } = useAuth();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<RoomFilter>({
-    status: 'all',
-    roomType: 'all',
-    floor: 'all',
-    searchQuery: '',
-  });
-  const [modalVisible, setModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | RoomStatus>('all');
+  const [roomTypeFilter, setRoomTypeFilter] = useState('all');
+  const [floorFilter, setFloorFilter] = useState('all');
+  const [pageIndex, setPageIndex] = useState(1);
+  const [pageSize] = useState(10);
+  const [hotelModalVisible, setHotelModalVisible] = useState(false);
+  const [roomModalVisible, setRoomModalVisible] = useState(false);
+  const [floorModalVisible, setFloorModalVisible] = useState(false);
+  const [typeModalVisible, setTypeModalVisible] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
-  const [editMode, setEditMode] = useState(false);
 
-  // Mock data for demonstration
-  const mockRooms: Room[] = [
-    {
-      id: '1',
-      roomNumber: '101',
-      roomType: 'Standard',
-      floor: 1,
-      status: 'available',
-      price: 500000,
-      capacity: 2,
-      amenities: ['WiFi', 'TV', 'Mini Bar', 'Air Conditioning'],
-      description: 'Phòng tiêu chuẩn với đầy đủ tiện nghi',
-      lastCleaned: '2024-01-15T08:00:00Z',
-      nextMaintenance: '2024-02-01T00:00:00Z',
-    },
-    {
-      id: '2',
-      roomNumber: '201',
-      roomType: 'Deluxe',
-      floor: 2,
-      status: 'occupied',
-      price: 800000,
-      capacity: 3,
-      amenities: ['WiFi', 'TV', 'Mini Bar', 'Air Conditioning', 'Balcony'],
-      description: 'Phòng cao cấp với ban công riêng',
-      guestName: 'Nguyễn Văn A',
-      checkInDate: '2024-01-10T14:00:00Z',
-      checkOutDate: '2024-01-20T12:00:00Z',
-    },
-    {
-      id: '3',
-      roomNumber: '301',
-      roomType: 'Suite',
-      floor: 3,
-      status: 'maintenance',
-      price: 1200000,
-      capacity: 4,
-      amenities: ['WiFi', 'TV', 'Mini Bar', 'Air Conditioning', 'Balcony', 'Kitchen'],
-      description: 'Phòng cao cấp với bếp riêng',
-      nextMaintenance: '2024-01-18T00:00:00Z',
-    },
-    {
-      id: '4',
-      roomNumber: '102',
-      roomType: 'Standard',
-      floor: 1,
-      status: 'cleaning',
-      price: 500000,
-      capacity: 2,
-      amenities: ['WiFi', 'TV', 'Mini Bar'],
-      lastCleaned: '2024-01-16T10:00:00Z',
-    },
-    {
-      id: '5',
-      roomNumber: '202',
-      roomType: 'Deluxe',
-      floor: 2,
-      status: 'available',
-      price: 800000,
-      capacity: 3,
-      amenities: ['WiFi', 'TV', 'Mini Bar', 'Air Conditioning'],
-      description: 'Phòng cao cấp với view đẹp',
-      lastCleaned: '2024-01-16T09:00:00Z',
-      nextMaintenance: '2024-02-15T00:00:00Z',
-    },
-  ];
+  const loadRooms = useCallback(async () => {
+    if (!selectedHotelId && canSelectMultipleHotels) {
+      setRooms([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    const data = await roomsApi.getAll(selectedHotelId || undefined);
+    setRooms(data);
+    setLoading(false);
+    setPageIndex(1);
+  }, [selectedHotelId, canSelectMultipleHotels]);
 
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setRooms(mockRooms);
-      setLoading(false);
-    }, 1000);
-  }, []);
+    loadRooms();
+  }, [loadRooms]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'available':
+      case 'vacant':
         return '#4CAF50';
       case 'occupied':
         return '#FF9800';
@@ -135,21 +60,29 @@ export default function RoomManagementScreen() {
         return '#F44336';
       case 'cleaning':
         return '#2196F3';
+      case 'dirty':
+        return '#EF4444';
+      case 'booked':
+        return '#8B5CF6';
       default:
         return '#9E9E9E';
     }
   };
 
-  const getStatusText = (status: string) => {
+  const getStatusText = (status: RoomStatus) => {
     switch (status) {
-      case 'available':
-        return 'Có sẵn';
+      case 'vacant':
+        return 'Trống';
       case 'occupied':
-        return 'Đã thuê';
+        return 'Đang ở';
       case 'maintenance':
         return 'Bảo trì';
       case 'cleaning':
         return 'Đang dọn';
+      case 'dirty':
+        return 'Cần dọn';
+      case 'booked':
+        return 'Đã đặt';
       default:
         return 'Không xác định';
     }
@@ -162,53 +95,76 @@ export default function RoomManagementScreen() {
     }).format(amount);
   };
 
-  const filteredRooms = rooms.filter(room => {
-    const matchesSearch = room.roomNumber.toLowerCase().includes(filter.searchQuery.toLowerCase()) ||
-                         room.roomType.toLowerCase().includes(filter.searchQuery.toLowerCase()) ||
-                         room.guestName?.toLowerCase().includes(filter.searchQuery.toLowerCase());
-    
-    const matchesStatus = filter.status === 'all' || room.status === filter.status;
-    const matchesRoomType = filter.roomType === 'all' || room.roomType === filter.roomType;
-    const matchesFloor = filter.floor === 'all' || room.floor === parseInt(filter.floor);
+  const roomTypeOptions = useMemo(() => {
+    const types = new Set<string>();
+    rooms.forEach(room => {
+      if (room.roomType) types.add(room.roomType);
+      else if (room.type) types.add(room.type);
+    });
+    return Array.from(types).sort();
+  }, [rooms]);
 
-    return matchesSearch && matchesStatus && matchesRoomType && matchesFloor;
-  });
+  const floorOptions = useMemo(() => {
+    const floors = new Set<string>();
+    rooms.forEach(room => {
+      floors.add(String(room.floor ?? 0));
+    });
+    return Array.from(floors).sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
+  }, [rooms]);
+
+  const filteredRooms = useMemo(() => {
+    const keyword = searchQuery.trim().toLowerCase();
+    return rooms.filter(room => {
+      const roomTypeLabel = room.roomType || room.type || '';
+      const matchesSearch =
+        !keyword ||
+        room.number.toLowerCase().includes(keyword) ||
+        roomTypeLabel.toLowerCase().includes(keyword) ||
+        room.currentGuest?.toLowerCase().includes(keyword);
+      const matchesStatus = statusFilter === 'all' || room.status === statusFilter;
+      const matchesRoomType = roomTypeFilter === 'all' || roomTypeLabel === roomTypeFilter;
+      const matchesFloor = floorFilter === 'all' || String(room.floor) === floorFilter;
+      return matchesSearch && matchesStatus && matchesRoomType && matchesFloor;
+    });
+  }, [rooms, searchQuery, statusFilter, roomTypeFilter, floorFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRooms.length / pageSize));
+  const paginatedRooms = useMemo(() => {
+    const start = (pageIndex - 1) * pageSize;
+    return filteredRooms.slice(start, start + pageSize);
+  }, [filteredRooms, pageIndex, pageSize]);
 
   const handleRoomPress = (room: Room) => {
     setSelectedRoom(room);
-    setModalVisible(true);
+    setRoomModalVisible(true);
   };
 
-  const handleEditRoom = () => {
-    setEditMode(true);
-    Alert.alert('Chỉnh sửa', 'Chức năng chỉnh sửa phòng sẽ được triển khai');
-  };
+  const canManageRoom = user?.role === 'superadmin' || user?.role === 'admin' || user?.role === 'hotel_manager';
 
-  const handleChangeStatus = (newStatus: Room['status']) => {
-    if (selectedRoom) {
-      Alert.alert(
-        'Xác nhận',
-        `Bạn có chắc chắn muốn đổi trạng thái phòng ${selectedRoom.roomNumber} sang ${getStatusText(newStatus)}?`,
-        [
-          { text: 'Hủy', style: 'cancel' },
-          {
-            text: 'Xác nhận',
-            onPress: () => {
-              setRooms(prev => prev.map(room => 
-                room.id === selectedRoom.id 
-                  ? { ...room, status: newStatus }
-                  : room
-              ));
-              setModalVisible(false);
-            },
+  const handleChangeStatus = (newStatus: RoomStatus) => {
+    if (!selectedRoom) return;
+    Alert.alert(
+      'Xác nhận',
+      `Bạn có chắc chắn muốn đổi trạng thái phòng ${selectedRoom.number} sang ${getStatusText(newStatus)}?`,
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xác nhận',
+          onPress: async () => {
+            await roomsApi.updateStatus(selectedRoom.id, newStatus);
+            setRoomModalVisible(false);
+            loadRooms();
           },
-        ]
-      );
-    }
+        },
+      ]
+    );
   };
 
-  const handleAddRoom = () => {
-    Alert.alert('Thêm phòng', 'Chức năng thêm phòng mới sẽ được triển khai');
+  const formatDate = (value?: string) => {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('vi-VN');
   };
 
   if (loading) {
@@ -222,42 +178,95 @@ export default function RoomManagementScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Quản Lý Phòng</Text>
-        <TouchableOpacity style={styles.addButton} onPress={handleAddRoom}>
-          <Ionicons name="add" size={24} color="white" />
+        <View>
+          <Text style={styles.title}>Quản Lý Phòng</Text>
+          <Text style={styles.subtitle}>Tổng: {filteredRooms.length} phòng</Text>
+        </View>
+        <TouchableOpacity style={styles.reloadButton} onPress={loadRooms}>
+          <Ionicons name="reload" size={20} color="#007AFF" />
         </TouchableOpacity>
       </View>
 
-      {/* Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Tìm kiếm phòng..."
-          value={filter.searchQuery}
-          onChangeText={(text) => setFilter(prev => ({ ...prev, searchQuery: text }))}
-        />
-        
-        <View style={styles.filterButton}>
-          <Text style={styles.filterButtonText}>Trạng thái</Text>
-          <Ionicons name="chevron-down" size={16} color="#666" />
-        </View>
-        
-        <View style={styles.filterButton}>
-          <Text style={styles.filterButtonText}>Loại phòng</Text>
-          <Ionicons name="chevron-down" size={16} color="#666" />
-        </View>
-        
-        <View style={styles.filterButton}>
-          <Text style={styles.filterButtonText}>Tầng</Text>
-          <Ionicons name="chevron-down" size={16} color="#666" />
-        </View>
-      </ScrollView>
+      <View style={styles.filterContainer}>
+        {canSelectMultipleHotels && (
+          <TouchableOpacity style={styles.hotelSelector} onPress={() => setHotelModalVisible(true)}>
+            <Ionicons name="business-outline" size={18} color="#007AFF" />
+            <Text style={styles.hotelSelectorText}>
+              {selectedHotelId
+                ? hotels.find(hotel => hotel.id === selectedHotelId)?.name || 'Chọn khách sạn'
+                : 'Chọn khách sạn'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
-      {/* Room Grid */}
-      <ScrollView contentContainerStyle={styles.roomGrid}>
-        {filteredRooms.map(room => (
+      <View style={styles.filterContainer}>
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#8E8E93" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Tìm theo số phòng, loại, khách..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusFilterContainer}>
+          {[
+            { value: 'all', label: 'Tất cả' },
+            { value: 'vacant', label: 'Trống' },
+            { value: 'occupied', label: 'Đang ở' },
+            { value: 'cleaning', label: 'Đang dọn' },
+            { value: 'dirty', label: 'Cần dọn' },
+            { value: 'maintenance', label: 'Bảo trì' },
+            { value: 'booked', label: 'Đã đặt' },
+          ].map(option => (
+            <TouchableOpacity
+              key={option.value}
+              style={[
+                styles.statusFilterButton,
+                statusFilter === option.value && styles.activeStatusFilter
+              ]}
+              onPress={() => {
+                setStatusFilter(option.value as RoomStatus | 'all');
+                setPageIndex(1);
+              }}
+            >
+              <Text style={[
+                styles.statusFilterText,
+                statusFilter === option.value && styles.activeStatusFilterText
+              ]}>
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <View style={styles.quickFilters}>
+          <TouchableOpacity style={styles.filterSelect} onPress={() => setTypeModalVisible(true)}>
+            <Text style={styles.filterSelectText}>
+              {roomTypeFilter === 'all' ? 'Loại phòng' : roomTypeFilter}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color="#8E8E93" />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.filterSelect} onPress={() => setFloorModalVisible(true)}>
+            <Text style={styles.filterSelectText}>
+              {floorFilter === 'all' ? 'Tầng' : `Tầng ${floorFilter}`}
+            </Text>
+            <Ionicons name="chevron-down" size={16} color="#8E8E93" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.roomGrid}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        decelerationRate="normal"
+        scrollEventThrottle={16}
+      >
+        {paginatedRooms.map(room => (
           <TouchableOpacity
             key={room.id}
             style={styles.roomCard}
@@ -268,17 +277,17 @@ export default function RoomManagementScreen() {
             </View>
             
             <View style={styles.roomInfo}>
-              <Text style={styles.roomNumber}>{room.roomNumber}</Text>
-              <Text style={styles.roomType}>{room.roomType}</Text>
+              <Text style={styles.roomNumber}>{room.number}</Text>
+              <Text style={styles.roomType}>{room.roomType || room.type}</Text>
               <Text style={styles.roomPrice}>{formatCurrency(room.price)}</Text>
               
-              {room.guestName && (
-                <Text style={styles.guestName}>Khách: {room.guestName}</Text>
+              {room.currentGuest && (
+                <Text style={styles.guestName}>Khách: {room.currentGuest}</Text>
               )}
               
-              {room.checkOutDate && (
+              {room.checkoutDate && (
                 <Text style={styles.checkoutDate}>
-                  Trả phòng: {new Date(room.checkOutDate).toLocaleDateString('vi-VN')}
+                  Trả phòng: {formatDate(room.checkoutDate)}
                 </Text>
               )}
             </View>
@@ -291,28 +300,224 @@ export default function RoomManagementScreen() {
         ))}
       </ScrollView>
 
-      {/* Room Detail Modal */}
+      {totalPages > 1 && (
+        <View style={styles.paginationContainer}>
+          <TouchableOpacity
+            style={[styles.paginationButton, pageIndex <= 1 && styles.paginationButtonDisabled]}
+            onPress={() => setPageIndex(prev => Math.max(1, prev - 1))}
+            disabled={pageIndex <= 1}
+          >
+            <Text style={styles.paginationButtonText}>Trước</Text>
+          </TouchableOpacity>
+          <Text style={styles.paginationText}>Trang {pageIndex}/{totalPages}</Text>
+          <TouchableOpacity
+            style={[styles.paginationButton, pageIndex >= totalPages && styles.paginationButtonDisabled]}
+            onPress={() => setPageIndex(prev => Math.min(totalPages, prev + 1))}
+            disabled={pageIndex >= totalPages}
+          >
+            <Text style={styles.paginationButtonText}>Tiếp</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <Modal
-        visible={modalVisible}
+        visible={hotelModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setModalVisible(false)}
+        onRequestClose={() => setHotelModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chọn Khách Sạn</Text>
+              <TouchableOpacity onPress={() => setHotelModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              {hotelsLoading ? (
+                <View style={styles.loadingSmall}>
+                  <ActivityIndicator size="small" color="#007AFF" />
+                  <Text style={styles.loadingText}>Đang tải khách sạn...</Text>
+                </View>
+              ) : (
+                hotels.map((hotel) => (
+                  <TouchableOpacity
+                    key={hotel.id}
+                    style={[
+                      styles.hotelOption,
+                      selectedHotelId === hotel.id && styles.hotelOptionSelected
+                    ]}
+                    onPress={() => {
+                      selectHotel(hotel.id);
+                      setPageIndex(1);
+                      setHotelModalVisible(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.hotelOptionText,
+                        selectedHotelId === hotel.id && styles.hotelOptionTextSelected
+                      ]}
+                    >
+                      {hotel.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={typeModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setTypeModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Loại Phòng</Text>
+              <TouchableOpacity onPress={() => setTypeModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              <TouchableOpacity
+                style={[styles.hotelOption, roomTypeFilter === 'all' && styles.hotelOptionSelected]}
+                onPress={() => {
+                  setRoomTypeFilter('all');
+                  setPageIndex(1);
+                  setTypeModalVisible(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.hotelOptionText,
+                    roomTypeFilter === 'all' && styles.hotelOptionTextSelected
+                  ]}
+                >
+                  Tất cả
+                </Text>
+              </TouchableOpacity>
+              {roomTypeOptions.map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  style={[
+                    styles.hotelOption,
+                    roomTypeFilter === type && styles.hotelOptionSelected
+                  ]}
+                  onPress={() => {
+                    setRoomTypeFilter(type);
+                    setPageIndex(1);
+                    setTypeModalVisible(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.hotelOptionText,
+                      roomTypeFilter === type && styles.hotelOptionTextSelected
+                    ]}
+                  >
+                    {type}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={floorModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFloorModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chọn Tầng</Text>
+              <TouchableOpacity onPress={() => setFloorModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalBody}>
+              <TouchableOpacity
+                style={[styles.hotelOption, floorFilter === 'all' && styles.hotelOptionSelected]}
+                onPress={() => {
+                  setFloorFilter('all');
+                  setPageIndex(1);
+                  setFloorModalVisible(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.hotelOptionText,
+                    floorFilter === 'all' && styles.hotelOptionTextSelected
+                  ]}
+                >
+                  Tất cả
+                </Text>
+              </TouchableOpacity>
+              {floorOptions.map((floor) => (
+                <TouchableOpacity
+                  key={floor}
+                  style={[
+                    styles.hotelOption,
+                    floorFilter === floor && styles.hotelOptionSelected
+                  ]}
+                  onPress={() => {
+                    setFloorFilter(floor);
+                    setPageIndex(1);
+                    setFloorModalVisible(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.hotelOptionText,
+                      floorFilter === floor && styles.hotelOptionTextSelected
+                    ]}
+                  >
+                    Tầng {floor}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={roomModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRoomModalVisible(false)}
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             {selectedRoom && (
               <>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Phòng {selectedRoom.roomNumber}</Text>
-                  <TouchableOpacity onPress={() => setModalVisible(false)}>
+                  <Text style={styles.modalTitle}>Phòng {selectedRoom.number}</Text>
+                  <TouchableOpacity onPress={() => setRoomModalVisible(false)}>
                     <Ionicons name="close" size={24} color="#666" />
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView style={styles.modalBody}>
+                <ScrollView
+                  style={styles.modalBody}
+                  contentContainerStyle={{ paddingBottom: 16 }}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                  decelerationRate="normal"
+                  scrollEventThrottle={16}
+                >
                   <View style={styles.detailSection}>
                     <Text style={styles.detailLabel}>Loại phòng:</Text>
-                    <Text style={styles.detailValue}>{selectedRoom.roomType}</Text>
+                    <Text style={styles.detailValue}>{selectedRoom.roomType || selectedRoom.type}</Text>
                   </View>
 
                   <View style={styles.detailSection}>
@@ -337,34 +542,27 @@ export default function RoomManagementScreen() {
                     <Text style={styles.detailValue}>{selectedRoom.capacity} người</Text>
                   </View>
 
-                  {selectedRoom.description && (
-                    <View style={styles.detailSection}>
-                      <Text style={styles.detailLabel}>Mô tả:</Text>
-                      <Text style={styles.detailValue}>{selectedRoom.description}</Text>
-                    </View>
-                  )}
-
-                  {selectedRoom.guestName && (
+                  {selectedRoom.currentGuest && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailLabel}>Khách hiện tại:</Text>
-                      <Text style={styles.detailValue}>{selectedRoom.guestName}</Text>
+                      <Text style={styles.detailValue}>{selectedRoom.currentGuest}</Text>
                     </View>
                   )}
 
-                  {selectedRoom.checkInDate && (
+                  {selectedRoom.checkInTime && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailLabel}>Ngày nhận:</Text>
                       <Text style={styles.detailValue}>
-                        {new Date(selectedRoom.checkInDate).toLocaleDateString('vi-VN')}
+                        {formatDate(selectedRoom.checkInTime)}
                       </Text>
                     </View>
                   )}
 
-                  {selectedRoom.checkOutDate && (
+                  {selectedRoom.checkoutDate && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailLabel}>Ngày trả:</Text>
                       <Text style={styles.detailValue}>
-                        {new Date(selectedRoom.checkOutDate).toLocaleDateString('vi-VN')}
+                        {formatDate(selectedRoom.checkoutDate)}
                       </Text>
                     </View>
                   )}
@@ -385,71 +583,61 @@ export default function RoomManagementScreen() {
                   {selectedRoom.lastCleaned && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailLabel}>Dọn dẹp lần cuối:</Text>
-                      <Text style={styles.detailValue}>
-                        {new Date(selectedRoom.lastCleaned).toLocaleDateString('vi-VN')}
-                      </Text>
+                      <Text style={styles.detailValue}>{formatDate(selectedRoom.lastCleaned)}</Text>
                     </View>
                   )}
 
-                  {selectedRoom.nextMaintenance && (
+                  {selectedRoom.lastMaintenance && (
                     <View style={styles.detailSection}>
-                      <Text style={styles.detailLabel}>Bảo trì tiếp theo:</Text>
-                      <Text style={styles.detailValue}>
-                        {new Date(selectedRoom.nextMaintenance).toLocaleDateString('vi-VN')}
-                      </Text>
+                      <Text style={styles.detailLabel}>Bảo trì gần nhất:</Text>
+                      <Text style={styles.detailValue}>{formatDate(selectedRoom.lastMaintenance)}</Text>
                     </View>
                   )}
                 </ScrollView>
 
-                <View style={styles.modalFooter}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, styles.editButton]}
-                    onPress={handleEditRoom}
-                  >
-                    <Ionicons name="create-outline" size={20} color="white" />
-                    <Text style={styles.actionButtonText}>Chỉnh sửa</Text>
-                  </TouchableOpacity>
+                {canManageRoom && (
+                  <View style={styles.modalFooter}>
+                    {selectedRoom.status !== 'vacant' && (
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.availableButton]}
+                        onPress={() => handleChangeStatus('vacant')}
+                      >
+                        <Ionicons name="home" size={20} color="white" />
+                        <Text style={styles.actionButtonText}>Chuyển trống</Text>
+                      </TouchableOpacity>
+                    )}
 
-                  {selectedRoom.status === 'available' && (
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.occupyButton]}
-                      onPress={() => handleChangeStatus('occupied')}
-                    >
-                      <Ionicons name="person-add" size={20} color="white" />
-                      <Text style={styles.actionButtonText}>Thuê phòng</Text>
-                    </TouchableOpacity>
-                  )}
+                    {selectedRoom.status !== 'occupied' && (
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.occupyButton]}
+                        onPress={() => handleChangeStatus('occupied')}
+                      >
+                        <Ionicons name="person-add" size={20} color="white" />
+                        <Text style={styles.actionButtonText}>Đang ở</Text>
+                      </TouchableOpacity>
+                    )}
 
-                  {selectedRoom.status === 'occupied' && (
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.availableButton]}
-                      onPress={() => handleChangeStatus('available')}
-                    >
-                      <Ionicons name="checkmark-circle" size={20} color="white" />
-                      <Text style={styles.actionButtonText}>Trả phòng</Text>
-                    </TouchableOpacity>
-                  )}
+                    {selectedRoom.status !== 'cleaning' && (
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.cleaningButton]}
+                        onPress={() => handleChangeStatus('cleaning')}
+                      >
+                        <Ionicons name="sparkles" size={20} color="white" />
+                        <Text style={styles.actionButtonText}>Đang dọn</Text>
+                      </TouchableOpacity>
+                    )}
 
-                  {(selectedRoom.status === 'available' || selectedRoom.status === 'occupied') && (
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.maintenanceButton]}
-                      onPress={() => handleChangeStatus('maintenance')}
-                    >
-                      <Ionicons name="construct" size={20} color="white" />
-                      <Text style={styles.actionButtonText}>Bảo trì</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {selectedRoom.status === 'maintenance' && (
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.availableButton]}
-                      onPress={() => handleChangeStatus('available')}
-                    >
-                      <Ionicons name="home" size={20} color="white" />
-                      <Text style={styles.actionButtonText}>Hoàn thành</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                    {selectedRoom.status !== 'maintenance' && (
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.maintenanceButton]}
+                        onPress={() => handleChangeStatus('maintenance')}
+                      >
+                        <Ionicons name="construct" size={20} color="white" />
+                        <Text style={styles.actionButtonText}>Bảo trì</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
               </>
             )}
           </View>
@@ -491,14 +679,15 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#333',
   },
-  addButton: {
-    backgroundColor: '#007AFF',
-    borderRadius: 25,
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 2,
+  subtitle: {
+    fontSize: 13,
+    color: '#8E8E93',
+    marginTop: 2,
+  },
+  reloadButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#EAF4FF',
   },
   filterContainer: {
     backgroundColor: 'white',
@@ -507,27 +696,76 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#e0e0e0',
   },
-  searchInput: {
-    backgroundColor: '#f0f0f0',
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    minWidth: 200,
-    marginRight: 10,
-  },
-  filterButton: {
+  hotelSelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
-    borderRadius: 20,
+    backgroundColor: '#F2F2F7',
     paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  hotelSelectorText: {
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: '600',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    paddingHorizontal: 15,
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  searchIcon: {
     marginRight: 10,
   },
-  filterButtonText: {
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#000',
+  },
+  statusFilterContainer: {
+    flexDirection: 'row',
+  },
+  statusFilterButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F2F2F7',
+    marginRight: 8,
+  },
+  activeStatusFilter: {
+    backgroundColor: '#007AFF',
+  },
+  statusFilterText: {
     fontSize: 14,
-    color: '#666',
-    marginRight: 5,
+    color: '#8E8E93',
+  },
+  activeStatusFilterText: {
+    color: '#FFF',
+    fontWeight: '600',
+  },
+  quickFilters: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  filterSelect: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F2F2F7',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  filterSelectText: {
+    fontSize: 14,
+    color: '#333',
   },
   roomGrid: {
     padding: 15,
@@ -608,7 +846,7 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: 'white',
     borderRadius: 12,
-    maxHeight: '80%',
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -625,6 +863,29 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: 20,
+  },
+  hotelOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#F2F2F7',
+    marginBottom: 8,
+  },
+  hotelOptionSelected: {
+    backgroundColor: '#007AFF',
+  },
+  hotelOptionText: {
+    fontSize: 16,
+    color: '#000',
+  },
+  hotelOptionTextSelected: {
+    color: '#FFF',
+    fontWeight: '600',
+  },
+  loadingSmall: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
   },
   detailSection: {
     marginBottom: 15,
@@ -679,16 +940,44 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 8,
   },
-  editButton: {
-    backgroundColor: '#FF9800',
-  },
   occupyButton: {
     backgroundColor: '#4CAF50',
   },
   availableButton: {
     backgroundColor: '#2196F3',
   },
+  cleaningButton: {
+    backgroundColor: '#0EA5E9',
+  },
   maintenanceButton: {
     backgroundColor: '#F44336',
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  paginationButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#007AFF',
+  },
+  paginationButtonDisabled: {
+    backgroundColor: '#C7C7CC',
+  },
+  paginationButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  paginationText: {
+    fontSize: 14,
+    color: '#8E8E93',
   },
 });

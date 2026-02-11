@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
 import { Home, BedDouble, BarChart3, Settings, Briefcase } from 'lucide-react-native';
-import { useTheme } from '@/contexts/ThemeContext';
-import { useLanguage } from '@/contexts/LanguageContext';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 export default function TabLayout() {
   const { isDark, colors } = useTheme();

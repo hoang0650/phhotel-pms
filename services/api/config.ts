@@ -1,6 +1,7 @@
 export const API_CONFIG = {
   BASE_URL: 'https://nest-production-8106.up.railway.app',
   TIMEOUT: 30000,
+  AI_TIMEOUT: 120000,
   AI_BASE_URL: 'https://phgroup-ai-production.up.railway.app',
 };
 
@@ -21,6 +22,8 @@ export const API_ENDPOINTS = {
     AVAILABLE: '/rooms/available',
     CHECKIN: (id: string) => `/rooms/checkin/${id}`,
     CHECKOUT: (id: string) => `/rooms/checkout/${id}`,
+    GUEST_OUT: (id: string) => `/rooms/${id}/guest-out`,
+    GUEST_RETURN: (id: string) => `/rooms/${id}/guest-return`,
     BOOKING: '/rooms/booking',
     CANCEL_BOOKING: (id: string) => `/rooms/booking/cancel/${id}`,
     BOOKINGS: '/rooms/bookings',
@@ -32,6 +35,7 @@ export const API_ENDPOINTS = {
   USERS: {
     BASE: '/users',
     BY_ID: (id: string) => `/users/${id}`,
+    BY_HOTEL: (hotelId: string) => `/users/hotel/${hotelId}`,
   },
   BOOKINGS: {
     BASE: '/bookings',
@@ -94,7 +98,20 @@ export const API_ENDPOINTS = {
     MARK_AS_READ: (id: string) => `/api/settings/announcements/${id}/read`,
     MARK_ALL_AS_READ: '/api/settings/announcements/read-all',
   },
+  TRANSACTIONS: {
+    BASE: '/transactions',
+    EXPENSE: '/transactions/expense',
+    INCOME: '/transactions/income',
+  },
   SETTINGS: {
     NOTIFICATION: '/api/settings/notification',
+  },
+  SHIFT_HANDOVER: {
+    BASE: '/shift-handover',
+    PREVIOUS_AMOUNT: '/shift-handover/previous-amount',
+    REVENUE: '/shift-handover/revenue',
+    HISTORY: '/shift-handover/history',
+    BY_ID: (id: string) => `/shift-handover/${id}`,
+    MANAGER: '/shift-handover/manager',
   },
 };

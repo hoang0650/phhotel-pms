@@ -9,6 +9,9 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery } from '@tanstack/react-query';
+import { roomsApi } from '@/services/api';
+import { useHotel } from '@/contexts/HotelContext';
 
 interface PaymentRecord {
   id: string;
@@ -33,102 +36,109 @@ interface PaymentRecord {
 }
 
 export default function PaymentHistoryScreen() {
-  const [payments, setPayments] = useState<PaymentRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { selectedHotelId } = useHotel();
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending' | 'unpaid'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
 
-  // Mock data based on hotelapp table component logic
-  const mockPayments: PaymentRecord[] = [
-    {
-      id: '1',
-      event: 'check-out',
-      type: 'payment',
-      roomNumber: '101',
-      guestName: 'Nguyễn Văn A',
-      checkOutTime: '2024-01-15T10:30:00Z',
-      checkoutTime: '2024-01-15T10:30:00Z',
-      roomAmount: 500000,
-      serviceAmount: 50000,
-      additionalCharges: 0,
-      discount: 0,
-      advancePayment: 200000,
-      totalAmount: 350000,
-      paymentStatus: 'paid',
-    },
-    {
-      id: '2',
-      event: 'service',
-      type: 'payment',
-      roomNumber: '102',
-      guestName: 'Trần Thị B',
-      checkOutTime: '2024-01-15T14:20:00Z',
-      checkoutTime: '2024-01-15T14:20:00Z',
-      roomAmount: 800000,
-      serviceAmount: 100000,
-      additionalCharges: 50000,
-      discount: 50000,
-      advancePayment: 300000,
-      totalAmount: 600000,
-      paymentStatus: 'paid',
-    },
-    {
-      id: '3',
-      event: 'cleaning',
-      type: 'service',
-      roomNumber: '103',
-      guestName: 'Lê Văn C',
-      // This should be excluded from paidData
-    },
-  ];
+  const { data: roomEvents = [], isLoading } = useQuery({
+    queryKey: ['roomEvents', selectedHotelId],
+    queryFn: () => selectedHotelId ? roomsApi.getEventsByHotel(selectedHotelId, { types: ['checkout'], limit: 200 }) : Promise.resolve([]),
+  });
 
-  React.useEffect(() => {
-    // Load payment history from API
-    setTimeout(() => {
-      setPayments(mockPayments);
-      setLoading(false);
-    }, 1000);
-  }, []);
+  const payments: PaymentRecord[] = useMemo(() => {
+    return roomEvents.map((e: any) => ({
+      id: e.id,
+      event: e.type,
+      type: e.type,
+      roomNumber: e.roomNumber,
+      guestName: e.guestName,
+      checkInTime: e.checkinTime,
+      checkOutTime: e.checkoutTime,
+      checkoutTime: e.checkoutTime,
+      totalAmount: typeof e.totalAmount === 'number' ? e.totalAmount : undefined,
+      advancePayment: typeof e.advancePayment === 'number' ? e.advancePayment : undefined,
+      paymentStatus: e.paymentStatus || e.payment?.status || e.payment?.paymentStatus,
+      payment: e.payment,
+    }));
+  }, [roomEvents]);
+
+  const normalizePaymentStatus = (item: PaymentRecord) => {
+    const raw = (item.paymentStatus || item.payment?.status || item.payment?.paymentStatus || item.status || 'paid').toLowerCase();
+    const map: Record<string, 'paid' | 'pending' | 'unpaid' | 'refunded' | 'cancelled'> = {
+      completed: 'paid',
+      success: 'paid',
+      paid: 'paid',
+      processing: 'pending',
+      pending: 'pending',
+      waiting: 'pending',
+      unpaid: 'unpaid',
+      failed: 'unpaid',
+      error: 'unpaid',
+      declined: 'unpaid',
+      refunded: 'refunded',
+      cancel: 'cancelled',
+      cancelled: 'cancelled',
+      canceled: 'cancelled',
+    };
+    return map[raw] || 'paid';
+  };
+
+  const getPaymentStatusLabel = (status: 'paid' | 'pending' | 'unpaid' | 'refunded' | 'cancelled') => {
+    if (status === 'paid') return 'Đã thanh toán';
+    if (status === 'pending') return 'Chờ thanh toán';
+    if (status === 'refunded') return 'Đã hoàn tiền';
+    if (status === 'cancelled') return 'Đã hủy';
+    return 'Đã thanh toán';
+  };
+
+  const getStatusBadgeStyle = (status: 'paid' | 'pending' | 'unpaid' | 'refunded' | 'cancelled') => {
+    if (status === 'paid') return styles.paidBadge;
+    if (status === 'pending') return styles.pendingBadge;
+    if (status === 'refunded') return styles.refundedBadge;
+    if (status === 'cancelled') return styles.cancelledBadge;
+    return styles.paidBadge;
+  };
 
   // Filter logic based on hotelapp table component
   const paidData = useMemo(() => {
     if (!payments) return [];
-    
-    return payments.filter(item => {
-      const excludedEvents = ['cleaning', 'maintenance', 'check-in'];
-      const eventType = (item.event || item.type || '').toLowerCase();
-      
-      // Exclude certain events and require checkout time
-      return !excludedEvents.includes(eventType) && (item.checkOutTime || item.checkoutTime);
-    }).map(item => {
-      // Calculate totals if not provided
-      const roomAmount = item.roomAmount || 0;
-      const serviceAmount = item.serviceAmount || 0;
-      const additionalCharges = item.additionalCharges || 0;
-      const discount = item.discount || 0;
-      const advancePayment = item.advancePayment || 0;
-      
-      const calculatedTotal = roomAmount + serviceAmount + additionalCharges - discount - advancePayment;
-      
-      return {
-        ...item,
-        totalAmount: item.totalAmount || calculatedTotal,
-        roomTotal: item.roomTotal || item.roomAmount,
-        servicesTotal: item.servicesTotal || item.serviceAmount,
-      };
-    });
+    return payments
+      .filter(item => {
+        const excludedEvents = ['cleaning', 'maintenance', 'check-in'];
+        const eventType = (item.event || item.type || '').toLowerCase();
+        return !excludedEvents.includes(eventType) && (item.checkOutTime || item.checkoutTime);
+      })
+      .map(item => {
+        const roomAmount = item.roomAmount || 0;
+        const serviceAmount = item.serviceAmount || 0;
+        const additionalCharges = item.additionalCharges || 0;
+        const discount = item.discount || 0;
+        const advancePayment = item.advancePayment || 0;
+        const calculatedTotal = (item.totalAmount ?? (roomAmount + serviceAmount + additionalCharges - discount - advancePayment));
+        return {
+          ...item,
+          totalAmount: calculatedTotal,
+          roomTotal: item.roomAmount,
+          servicesTotal: item.serviceAmount,
+        };
+      });
   }, [payments]);
 
+  const statusFilteredData = useMemo(() => {
+    if (statusFilter === 'all') return paidData;
+    return paidData.filter(item => normalizePaymentStatus(item) === statusFilter);
+  }, [paidData, statusFilter]);
+
   const filteredData = useMemo(() => {
-    if (!searchQuery) return paidData;
-    
-    return paidData.filter(item =>
+    if (!searchQuery) return statusFilteredData;
+    return statusFilteredData.filter(item =>
       item.roomNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.guestName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.event?.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [paidData, searchQuery]);
+  }, [statusFilteredData, searchQuery]);
 
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
@@ -155,16 +165,7 @@ export default function PaymentHistoryScreen() {
     });
   };
 
-  const getPaymentStatus = (item: PaymentRecord) => {
-    const paymentStatus = item.paymentStatus || item.payment?.status || item.payment?.paymentStatus || item.status || 'unpaid';
-    return paymentStatus === 'completed' ? 'paid' : paymentStatus;
-  };
-
-  const isPaidTransaction = (item: PaymentRecord) => {
-    return getPaymentStatus(item) === 'paid';
-  };
-
-  if (loading) {
+  if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
@@ -194,6 +195,31 @@ export default function PaymentHistoryScreen() {
         />
       </View>
 
+      <View style={styles.statusFilterContainer}>
+        {[
+          { key: 'all', label: 'Tất cả' },
+          { key: 'paid', label: 'Đã thanh toán' },
+          { key: 'pending', label: 'Chờ thanh toán' },
+          { key: 'unpaid', label: 'Chưa thanh toán' },
+        ].map((item) => {
+          const isActive = statusFilter === item.key;
+          return (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.statusFilterChip, isActive && styles.statusFilterChipActive]}
+              onPress={() => {
+                setStatusFilter(item.key as 'all' | 'paid' | 'pending' | 'unpaid');
+                setCurrentPage(1);
+              }}
+            >
+              <Text style={[styles.statusFilterText, isActive && styles.statusFilterTextActive]}>
+                {item.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       {/* Payment List */}
       <ScrollView style={styles.paymentList}>
         {paginatedData.length === 0 ? (
@@ -210,17 +236,16 @@ export default function PaymentHistoryScreen() {
                   <Text style={styles.guestName}>{item.guestName}</Text>
                 </View>
                 <View style={styles.statusContainer}>
-                  <View style={[
-                    styles.statusBadge,
-                    isPaidTransaction(item) ? styles.paidBadge : styles.unpaidBadge
-                  ]}>
-                    <Text style={[
-                      styles.statusText,
-                      isPaidTransaction(item) ? styles.paidText : styles.unpaidText
-                    ]}>
-                      {isPaidTransaction(item) ? 'Đã thanh toán' : 'Chưa thanh toán'}
-                    </Text>
-                  </View>
+                  {(() => {
+                    const s = normalizePaymentStatus(item);
+                    return (
+                      <View style={[styles.statusBadge, getStatusBadgeStyle(s)]}>
+                        <Text style={[styles.statusText]}>
+                          {getPaymentStatusLabel(s)}
+                        </Text>
+                      </View>
+                    );
+                  })()}
                 </View>
               </View>
               
@@ -229,25 +254,25 @@ export default function PaymentHistoryScreen() {
                   <Text style={styles.amountLabel}>Tiền phòng:</Text>
                   <Text style={styles.amountValue}>{formatCurrency(item.roomTotal || 0)}</Text>
                 </View>
-                {item.servicesTotal && item.servicesTotal > 0 && (
+                {typeof item.servicesTotal === 'number' && item.servicesTotal > 0 && (
                   <View style={styles.amountRow}>
                     <Text style={styles.amountLabel}>Dịch vụ:</Text>
                     <Text style={styles.amountValue}>{formatCurrency(item.servicesTotal)}</Text>
                   </View>
                 )}
-                {item.additionalCharges && item.additionalCharges > 0 && (
+                {typeof item.additionalCharges === 'number' && item.additionalCharges > 0 && (
                   <View style={styles.amountRow}>
                     <Text style={styles.amountLabel}>Phụ thu:</Text>
                     <Text style={styles.amountValue}>{formatCurrency(item.additionalCharges)}</Text>
                   </View>
                 )}
-                {item.discount && item.discount > 0 && (
+                {typeof item.discount === 'number' && item.discount > 0 && (
                   <View style={styles.amountRow}>
                     <Text style={styles.amountLabel}>Giảm giá:</Text>
                     <Text style={[styles.amountValue, styles.discountValue]}>-{formatCurrency(item.discount)}</Text>
                   </View>
                 )}
-                {item.advancePayment && item.advancePayment > 0 && (
+                {typeof item.advancePayment === 'number' && item.advancePayment > 0 && (
                   <View style={styles.amountRow}>
                     <Text style={styles.amountLabel}>Đã cọc:</Text>
                     <Text style={[styles.amountValue, styles.advanceValue]}>-{formatCurrency(item.advancePayment)}</Text>
@@ -350,6 +375,33 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  statusFilterContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 20,
+    marginBottom: 10,
+  },
+  statusFilterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  statusFilterChipActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  statusFilterText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#8E8E93',
+  },
+  statusFilterTextActive: {
+    color: '#FFFFFF',
+  },
   searchIcon: {
     marginRight: 10,
   },
@@ -414,8 +466,17 @@ const styles = StyleSheet.create({
   paidBadge: {
     backgroundColor: '#E8F5E8',
   },
+  pendingBadge: {
+    backgroundColor: '#E6F0FF',
+  },
   unpaidBadge: {
     backgroundColor: '#FFF3E0',
+  },
+  refundedBadge: {
+    backgroundColor: '#E6FFFB',
+  },
+  cancelledBadge: {
+    backgroundColor: '#FFE6E6',
   },
   statusText: {
     fontSize: 12,

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,9 +12,13 @@ import {
   Alert,
   ActivityIndicator,
   Modal,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { aiApi } from '@/services/api/ai';
+import { useRouter } from 'expo-router';
 
 interface ChatMessage {
   id: string;
@@ -39,109 +43,33 @@ interface Conversation {
   isActive: boolean;
 }
 
-const MOCK_CONVERSATIONS: Conversation[] = [
-  {
-    id: '1',
-    title: 'Hỗ trợ đặt phòng',
-    lastMessage: 'Tôi có thể giúp bạn đặt phòng khách sạn',
-    timestamp: '2024-01-15T10:30:00Z',
-    unreadCount: 0,
-    isActive: true,
-  },
-  {
-    id: '2',
-    title: 'Quản lý phòng',
-    lastMessage: 'Phòng 101 đang trống',
-    timestamp: '2024-01-15T09:15:00Z',
-    unreadCount: 2,
-    isActive: false,
-  },
-  {
-    id: '3',
-    title: 'Báo cáo tài chính',
-    lastMessage: 'Doanh thu tháng này tăng 15%',
-    timestamp: '2024-01-14T16:45:00Z',
-    unreadCount: 0,
-    isActive: false,
-  },
-];
-
-const MOCK_MESSAGES: { [key: string]: ChatMessage[] } = {
-  '1': [
-    {
-      id: '1',
-      content: 'Xin chào! Tôi có thể giúp gì cho bạn về đặt phòng?',
-      sender: 'ai',
-      timestamp: '2024-01-15T10:25:00Z',
-      type: 'text',
-      quickReplies: [
-        { title: 'Đặt phòng mới', payload: 'book_new_room' },
-        { title: 'Xem phòng trống', payload: 'check_availability' },
-        { title: 'Hủy đặt phòng', payload: 'cancel_booking' },
-      ],
-    },
-    {
-      id: '2',
-      content: 'Tôi muốn đặt phòng đôi cho 2 người',
-      sender: 'user',
-      timestamp: '2024-01-15T10:28:00Z',
-      type: 'text',
-    },
-    {
-      id: '3',
-      content: 'Tôi có thể giúp bạn đặt phòng đôi. Bạn muốn đặt cho ngày nào?',
-      sender: 'ai',
-      timestamp: '2024-01-15T10:28:00Z',
-      type: 'text',
-      metadata: {
-        intent: 'book_room',
-        entities: [
-          { name: 'room_type', value: 'double', confidence: 0.95 },
-          { name: 'guest_count', value: '2', confidence: 0.98 },
-        ],
-      },
-    },
-  ],
-  '2': [
-    {
-      id: '4',
-      content: 'Chào bạn! Tôi có thể giúp bạn quản lý phòng.',
-      sender: 'ai',
-      timestamp: '2024-01-15T09:10:00Z',
-      type: 'text',
-      quickReplies: [
-        { title: 'Xem trạng thái phòng', payload: 'room_status' },
-        { title: 'Cập nhật giá phòng', payload: 'update_price' },
-        { title: 'Thêm phòng mới', payload: 'add_room' },
-      ],
-    },
-  ],
-  '3': [
-    {
-      id: '5',
-      content: 'Chào bạn! Tôi có thể giúp bạn với báo cáo tài chính.',
-      sender: 'ai',
-      timestamp: '2024-01-14T16:40:00Z',
-      type: 'text',
-      quickReplies: [
-        { title: 'Doanh thu theo tháng', payload: 'monthly_revenue' },
-        { title: 'Chi phí vận hành', payload: 'operational_costs' },
-        { title: 'Tỷ suất lấp đầy', payload: 'occupancy_rate' },
-      ],
-    },
-  ],
-};
+const DEFAULT_CONVERSATION_ID = 'default-ai-chat';
 
 export default function AIChatScreen() {
   const { language } = useLanguage();
-  const [conversations, setConversations] = useState<Conversation[]>(MOCK_CONVERSATIONS);
-  const [currentConversationId, setCurrentConversationId] = useState<string>('1');
-  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES['1']);
+  const { user } = useAuth();
+  const router = useRouter();
+  const [conversations, setConversations] = useState<Conversation[]>([
+    {
+      id: DEFAULT_CONVERSATION_ID,
+      title: 'AI Chatbox',
+      lastMessage: '',
+      timestamp: new Date().toISOString(),
+      unreadCount: 0,
+      isActive: true,
+    },
+  ]);
+  const [currentConversationId, setCurrentConversationId] = useState<string>(DEFAULT_CONVERSATION_ID);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [showConversations, setShowConversations] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [datasetModalVisible, setDatasetModalVisible] = useState(false);
+  const [datasetText, setDatasetText] = useState('');
+  const [datasetLoading, setDatasetLoading] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const translations = {
     vi: {
@@ -154,6 +82,11 @@ export default function AIChatScreen() {
       clearHistory: 'Xóa lịch sử',
       connectFanpage: 'Kết nối Fanpage',
       viewFanpageHistory: 'Xem lịch sử Fanpage',
+      uploadDataset: 'Tải dataset',
+      uploadDatasetTitle: 'Tải dataset JSON',
+      datasetPlaceholder: 'Dán JSON (mảng products hoặc {products: [...]})',
+      upload: 'Tải lên',
+      cancel: 'Hủy',
       system: 'Hệ thống',
       user: 'Người dùng',
       ai: 'AI',
@@ -176,6 +109,11 @@ export default function AIChatScreen() {
       clearHistory: 'Clear History',
       connectFanpage: 'Connect Fanpage',
       viewFanpageHistory: 'View Fanpage History',
+      uploadDataset: 'Upload dataset',
+      uploadDatasetTitle: 'Upload dataset JSON',
+      datasetPlaceholder: 'Paste JSON (products array or {products: [...]})',
+      upload: 'Upload',
+      cancel: 'Cancel',
       system: 'System',
       user: 'User',
       ai: 'AI',
@@ -191,6 +129,23 @@ export default function AIChatScreen() {
   };
 
   const t = translations[language as keyof typeof translations];
+  const tenantId = (user?.hotelId || user?.businessId || 'default').toString();
+
+  const addMessage = useCallback((message: ChatMessage) => {
+    setMessages(prev => [...prev, message]);
+    setConversations(prev =>
+      prev.map(c =>
+        c.id === currentConversationId
+          ? {
+              ...c,
+              lastMessage: message.content,
+              timestamp: message.timestamp,
+              unreadCount: 0,
+            }
+          : c
+      )
+    );
+  }, [currentConversationId]);
 
   useEffect(() => {
     // Scroll to bottom when messages change
@@ -199,82 +154,89 @@ export default function AIChatScreen() {
     }, 100);
   }, [messages]);
 
-  const handleSendMessage = async () => {
-    if (!inputText.trim() || isLoading) return;
+  useEffect(() => {
+    if (!tenantId) return;
+    const wsUrl = aiApi.getWebSocketUrl(tenantId);
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onmessage = event => {
+      try {
+        const data = JSON.parse(event.data);
+        if (!data) return;
+        const content = data.text || data.message || '';
+        if (!content) return;
+        const senderName = data.sender_name ? `${data.sender_name}: ` : '';
+        const systemMessage: ChatMessage = {
+          id: Date.now().toString(),
+          content: `Fanpage ${senderName}${content}`.trim(),
+          sender: 'system',
+          timestamp: new Date().toISOString(),
+          type: 'text',
+        };
+        addMessage(systemMessage);
+      } catch {}
+    };
+
+    ws.onerror = () => {};
+    ws.onclose = () => {
+      wsRef.current = null;
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [tenantId, addMessage]);
+
+  const sendMessage = async (content: string) => {
+    if (!content.trim() || isLoading) return;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
-      content: inputText.trim(),
+      content: content.trim(),
       sender: 'user',
       timestamp: new Date().toISOString(),
       type: 'text',
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    addMessage(userMessage);
     setInputText('');
     setIsTyping(true);
     setIsLoading(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponses = {
-        book_new_room: 'Tôi có thể giúp bạn đặt phòng mới. Bạn cần cung cấp thông tin như: loại phòng, số lượng khách, ngày nhận phòng và ngày trả phòng.',
-        check_availability: 'Tôi sẽ kiểm tra phòng trống cho bạn. Bạn muốn kiểm tra cho ngày nào?',
-        cancel_booking: 'Để hủy đặt phòng, tôi cần mã đặt phòng của bạn. Vui lòng cung cấp mã đặt phòng.',
-        room_status: 'Hiện tại có 5 phòng trống, 3 phòng đang được sử dụng và 2 phòng đang bảo trì.',
-        update_price: 'Tôi có thể giúp bạn cập nhật giá phòng. Bạn muốn cập nhật giá cho phòng nào?',
-        add_room: 'Để thêm phòng mới, tôi cần thông tin như: số phòng, loại phòng, giá và sức chứa.',
-        monthly_revenue: 'Doanh thu tháng này là 850 triệu VND, tăng 15% so với tháng trước.',
-        operational_costs: 'Chi phí vận hành tháng này là 320 triệu VND, bao gồm: nhân sự, điện nước, bảo trì.',
-        occupancy_rate: 'Tỷ suất lấp đầy hiện tại là 78%, cao hơn mức trung bình tháng trước là 72%.',
-      };
-
-      let responseContent = 'Tôi không hiểu yêu cầu của bạn. Bạn có thể cung cấp thêm thông tin được không?';
-      let quickReplies: Array<{ title: string; payload: string }> = [];
-
-      // Check for keywords in user message
-      const lowerContent = userMessage.content.toLowerCase();
-      if (lowerContent.includes('đặt phòng') || lowerContent.includes('book')) {
-        responseContent = aiResponses.book_new_room;
-        quickReplies = [
-          { title: 'Phòng đơn', payload: 'single_room' },
-          { title: 'Phòng đôi', payload: 'double_room' },
-          { title: 'Phòng gia đình', payload: 'family_room' },
-        ];
-      } else if (lowerContent.includes('trống') || lowerContent.includes('available')) {
-        responseContent = aiResponses.check_availability;
-      } else if (lowerContent.includes('hủy') || lowerContent.includes('cancel')) {
-        responseContent = aiResponses.cancel_booking;
-      } else if (lowerContent.includes('phòng') && lowerContent.includes('status')) {
-        responseContent = aiResponses.room_status;
-      } else if (lowerContent.includes('giá') || lowerContent.includes('price')) {
-        responseContent = aiResponses.update_price;
-      } else if (lowerContent.includes('doanh thu') || lowerContent.includes('revenue')) {
-        responseContent = aiResponses.monthly_revenue;
-      } else if (lowerContent.includes('chi phí') || lowerContent.includes('cost')) {
-        responseContent = aiResponses.operational_costs;
-      } else if (lowerContent.includes('tỷ suất') || lowerContent.includes('occupancy')) {
-        responseContent = aiResponses.occupancy_rate;
-      }
-
+    try {
+      const response = await aiApi.chat(tenantId, userMessage.content);
+      const answerText = response?.answer || 'Xin lỗi, tôi chưa có dữ liệu để tư vấn.';
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
-        content: responseContent,
+        content: answerText,
         sender: 'ai',
         timestamp: new Date().toISOString(),
         type: 'text',
-        quickReplies,
         metadata: {
-          confidence: 0.85 + Math.random() * 0.15, // Random confidence between 0.85-1.0
+          confidence: 0.9,
           intent: 'general_response',
           entities: [],
         },
       };
-
-      setMessages(prev => [...prev, aiMessage]);
+      addMessage(aiMessage);
+    } catch (error) {
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        content: 'Lỗi gọi AI tư vấn.',
+        sender: 'ai',
+        timestamp: new Date().toISOString(),
+        type: 'text',
+      };
+      addMessage(errorMessage);
+    } finally {
       setIsTyping(false);
       setIsLoading(false);
-    }, 1500);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    await sendMessage(inputText);
   };
 
   const handleQuickReply = (payload: string) => {
@@ -289,14 +251,15 @@ export default function AIChatScreen() {
       operational_costs: 'Xem chi phí vận hành',
       occupancy_rate: 'Xem tỷ suất lấp đầy',
     };
-
-    setInputText(quickReplyMessages[payload] || '');
-    handleSendMessage();
+    const content = quickReplyMessages[payload] || '';
+    if (content) {
+      sendMessage(content);
+    }
   };
 
   const switchConversation = (conversationId: string) => {
     setCurrentConversationId(conversationId);
-    setMessages(MOCK_MESSAGES[conversationId] || []);
+    setMessages([]);
     setShowConversations(false);
   };
 
@@ -310,22 +273,10 @@ export default function AIChatScreen() {
       isActive: true,
     };
 
-    const newMessage: ChatMessage = {
-      id: Date.now().toString(),
-      content: 'Chào bạn! Tôi là AI assistant. Tôi có thể giúp gì cho bạn?',
-      sender: 'ai',
-      timestamp: new Date().toISOString(),
-      type: 'text',
-      quickReplies: [
-        { title: 'Đặt phòng', payload: 'book_new_room' },
-        { title: 'Quản lý phòng', payload: 'room_status' },
-        { title: 'Báo cáo', payload: 'monthly_revenue' },
-      ],
-    };
-
     setConversations(prev => [newConversation, ...prev]);
-    MOCK_MESSAGES[newConversation.id] = [newMessage];
-    switchConversation(newConversation.id);
+    setMessages([]);
+    setCurrentConversationId(newConversation.id);
+    setShowConversations(false);
   };
 
   const deleteConversation = (conversationId: string) => {
@@ -338,7 +289,6 @@ export default function AIChatScreen() {
           text: 'Xóa',
           onPress: () => {
             setConversations(prev => prev.filter(c => c.id !== conversationId));
-            delete MOCK_MESSAGES[conversationId];
             if (currentConversationId === conversationId) {
               const remainingConversations = conversations.filter(c => c.id !== conversationId);
               if (remainingConversations.length > 0) {
@@ -459,6 +409,66 @@ export default function AIChatScreen() {
     </TouchableOpacity>
   );
 
+  const connectFanpage = async () => {
+    try {
+      const resp = await aiApi.getFacebookOAuthUrl(tenantId);
+      if (resp?.url) {
+        await Linking.openURL(resp.url);
+      } else {
+        Alert.alert(t.connectFanpage, 'Không lấy được URL kết nối.');
+      }
+    } catch (error) {
+      Alert.alert(t.connectFanpage, 'Không thể kết nối Fanpage.');
+    }
+  };
+
+  const openFanpageHistory = () => {
+    router.push('/management/fanpage');
+  };
+
+  const clearHistory = () => {
+    if (messages.length === 0) {
+      Alert.alert(t.clearHistory, t.noMessages);
+      return;
+    }
+    Alert.alert(t.clearHistory, t.confirmDelete, [
+      { text: t.cancel, style: 'cancel' },
+      { text: t.clearHistory, onPress: () => setMessages([]) },
+    ]);
+  };
+
+  const openDatasetModal = () => {
+    setDatasetText('');
+    setDatasetModalVisible(true);
+  };
+
+  const uploadDataset = async () => {
+    if (!datasetText.trim() || datasetLoading) return;
+    setDatasetLoading(true);
+    try {
+      const parsed = JSON.parse(datasetText);
+      const products = Array.isArray(parsed) ? parsed : parsed?.products;
+      if (!Array.isArray(products) || products.length === 0) {
+        Alert.alert(t.uploadDataset, 'Dataset JSON không hợp lệ hoặc trống.');
+        return;
+      }
+      await aiApi.uploadDataset(tenantId, products);
+      const systemMessage: ChatMessage = {
+        id: Date.now().toString(),
+        content: `Đã tải dataset (${products.length} mục).`,
+        sender: 'system',
+        timestamp: new Date().toISOString(),
+        type: 'text',
+      };
+      addMessage(systemMessage);
+      setDatasetModalVisible(false);
+    } catch (error) {
+      Alert.alert(t.uploadDataset, 'Không thể tải dataset.');
+    } finally {
+      setDatasetLoading(false);
+    }
+  };
+
   const currentConversation = conversations.find(c => c.id === currentConversationId);
 
   return (
@@ -476,11 +486,11 @@ export default function AIChatScreen() {
         </Text>
         
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="call" size={20} color="#4CAF50" />
+          <TouchableOpacity style={styles.headerButton} onPress={openDatasetModal}>
+            <Ionicons name="cloud-upload" size={20} color="#4CAF50" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="videocam" size={20} color="#4CAF50" />
+          <TouchableOpacity style={styles.headerButton} onPress={clearHistory}>
+            <Ionicons name="trash" size={20} color="#f44336" />
           </TouchableOpacity>
         </View>
       </View>
@@ -516,16 +526,22 @@ export default function AIChatScreen() {
           </ScrollView>
           
           <View style={styles.modalFooter}>
-            <TouchableOpacity style={styles.modalFooterButton}>
+            <TouchableOpacity style={styles.modalFooterButton} onPress={connectFanpage}>
               <Ionicons name="link" size={20} color="#4CAF50" />
               <Text style={styles.modalFooterButtonText}>
                 {t.connectFanpage}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.modalFooterButton}>
+            <TouchableOpacity style={styles.modalFooterButton} onPress={openFanpageHistory}>
               <Ionicons name="document-text" size={20} color="#4CAF50" />
               <Text style={styles.modalFooterButtonText}>
                 {t.viewFanpageHistory}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modalFooterButton} onPress={openDatasetModal}>
+              <Ionicons name="cloud-upload" size={20} color="#4CAF50" />
+              <Text style={styles.modalFooterButtonText}>
+                {t.uploadDataset}
               </Text>
             </TouchableOpacity>
           </View>
@@ -560,7 +576,7 @@ export default function AIChatScreen() {
         )}
 
         <View style={styles.inputContainer}>
-          <TouchableOpacity style={styles.attachmentButton}>
+          <TouchableOpacity style={styles.attachmentButton} onPress={openDatasetModal}>
             <Ionicons name="attach" size={24} color="#666" />
           </TouchableOpacity>
           
@@ -585,6 +601,43 @@ export default function AIChatScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={datasetModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setDatasetModalVisible(false)}
+      >
+        <View style={styles.datasetOverlay}>
+          <View style={styles.datasetModal}>
+            <Text style={styles.datasetTitle}>{t.uploadDatasetTitle}</Text>
+            <TextInput
+              style={styles.datasetInput}
+              value={datasetText}
+              onChangeText={setDatasetText}
+              placeholder={t.datasetPlaceholder}
+              multiline
+              editable={!datasetLoading}
+            />
+            <View style={styles.datasetActions}>
+              <TouchableOpacity style={styles.datasetCancel} onPress={() => setDatasetModalVisible(false)}>
+                <Text style={styles.datasetCancelText}>{t.cancel}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.datasetUpload, datasetLoading && styles.datasetUploadDisabled]}
+                onPress={uploadDataset}
+                disabled={datasetLoading}
+              >
+                {datasetLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.datasetUploadText}>{t.upload}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -620,6 +673,64 @@ const styles = StyleSheet.create({
   headerButton: {
     padding: 8,
     marginLeft: 8,
+  },
+  datasetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  datasetModal: {
+    width: '100%',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+  },
+  datasetTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+    color: '#333',
+  },
+  datasetInput: {
+    minHeight: 140,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    padding: 12,
+    textAlignVertical: 'top',
+    fontSize: 14,
+    color: '#333',
+    backgroundColor: '#fafafa',
+  },
+  datasetActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 12,
+  },
+  datasetCancel: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginRight: 8,
+  },
+  datasetCancelText: {
+    color: '#666',
+    fontSize: 14,
+  },
+  datasetUpload: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#4CAF50',
+    borderRadius: 8,
+  },
+  datasetUploadDisabled: {
+    opacity: 0.6,
+  },
+  datasetUploadText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   content: {
     flex: 1,

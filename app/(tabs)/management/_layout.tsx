@@ -47,6 +47,13 @@ export default function ManagementLayout() {
         }} 
       />
       <Stack.Screen 
+        name="shift-handover" 
+        options={{ 
+          title: 'Quản Lý Giao Ca',
+          headerShown: true
+        }} 
+      />
+      <Stack.Screen 
         name="fanpage" 
         options={{ 
           title: 'Quản Lý Fanpage',
