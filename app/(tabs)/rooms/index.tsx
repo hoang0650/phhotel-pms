@@ -55,6 +55,8 @@ import { useHotel } from '@/contexts/HotelContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { useLanguage } from '../../../contexts/LanguageContext';  
 import { useGuestDraftStore } from '@/stores/guestDraft';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_ITEM_WIDTH = (SCREEN_WIDTH - 60) / 2;
@@ -128,6 +130,8 @@ export default function RoomsScreen() {
   const { selectedHotelId } = useHotel();
   const { isDark, colors } = useTheme();
   const { t, language } = useLanguage();
+  const router = useRouter();
+  const { assignRoomId } = useLocalSearchParams<{ assignRoomId?: string }>();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<RoomStatus | 'all' | 'guest_out'>('all');
@@ -180,6 +184,9 @@ export default function RoomsScreen() {
   const [isCheckoutServiceOpen, setIsCheckoutServiceOpen] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [selectedServiceQuantity, setSelectedServiceQuantity] = useState(1);
+  const [guestOutNote, setGuestOutNote] = useState('');
+  const [guestOutModalVisible, setGuestOutModalVisible] = useState(false);
+  const [guestReturnModalVisible, setGuestReturnModalVisible] = useState(false);
 
   const { data: rooms = [], isLoading, refetch } = useQuery({
     queryKey: ['rooms', selectedHotelId],
@@ -196,6 +203,7 @@ export default function RoomsScreen() {
     queryFn: () => (selectedRoom ? servicesApi.getOrdersByRoom(selectedRoom.id) : Promise.resolve([])),
     enabled: !!selectedRoom && modalMode === 'checkout',
   });
+  const { user } = useAuth();
 
   const serviceTotal = useMemo(() => {
     return selectedServices.reduce((sum, service) => sum + (service.totalPrice || 0), 0);
@@ -224,7 +232,8 @@ export default function RoomsScreen() {
   });
 
   const guestOutMutation = useMutation({
-    mutationFn: ({ id, note }: { id: string; note?: string }) => roomsApi.guestOut(id, note),
+    mutationFn: ({ id, note, staffId }: { id: string; note?: string; staffId?: string }) =>
+      roomsApi.guestOut(id, note, staffId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       closeModal();
@@ -235,7 +244,7 @@ export default function RoomsScreen() {
     },
   });
   const guestReturnMutation = useMutation({
-    mutationFn: (id: string) => roomsApi.guestReturn(id),
+    mutationFn: ({ id, staffId }: { id: string; staffId?: string }) => roomsApi.guestReturn(id, staffId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
       closeModal();
@@ -448,6 +457,19 @@ export default function RoomsScreen() {
     }));
     setSelectedServices([]);
   }, []);
+
+  const normalizedAssignRoomId = useMemo(() => {
+    if (!assignRoomId) return null;
+    return Array.isArray(assignRoomId) ? assignRoomId[0] : assignRoomId;
+  }, [assignRoomId]);
+
+  useEffect(() => {
+    if (!normalizedAssignRoomId || rooms.length === 0) return;
+    const targetRoom = rooms.find(room => room.id === normalizedAssignRoomId);
+    if (!targetRoom) return;
+    openRoomModal(targetRoom, 'checkin');
+    router.replace('/(tabs)/rooms');
+  }, [normalizedAssignRoomId, rooms, openRoomModal, router]);
 
   useEffect(() => {
     if (!modalVisible || modalMode !== 'checkout') return;
@@ -696,13 +718,30 @@ export default function RoomsScreen() {
   
   const handleGuestOut = useCallback(() => {
     if (!selectedRoom) return;
-    doGuestOut({ id: selectedRoom.id });
-  }, [selectedRoom, doGuestOut]);
+    setGuestOutNote('');
+    setGuestOutModalVisible(true);
+  }, [selectedRoom]);
   
   const handleGuestReturn = useCallback(() => {
     if (!selectedRoom) return;
-    doGuestReturn(selectedRoom.id);
-  }, [selectedRoom, doGuestReturn]);
+    setGuestReturnModalVisible(true);
+  }, [selectedRoom]);
+
+  const confirmGuestOut = useCallback(() => {
+    if (!selectedRoom) return;
+    doGuestOut({
+      id: selectedRoom.id,
+      note: guestOutNote.trim() || undefined,
+      staffId: user?.id,
+    });
+    setGuestOutModalVisible(false);
+  }, [selectedRoom, doGuestOut, guestOutNote, user?.id]);
+
+  const confirmGuestReturn = useCallback(() => {
+    if (!selectedRoom) return;
+    doGuestReturn({ id: selectedRoom.id, staffId: user?.id });
+    setGuestReturnModalVisible(false);
+  }, [selectedRoom, doGuestReturn, user?.id]);
 
   const getStatusLabel = useCallback((status: RoomStatus) => {
     return language === 'en' ? statusConfig[status].labelEn : statusConfig[status].label;
@@ -2124,6 +2163,113 @@ export default function RoomsScreen() {
       </Modal>
 
       <Modal
+        visible={guestOutModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGuestOutModalVisible(false)}
+      >
+        <Pressable style={[styles.modalOverlay, { backgroundColor: colors.overlay }]} onPress={() => setGuestOutModalVisible(false)}>
+          <Pressable style={[styles.modalContent, { backgroundColor: colors.cardBackground }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalDragHandle}>
+              <View style={[styles.dragBar, { backgroundColor: isDark ? '#475569' : '#d1d5db' }]} />
+            </View>
+            <TouchableOpacity onPress={() => setGuestOutModalVisible(false)} style={styles.modalCloseBtn}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <Text style={[styles.checkInTitle, { color: colors.text }]}>
+              {language === 'vi' ? `Khách ra ngoài - Phòng ${selectedRoom?.number || ''}` : `Guest Out - Room ${selectedRoom?.number || ''}`}
+            </Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              {language === 'vi' ? 'Xác nhận khách tạm thời ra ngoài. Phòng vẫn được giữ và tính phí.' : 'Confirm guest is temporarily out. Room remains occupied and billed.'}
+            </Text>
+            <View style={styles.formRow}>
+              <Text style={[styles.formLabel, { color: colors.textSecondary }]}>
+                {language === 'vi' ? 'Ghi chú (không bắt buộc)' : 'Note (optional)'}
+              </Text>
+              <TextInput
+                style={[styles.input, styles.textArea, { color: colors.text, borderColor: colors.border }]}
+                multiline
+                value={guestOutNote}
+                onChangeText={setGuestOutNote}
+                placeholder={language === 'vi' ? 'Nhập ghi chú' : 'Enter note'}
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={[styles.confirmButton, styles.confirmButtonSecondary, { borderColor: colors.border }]}
+                onPress={() => setGuestOutModalVisible(false)}
+              >
+                <Text style={[styles.confirmButtonText, { color: colors.textSecondary }]}>
+                  {language === 'vi' ? 'Hủy' : 'Cancel'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmButton, { backgroundColor: Colors.status.guestOut }, guestOutMutation.isPending && { opacity: 0.6 }]}
+                onPress={() => { if (!guestOutMutation.isPending) confirmGuestOut(); }}
+                disabled={guestOutMutation.isPending}
+              >
+                {guestOutMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[styles.confirmButtonText, { color: '#fff' }]}>
+                    {language === 'vi' ? 'Xác nhận' : 'Confirm'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={guestReturnModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setGuestReturnModalVisible(false)}
+      >
+        <Pressable style={[styles.modalOverlay, { backgroundColor: colors.overlay }]} onPress={() => setGuestReturnModalVisible(false)}>
+          <Pressable style={[styles.modalContent, { backgroundColor: colors.cardBackground }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalDragHandle}>
+              <View style={[styles.dragBar, { backgroundColor: isDark ? '#475569' : '#d1d5db' }]} />
+            </View>
+            <TouchableOpacity onPress={() => setGuestReturnModalVisible(false)} style={styles.modalCloseBtn}>
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <Text style={[styles.checkInTitle, { color: colors.text }]}>
+              {language === 'vi' ? `Khách quay lại - Phòng ${selectedRoom?.number || ''}` : `Guest Return - Room ${selectedRoom?.number || ''}`}
+            </Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              {language === 'vi' ? 'Xác nhận khách đã quay lại phòng.' : 'Confirm guest has returned to the room.'}
+            </Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={[styles.confirmButton, styles.confirmButtonSecondary, { borderColor: colors.border }]}
+                onPress={() => setGuestReturnModalVisible(false)}
+              >
+                <Text style={[styles.confirmButtonText, { color: colors.textSecondary }]}>
+                  {language === 'vi' ? 'Hủy' : 'Cancel'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmButton, { backgroundColor: Colors.status.vacant }, guestReturnMutation.isPending && { opacity: 0.6 }]}
+                onPress={() => { if (!guestReturnMutation.isPending) confirmGuestReturn(); }}
+                disabled={guestReturnMutation.isPending}
+              >
+                {guestReturnMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={[styles.confirmButtonText, { color: '#fff' }]}>
+                    {language === 'vi' ? 'Xác nhận' : 'Confirm'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
         visible={isIncomeModalVisible}
         transparent
         animationType="fade"
@@ -2738,6 +2884,26 @@ const styles = StyleSheet.create({
   },
   submitButtonText: {
     color: '#fff',
+    fontSize: 14,
+    fontWeight: '700' as const,
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 6,
+  },
+  confirmButton: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmButtonSecondary: {
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  confirmButtonText: {
     fontSize: 14,
     fontWeight: '700' as const,
   },

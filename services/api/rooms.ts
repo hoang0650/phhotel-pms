@@ -425,12 +425,12 @@ export const roomsApi = {
     return apiClient.post('/rooms/transfer', { fromRoomId, toRoomId, ...((payload as object) || {}) });
   },
   
-  guestOut: async (id: string, note?: string) => {
-    return apiClient.post(API_ENDPOINTS.ROOMS.GUEST_OUT(id), { note });
+  guestOut: async (id: string, note?: string, staffId?: string) => {
+    return apiClient.post(API_ENDPOINTS.ROOMS.GUEST_OUT(id), { note, staffId });
   },
   
-  guestReturn: async (id: string) => {
-    return apiClient.post(API_ENDPOINTS.ROOMS.GUEST_RETURN(id), {});
+  guestReturn: async (id: string, staffId?: string) => {
+    return apiClient.post(API_ENDPOINTS.ROOMS.GUEST_RETURN(id), { staffId });
   },
   
   getEventsByHotel: async (hotelId: string, options?: { limit?: number; skip?: number; types?: string[] }): Promise<RoomEvent[]> => {

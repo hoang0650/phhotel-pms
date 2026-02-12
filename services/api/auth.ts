@@ -14,6 +14,16 @@ export interface User {
   hotelIds?: string[];
   hotelId?: string;
   businessId?: string;
+  preferences?: {
+    language?: string;
+    theme?: string;
+    notifications?: {
+      email?: boolean;
+      sms?: boolean;
+      push?: boolean;
+    };
+    biometricEnabled?: boolean;
+  };
 }
 
 export interface ApiUser {
@@ -27,6 +37,16 @@ export interface ApiUser {
   hotels?: any[]; // Allow any for robustness
   hotelId?: any;  // Allow any for robustness
   businessId?: any; // Allow any for robustness
+  preferences?: {
+    language?: string;
+    theme?: string;
+    notifications?: {
+      email?: boolean;
+      sms?: boolean;
+      push?: boolean;
+    };
+    biometricEnabled?: boolean;
+  };
 }
 
 export interface LoginRequest {
@@ -74,6 +94,7 @@ const mapApiUserToUser = (apiUser: ApiUser): User => ({
   hotelIds: extractIds(apiUser.hotels),
   hotelId: extractId(apiUser.hotelId),
   businessId: extractId(apiUser.businessId),
+  preferences: apiUser.preferences,
 });
 
 export const authApi = {
@@ -135,6 +156,24 @@ export const authApi = {
       console.error('[authApi.updateProfile] Error:', error);
       throw error;
     }
+  },
+  updatePreferences: async (data: {
+    language?: string;
+    theme?: string;
+    notifications?: {
+      email?: boolean;
+      sms?: boolean;
+      push?: boolean;
+    };
+    biometricEnabled?: boolean;
+  }): Promise<{ preferences?: ApiUser['preferences'] }> => {
+    return apiClient.put<{ preferences?: ApiUser['preferences'] }>(`${API_ENDPOINTS.USERS.BASE}/preferences`, data);
+  },
+  changePassword: async (userId: string, currentPassword: string, newPassword: string): Promise<{ message: string }> => {
+    return apiClient.put<{ message: string }>(`${API_ENDPOINTS.USERS.BY_ID(userId)}/password`, {
+      currentPassword,
+      newPassword,
+    });
   },
 
   logout: async (): Promise<void> => {

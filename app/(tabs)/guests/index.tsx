@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -21,16 +22,18 @@ import {
   Plus,
   Globe,
   AlertCircle,
+  CheckCircle,
 } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
-import { guestsApi } from '@/services/api';
-import { Guest } from '@/types/hotel';
+import { bookingsApi, guestsApi, roomsApi } from '@/services/api';
+import { Booking, Guest, Room } from '@/types/hotel';
 import { useHotel } from '@/contexts/HotelContext';
 import { Modal } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { aiApi } from '@/services/api/ai';
 import { useGuestDraftStore } from '@/stores/guestDraft';
+import { useRouter } from 'expo-router';
 
 export default function GuestsScreen() {
   const insets = useSafeAreaInsets();
@@ -38,6 +41,10 @@ export default function GuestsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showVipOnly, setShowVipOnly] = useState(false);
   const [createVisible, setCreateVisible] = useState(false);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [assignVisible, setAssignVisible] = useState(false);
+  const [assignRoomId, setAssignRoomId] = useState<string | null>(null);
+  const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
   const [form, setForm] = useState({
     fullName: '',
     phone: '',
@@ -53,6 +60,7 @@ export default function GuestsScreen() {
   const [ocrPhase, setOcrPhase] = useState<'upload' | 'scan' | 'process' | ''>('');
   const [ocrImages, setOcrImages] = useState<string[]>([]);
   const setGuestDraft = useGuestDraftStore(s => s.setDraft);
+  const router = useRouter();
 
   const clearOcrImages = () => {
     setOcrImages([]);
@@ -68,13 +76,109 @@ export default function GuestsScreen() {
     });
   };
 
+  const closeCreateModal = () => {
+    setCreateVisible(false);
+    setOcrLoading(false);
+    setOcrStatus('');
+    setOcrPhase('');
+    setOcrImages([]);
+  };
+
+  const effectiveHotelId = selectedHotelId || selectedHotel?.id;
   const { data: guests = [], isLoading, refetch } = useQuery({
-    queryKey: ['guests', selectedHotelId],
-    queryFn: () => selectedHotelId ? guestsApi.getByHotel(selectedHotelId) : guestsApi.getAll(),
+    queryKey: ['guests', effectiveHotelId],
+    queryFn: () => (effectiveHotelId ? guestsApi.getByHotel(effectiveHotelId) : []),
+    enabled: !!effectiveHotelId,
   });
 
+  const { data: bookings = [] } = useQuery({
+    queryKey: ['bookings', effectiveHotelId],
+    queryFn: () => (effectiveHotelId ? bookingsApi.getByHotel(effectiveHotelId) : []),
+    enabled: !!effectiveHotelId,
+  });
+
+  const { data: rooms = [], isLoading: roomsLoading } = useQuery({
+    queryKey: ['rooms', effectiveHotelId],
+    queryFn: () => (effectiveHotelId ? roomsApi.getAll(effectiveHotelId) : []),
+    enabled: !!effectiveHotelId,
+  });
+
+  const normalizeName = (value: string) => value.toLowerCase().replace(/\s+/g, ' ').trim();
+  const normalizeEmail = (value: string) => value.toLowerCase().trim();
+  const normalizePhone = (value: string) => value.replace(/[^\d+]/g, '');
+  const normalizeIdNumber = (value: string) => value.replace(/\s+/g, '').trim();
+
+  const guestStats = useMemo(() => {
+    const stats = new Map<string, { totalStays: number; totalSpent: number }>();
+    if (guests.length === 0 || bookings.length === 0) return stats;
+
+    const tokenToGuestId = new Map<string, string>();
+    guests.forEach((guest) => {
+      if (guest.idNumber) tokenToGuestId.set(`id:${normalizeIdNumber(guest.idNumber)}`, guest.id);
+      if (guest.phone) tokenToGuestId.set(`phone:${normalizePhone(guest.phone)}`, guest.id);
+      if (guest.email) tokenToGuestId.set(`email:${normalizeEmail(guest.email)}`, guest.id);
+      if (guest.name) tokenToGuestId.set(`name:${normalizeName(guest.name)}`, guest.id);
+    });
+
+    const getGuestIdForBooking = (booking: Booking) => {
+      const tokens: string[] = [];
+      if (booking.guestIdNumber) tokens.push(`id:${normalizeIdNumber(booking.guestIdNumber)}`);
+      if (booking.guestPhone) tokens.push(`phone:${normalizePhone(booking.guestPhone)}`);
+      if (booking.guestEmail) tokens.push(`email:${normalizeEmail(booking.guestEmail)}`);
+      if (booking.guestName) tokens.push(`name:${normalizeName(booking.guestName)}`);
+      for (const token of tokens) {
+        const id = tokenToGuestId.get(token);
+        if (id) return id;
+      }
+      return null;
+    };
+
+    const ensureStats = (guestId: string) => {
+      const existing = stats.get(guestId);
+      if (existing) return existing;
+      const next = { totalStays: 0, totalSpent: 0 };
+      stats.set(guestId, next);
+      return next;
+    };
+
+    bookings.forEach((booking) => {
+      const guestId = getGuestIdForBooking(booking);
+      if (!guestId) return;
+      const entry = ensureStats(guestId);
+      if (booking.status !== 'cancelled') {
+        entry.totalStays += 1;
+      }
+      const isPaid = booking.paymentStatus === 'paid' || booking.status === 'checked_out';
+      if (isPaid) {
+        entry.totalSpent += booking.paidAmount || booking.totalAmount || 0;
+      }
+    });
+
+    return stats;
+  }, [bookings, guests]);
+
+  const availableRooms = useMemo(() => {
+    return rooms.filter((room) => room.status === 'vacant');
+  }, [rooms]);
+
+  const computedGuests = useMemo(() => {
+    if (guests.length === 0) return guests;
+    return guests.map((guest) => {
+      const stats = guestStats.get(guest.id);
+      if (!stats) return guest;
+      const isRegularGuest = (guest.guestType || 'regular') === 'regular';
+      const totalStays = isRegularGuest ? (stats.totalStays > 0 ? 1 : 0) : stats.totalStays;
+      return {
+        ...guest,
+        totalStays,
+        totalSpent: stats.totalSpent,
+        vipStatus: isRegularGuest ? false : (guest.vipStatus || stats.totalSpent > 3000000),
+      };
+    });
+  }, [guests, guestStats]);
+
   const filteredGuests = useMemo(() => {
-    return guests.filter((guest) => {
+    return computedGuests.filter((guest) => {
       const matchesSearch =
         guest.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         guest.phone.includes(searchQuery) ||
@@ -82,9 +186,9 @@ export default function GuestsScreen() {
       const matchesVip = !showVipOnly || guest.vipStatus;
       return matchesSearch && matchesVip;
     });
-  }, [guests, searchQuery, showVipOnly]);
+  }, [computedGuests, searchQuery, showVipOnly]);
 
-  const vipCount = useMemo(() => guests.filter((g) => g.vipStatus).length, [guests]);
+  const vipCount = useMemo(() => computedGuests.filter((g) => g.vipStatus).length, [computedGuests]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -103,9 +207,31 @@ export default function GuestsScreen() {
       .toUpperCase();
   };
 
+  const getGuestTypeLabel = (type?: Guest['guestType']) => {
+    if (type === 'frequent') return 'Khách quen';
+    if (type === 'group') return 'Khách đoàn';
+    return 'Khách lưu';
+  };
+
+  const getGenderLabel = (gender?: string) => {
+    if (!gender) return '-';
+    const value = gender.toLowerCase();
+    if (value === 'male' || value === 'nam') return 'Nam';
+    if (value === 'female' || value === 'nữ' || value === 'nu') return 'Nữ';
+    return gender;
+  };
+
   const renderGuestCard = (guest: Guest) => {
     return (
-      <TouchableOpacity key={guest.id} style={styles.guestCard} activeOpacity={0.7}>
+      <TouchableOpacity
+        key={guest.id}
+        style={styles.guestCard}
+        activeOpacity={0.7}
+        onPress={() => {
+          setSelectedGuest(guest);
+          setDetailVisible(true);
+        }}
+      >
         <View style={styles.cardHeader}>
           <View style={styles.avatarContainer}>
             <View style={[styles.avatar, guest.vipStatus && styles.avatarVip]}>
@@ -172,6 +298,20 @@ export default function GuestsScreen() {
     return { uri: a.uri, name: a.fileName || 'image.jpg', type: mime };
   };
 
+  const pickTwoImages = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsMultipleSelection: true,
+      selectionLimit: 2,
+    });
+    if (res.canceled || !res.assets || res.assets.length === 0) return [];
+    return res.assets.slice(0, 2).map((a) => {
+      const mime = (a as any).mimeType || 'image/jpeg';
+      return { uri: a.uri, name: a.fileName || 'image.jpg', type: mime };
+    });
+  };
+
   const handleScanOneImage = async () => {
     setOcrLoading(true);
     setOcrPhase('upload');
@@ -210,15 +350,21 @@ export default function GuestsScreen() {
   const handleScanTwoImages = async () => {
     setOcrLoading(true);
     setOcrPhase('upload');
-    setOcrStatus('Đang chọn ảnh mặt trước...');
+    setOcrStatus('Đang chọn 2 ảnh...');
     try {
-      const front = await pickSingleImage();
+      const picked = await pickTwoImages();
+      let front = picked[0];
+      let back = picked[1];
+
       if (!front) return;
-      setOcrImages([front.uri]);
-      setOcrPhase('upload');
-      setOcrStatus('Đang chọn ảnh mặt sau...');
-      const back = await pickSingleImage();
-      if (!back) return;
+      if (!back) {
+        setOcrImages([front.uri]);
+        setOcrStatus('Đang chọn ảnh mặt sau...');
+        const backPicked = await pickSingleImage();
+        if (!backPicked) return;
+        back = backPicked;
+      }
+
       setOcrImages([front.uri, back.uri]);
       setOcrPhase('upload');
       setOcrStatus('Đang upload 2 ảnh lên AI...');
@@ -279,24 +425,52 @@ export default function GuestsScreen() {
 
   const parseDateToISO = (input: any): string | null => {
     if (!input) return null;
+    if (input instanceof Date && !isNaN(input.getTime())) {
+      const dd = String(input.getDate()).padStart(2, '0');
+      const mm = String(input.getMonth() + 1).padStart(2, '0');
+      const yyyy = String(input.getFullYear());
+      return `${dd}/${mm}/${yyyy}`;
+    }
     if (typeof input === 'string') {
       const s = input.replace(/[\.\-\s]/g, '/').trim();
       const parts = s.split('/');
       if (parts.length === 3) {
-        const d = parseInt(parts[0], 10);
+        const isYearFirst = parts[0].length === 4;
+        const d = parseInt(isYearFirst ? parts[2] : parts[0], 10);
         const m = parseInt(parts[1], 10);
-        const y = parseInt(parts[2], 10);
+        const y = parseInt(isYearFirst ? parts[0] : parts[2], 10);
         if (y >= 1900 && y <= 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
           const dt = new Date(y, m - 1, d);
           if (!isNaN(dt.getTime())) {
             const mm = String(m).padStart(2, '0');
             const dd = String(d).padStart(2, '0');
-            return `${y}-${mm}-${dd}`;
+            return `${dd}/${mm}/${y}`;
           }
         }
       }
     }
     return null;
+  };
+  const formatDateDisplay = (value?: string) => {
+    if (!value) return '-';
+    const parsed = new Date(value);
+    if (!isNaN(parsed.getTime())) {
+      const dd = String(parsed.getDate()).padStart(2, '0');
+      const mm = String(parsed.getMonth() + 1).padStart(2, '0');
+      const yyyy = String(parsed.getFullYear());
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    return parseDateToISO(value) || value;
+  };
+  const parseDateForBackend = (value?: string) => {
+    if (!value) return undefined;
+    const normalized = parseDateToISO(value);
+    if (normalized) {
+      const [dd, mm, yyyy] = normalized.split('/');
+      if (yyyy && mm && dd) return `${yyyy}-${mm}-${dd}`;
+    }
+    const parsed = new Date(value);
+    return !isNaN(parsed.getTime()) ? parsed.toISOString() : undefined;
   };
   const buildAddressFromRaw = (lines: string[]) => {
     const norm = lines.map(l => (l || '').trim()).filter(l => l.length > 0);
@@ -322,21 +496,51 @@ export default function GuestsScreen() {
   };
 
   const handleSave = async () => {
+    if (!effectiveHotelId) {
+      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn trước');
+      return;
+    }
     const payload = {
-      name: form.fullName || 'Khách lẻ',
-      phone: form.phone,
-      email: form.email,
-      idNumber: form.idNumber,
-      nationality: form.nationality,
+      hotelId: effectiveHotelId,
+      guestType: 'regular',
+      personalInfo: {
+        fullName: form.fullName || 'Khách lẻ',
+        idNumber: form.idNumber || undefined,
+        nationality: form.nationality || undefined,
+        gender: form.gender || undefined,
+        dateOfBirth: parseDateForBackend(form.dateOfBirth),
+      },
+      contactInfo: {
+        phone: form.phone || undefined,
+        email: form.email || undefined,
+        address: form.address ? { street: form.address } : undefined,
+      },
     };
     const created = await guestsApi.create(payload);
     if (created) {
-      setCreateVisible(false);
+      closeCreateModal();
       refetch();
     }
   };
 
   const handleAssignDraft = () => {
+    if (!effectiveHotelId) {
+      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn trước');
+      return;
+    }
+    setAssignVisible(true);
+  };
+
+  const closeAssignModal = () => {
+    setAssignVisible(false);
+    setAssignRoomId(null);
+  };
+
+  const handleConfirmAssign = () => {
+    if (!assignRoomId) {
+      Alert.alert('Thông báo', 'Vui lòng chọn phòng');
+      return;
+    }
     setGuestDraft({
       fullName: form.fullName,
       phone: form.phone,
@@ -347,7 +551,9 @@ export default function GuestsScreen() {
       gender: form.gender,
       dateOfBirth: form.dateOfBirth,
     });
-    setCreateVisible(false);
+    closeCreateModal();
+    closeAssignModal();
+    router.push({ pathname: '/(tabs)/rooms', params: { assignRoomId } } as any);
   };
 
   if (isLoading && guests.length === 0) {
@@ -364,7 +570,7 @@ export default function GuestsScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Khách hàng</Text>
-          <Text style={styles.subtitle}>{selectedHotel?.name || 'Tất cả'} • {guests.length} khách</Text>
+          <Text style={styles.subtitle}>{selectedHotel?.name || 'Tất cả'} • {computedGuests.length} khách</Text>
         </View>
         <TouchableOpacity style={styles.addButton} onPress={() => setCreateVisible(true)}>
           <Plus size={20} color="#fff" />
@@ -390,7 +596,7 @@ export default function GuestsScreen() {
           onPress={() => setShowVipOnly(false)}
         >
           <Text style={[styles.filterChipText, !showVipOnly && styles.filterChipTextActive]}>
-            Tất cả ({guests.length})
+            Tất cả ({computedGuests.length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -430,7 +636,55 @@ export default function GuestsScreen() {
           </View>
         )}
       </ScrollView>
-      <Modal visible={createVisible} transparent animationType="slide" onRequestClose={() => setCreateVisible(false)}>
+      <Modal visible={detailVisible} transparent animationType="slide" onRequestClose={() => setDetailVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Thông tin khách</Text>
+            </View>
+            <View style={styles.detailList}>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Tên khách</Text>
+                <Text style={styles.detailValue}>{selectedGuest?.name || '-'}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Giới tính</Text>
+                <Text style={styles.detailValue}>{getGenderLabel(selectedGuest?.gender)}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Ngày sinh</Text>
+                <Text style={styles.detailValue}>{formatDateDisplay(selectedGuest?.dateOfBirth)}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Loại khách</Text>
+                <Text style={styles.detailValue}>{getGuestTypeLabel(selectedGuest?.guestType)}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>CMND/CCCD</Text>
+                <Text style={styles.detailValue}>{selectedGuest?.idNumber || '-'}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Số điện thoại</Text>
+                <Text style={styles.detailValue}>{selectedGuest?.phone || '-'}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Email</Text>
+                <Text style={styles.detailValue}>{selectedGuest?.email || '-'}</Text>
+              </View>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Địa chỉ</Text>
+                <Text style={styles.detailValue}>{selectedGuest?.address || '-'}</Text>
+              </View>
+            </View>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={[styles.footerBtn, { borderColor: Colors.light.border }]} onPress={() => setDetailVisible(false)}>
+                <Text style={[styles.footerBtnText, { color: Colors.light.textSecondary }]}>Đóng</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={createVisible} transparent animationType="slide" onRequestClose={closeCreateModal}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -490,7 +744,7 @@ export default function GuestsScreen() {
             </View>
             <View style={styles.inputRow}>
               <Text style={styles.inputLabel}>Ngày sinh</Text>
-              <TextInput style={styles.input} value={form.dateOfBirth} onChangeText={(v) => setForm({ ...form, dateOfBirth: v })} placeholder="dd/mm/yyyy hoặc yyyy-mm-dd" />
+      <TextInput style={styles.input} value={form.dateOfBirth} onChangeText={(v) => setForm({ ...form, dateOfBirth: v })} placeholder="dd/MM/yyyy" />
             </View>
             <View style={styles.inputRow}>
               <Text style={styles.inputLabel}>Quốc tịch</Text>
@@ -501,7 +755,7 @@ export default function GuestsScreen() {
               <TextInput style={styles.input} value={form.address} onChangeText={(v) => setForm({ ...form, address: v })} />
             </View>
             <View style={styles.modalFooter}>
-              <TouchableOpacity style={[styles.footerBtn, { borderColor: Colors.light.border }]} onPress={() => setCreateVisible(false)}>
+              <TouchableOpacity style={[styles.footerBtn, { borderColor: Colors.light.border }]} onPress={closeCreateModal}>
                 <Text style={[styles.footerBtnText, { color: Colors.light.textSecondary }]}>Đóng</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: Colors.light.tint }]} onPress={handleSave}>
@@ -509,6 +763,51 @@ export default function GuestsScreen() {
               </TouchableOpacity>
               <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: '#13c2c2' }]} onPress={handleAssignDraft}>
                 <Text style={styles.footerPrimaryText}>Assign vào Rooms</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={assignVisible} transparent animationType="slide" onRequestClose={closeAssignModal}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, styles.assignModalCard]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chọn phòng</Text>
+              {roomsLoading && <ActivityIndicator size="small" color={Colors.light.tint} />}
+            </View>
+            <ScrollView style={styles.assignList} contentContainerStyle={styles.assignListContent}>
+              {availableRooms.length > 0 ? (
+                availableRooms.map((room: Room) => {
+                  const isSelected = assignRoomId === room.id;
+                  return (
+                    <TouchableOpacity
+                      key={room.id}
+                      style={[styles.assignRoomItem, isSelected && styles.assignRoomItemSelected]}
+                      onPress={() => setAssignRoomId(room.id)}
+                    >
+                      <View>
+                        <Text style={styles.assignRoomNumber}>Phòng {room.number}</Text>
+                        <Text style={styles.assignRoomMeta}>
+                          {(room.roomType || room.type) ?? '-'} • Tầng {room.floor}
+                        </Text>
+                      </View>
+                      {isSelected && <CheckCircle size={20} color={Colors.light.tint} />}
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <View style={styles.assignEmpty}>
+                  <AlertCircle size={22} color={Colors.light.textSecondary} />
+                  <Text style={styles.assignEmptyText}>Không có phòng trống</Text>
+                </View>
+              )}
+            </ScrollView>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={[styles.footerBtn, { borderColor: Colors.light.border }]} onPress={closeAssignModal}>
+                <Text style={[styles.footerBtnText, { color: Colors.light.textSecondary }]}>Đóng</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: Colors.light.tint }]} onPress={handleConfirmAssign}>
+                <Text style={styles.footerPrimaryText}>Xác nhận</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -778,11 +1077,79 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
   },
+  assignModalCard: {
+    maxHeight: '85%',
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  assignList: {
+    maxHeight: 360,
+  },
+  assignListContent: {
+    paddingBottom: 12,
+  },
+  assignRoomItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    marginBottom: 10,
+  },
+  assignRoomItemSelected: {
+    borderColor: Colors.light.tint,
+    backgroundColor: '#eef9f9',
+  },
+  assignRoomNumber: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: Colors.light.text,
+  },
+  assignRoomMeta: {
+    marginTop: 4,
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  assignEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    gap: 8,
+  },
+  assignEmptyText: {
+    fontSize: 13,
+    color: Colors.light.textSecondary,
+  },
+  detailList: {
+    gap: 10,
+    marginBottom: 12,
+  },
+  detailItem: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    marginBottom: 4,
+    fontWeight: '600' as const,
+  },
+  detailValue: {
+    fontSize: 14,
+    color: Colors.light.text,
+    fontWeight: '500' as const,
   },
   modalTitle: {
     fontSize: 18,

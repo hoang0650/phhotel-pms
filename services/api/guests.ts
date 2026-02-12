@@ -4,7 +4,7 @@ import { Guest } from '@/types/hotel';
 
 export interface ApiGuest {
   _id: string;
-  name: string;
+  name?: string;
   email?: string;
   phone?: string;
   idNumber?: string;
@@ -14,29 +14,78 @@ export interface ApiGuest {
   totalSpent?: number;
   vipStatus?: boolean;
   isVip?: boolean;
+  guestType?: 'regular' | 'frequent' | 'group';
+  personalInfo?: {
+    firstName?: string;
+    lastName?: string;
+    fullName?: string;
+    dateOfBirth?: string;
+    gender?: string;
+    nationality?: string;
+    idNumber?: string;
+  };
+  contactInfo?: {
+    email?: string;
+    phone?: string;
+    address?: {
+      street?: string;
+      city?: string;
+      state?: string;
+      country?: string;
+      postalCode?: string;
+    };
+  };
   createdAt: string;
   updatedAt: string;
 }
 
-const mapApiGuestToGuest = (apiGuest: ApiGuest): Guest => ({
-  id: apiGuest._id,
-  name: apiGuest.name || 'Khách hàng',
-  email: apiGuest.email || '',
-  phone: apiGuest.phone || '',
-  idNumber: apiGuest.idNumber || '',
-  nationality: apiGuest.nationality || 'Việt Nam',
-  avatar: apiGuest.avatar,
-  totalStays: apiGuest.totalStays || 0,
-  totalSpent: apiGuest.totalSpent || 0,
-  vipStatus: apiGuest.vipStatus || apiGuest.isVip || false,
-});
+const formatAddress = (address?: {
+  street?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  postalCode?: string;
+}) => {
+  if (!address) return '';
+  const parts = [address.street, address.city, address.state, address.country, address.postalCode].filter(Boolean);
+  return parts.join(', ');
+};
+
+const mapApiGuestToGuest = (apiGuest: ApiGuest): Guest => {
+  const personal = apiGuest.personalInfo || {};
+  const contact = apiGuest.contactInfo || {};
+  const fullName = apiGuest.name || personal.fullName || [personal.firstName, personal.lastName].filter(Boolean).join(' ').trim();
+  const dateOfBirth = personal.dateOfBirth ? new Date(personal.dateOfBirth).toISOString() : '';
+  return {
+    id: apiGuest._id,
+    name: fullName || 'Khách hàng',
+    email: apiGuest.email || contact.email || '',
+    phone: apiGuest.phone || contact.phone || '',
+    idNumber: apiGuest.idNumber || personal.idNumber || '',
+    nationality: apiGuest.nationality || personal.nationality || 'Việt Nam',
+    avatar: apiGuest.avatar,
+    totalStays: apiGuest.totalStays || 0,
+    totalSpent: apiGuest.totalSpent || 0,
+    vipStatus: apiGuest.vipStatus || apiGuest.isVip || false,
+    guestType: apiGuest.guestType,
+    gender: personal.gender || '',
+    dateOfBirth,
+    address: formatAddress(contact.address),
+  };
+};
+
+const extractGuests = (response: ApiGuest[] | { data?: ApiGuest[]; guests?: ApiGuest[] } | null | undefined) => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.data)) return response?.data;
+  if (Array.isArray(response?.guests)) return response?.guests;
+  return [];
+};
 
 export const guestsApi = {
   getAll: async (): Promise<Guest[]> => {
     try {
-      const response = await apiClient.get<ApiGuest[] | { data: ApiGuest[] }>(API_ENDPOINTS.GUESTS.BASE);
-      const guests = Array.isArray(response) ? response : (response?.data || []);
-      return guests.map(mapApiGuestToGuest);
+      const response = await apiClient.get<ApiGuest[] | { data?: ApiGuest[]; guests?: ApiGuest[] }>(API_ENDPOINTS.GUESTS.BASE);
+      return extractGuests(response).map(mapApiGuestToGuest);
     } catch (error) {
       console.error('[guestsApi.getAll] Error:', error);
       return [];
@@ -96,11 +145,10 @@ export const guestsApi = {
 
   getByHotel: async (hotelId: string): Promise<Guest[]> => {
     try {
-      const response = await apiClient.get<ApiGuest[] | { data: ApiGuest[] }>(
+      const response = await apiClient.get<ApiGuest[] | { data?: ApiGuest[]; guests?: ApiGuest[] }>(
         `${API_ENDPOINTS.GUESTS.BASE}?hotelId=${hotelId}`
       );
-      const guests = Array.isArray(response) ? response : (response?.data || []);
-      return guests.map(mapApiGuestToGuest);
+      return extractGuests(response).map(mapApiGuestToGuest);
     } catch (error) {
       console.error('[guestsApi.getByHotel] Error:', error);
       return [];

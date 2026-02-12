@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,9 +13,12 @@ import {
   TextInput,
   ActivityIndicator,
   Image,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import {
   Bell,
   Moon,
@@ -43,7 +46,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import type { Language } from '@/contexts/LanguageContext';
-import { API_CONFIG } from '@/services/api';
+import { API_CONFIG, authApi } from '@/services/api';
 
 interface SettingItemProps {
   icon: React.ReactNode;
@@ -86,9 +89,20 @@ export default function SettingsScreen() {
   const { t, language, setLanguage } = useLanguage();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(!!user?.preferences?.biometricEnabled);
   const [editProfileVisible, setEditProfileVisible] = useState(false);
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
+  const [changePasswordVisible, setChangePasswordVisible] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [biometricPassword, setBiometricPassword] = useState('');
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+  const [biometricModalVisible, setBiometricModalVisible] = useState(false);
+  const [biometricMode, setBiometricMode] = useState<'enable' | 'disable'>('enable');
+  const [biometricInput, setBiometricInput] = useState('');
+  const [biometricConfirm, setBiometricConfirm] = useState('');
+  const [biometricSaving, setBiometricSaving] = useState(false);
 
   const [editName, setEditName] = useState(user?.name || '');
   const [editEmail, setEditEmail] = useState(user?.email || '');
@@ -96,6 +110,12 @@ export default function SettingsScreen() {
   const [editAvatarValue, setEditAvatarValue] = useState<string | undefined>(user?.avatar);
   const [editAvatarId, setEditAvatarId] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
+  const termsUrl = 'https://phhotel.vercel.app/terms-of-service';
+  const privacyUrl = 'https://phhotel.vercel.app/privacy-policy';
+  const supportEmail = 'hotro@phhotel.vn';
+  const BIOMETRIC_PASSWORD_KEY = 'biometric_password';
+  const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials';
 
   const getImageUrl = useCallback((value?: string | null) => {
     if (!value) return undefined;
@@ -112,6 +132,137 @@ export default function SettingsScreen() {
     }
     return value;
   }, []);
+
+  useEffect(() => {
+    setBiometricEnabled(!!user?.preferences?.biometricEnabled);
+  }, [user?.preferences?.biometricEnabled]);
+
+  const readStoredBiometricPassword = useCallback(async () => {
+    return SecureStore.getItemAsync(BIOMETRIC_PASSWORD_KEY);
+  }, []);
+
+  const readStoredBiometricCredentials = useCallback(async () => {
+    const raw = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as { email: string; password: string };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const saveBiometricCredentials = useCallback(async (emailValue: string, passwordValue: string) => {
+    await SecureStore.setItemAsync(
+      BIOMETRIC_CREDENTIALS_KEY,
+      JSON.stringify({ email: emailValue, password: passwordValue })
+    );
+  }, []);
+
+  const clearBiometricCredentials = useCallback(async () => {
+    await Promise.all([
+      SecureStore.deleteItemAsync(BIOMETRIC_CREDENTIALS_KEY),
+      SecureStore.deleteItemAsync(BIOMETRIC_PASSWORD_KEY),
+    ]);
+  }, []);
+
+  const handleToggleBiometric = useCallback((next: boolean) => {
+    if (!isMobile) {
+      Alert.alert(t('notice'), t('developing'));
+      return;
+    }
+    setBiometricMode(next ? 'enable' : 'disable');
+    setBiometricInput('');
+    setBiometricConfirm('');
+    setBiometricModalVisible(true);
+  }, [isMobile, t]);
+
+  const handleConfirmBiometric = useCallback(async () => {
+    if (!user?.email) {
+      Alert.alert(t('notice'), t('developing'));
+      return;
+    }
+    if (!biometricInput || biometricInput.length < 6) {
+      Alert.alert(t('notice'), language === 'vi' ? 'Mật khẩu phải có ít nhất 6 ký tự' : 'Password must be at least 6 characters');
+      return;
+    }
+    if (biometricMode === 'enable' && biometricInput !== biometricConfirm) {
+      Alert.alert(t('notice'), language === 'vi' ? 'Xác nhận mật khẩu không khớp' : 'Password confirmation does not match');
+      return;
+    }
+    setBiometricSaving(true);
+    try {
+      if (biometricMode === 'enable') {
+        await authApi.login({ email: user.email, password: biometricInput });
+        const hasHardware = await LocalAuthentication.hasHardwareAsync();
+        if (!hasHardware) {
+          Alert.alert(t('notice'), language === 'vi' ? 'Thiết bị chưa hỗ trợ sinh trắc học' : 'Biometric hardware not available');
+          setBiometricSaving(false);
+          return;
+        }
+        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+        if (!isEnrolled) {
+          Alert.alert(t('notice'), language === 'vi' ? 'Vui lòng cài đặt vân tay hoặc Face ID trước' : 'Please enroll biometric on your device');
+          setBiometricSaving(false);
+          return;
+        }
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage: language === 'vi' ? 'Xác thực sinh trắc học' : 'Authenticate',
+          cancelLabel: language === 'vi' ? 'Hủy' : 'Cancel',
+        });
+        if (!result.success) {
+          setBiometricSaving(false);
+          return;
+        }
+        await SecureStore.setItemAsync(BIOMETRIC_PASSWORD_KEY, biometricInput);
+        await saveBiometricCredentials(user.email, biometricInput);
+        const response = await authApi.updatePreferences({ biometricEnabled: true });
+        if (response?.preferences) {
+          updateLocalUser({ preferences: { ...user?.preferences, ...response.preferences } });
+        } else {
+          updateLocalUser({ preferences: { ...user?.preferences, biometricEnabled: true } });
+        }
+        setBiometricEnabled(true);
+        setBiometricModalVisible(false);
+      } else {
+        const storedPassword = await readStoredBiometricPassword();
+        if (!storedPassword) {
+          Alert.alert(t('notice'), language === 'vi' ? 'Chưa có mật khẩu sinh trắc học' : 'Biometric password not found');
+          setBiometricSaving(false);
+          return;
+        }
+        if (storedPassword !== biometricInput) {
+          Alert.alert(t('notice'), language === 'vi' ? 'Mật khẩu sinh trắc học không đúng' : 'Biometric password is incorrect');
+          setBiometricSaving(false);
+          return;
+        }
+        await clearBiometricCredentials();
+        const response = await authApi.updatePreferences({ biometricEnabled: false });
+        if (response?.preferences) {
+          updateLocalUser({ preferences: { ...user?.preferences, ...response.preferences } });
+        } else {
+          updateLocalUser({ preferences: { ...user?.preferences, biometricEnabled: false } });
+        }
+        setBiometricEnabled(false);
+        setBiometricModalVisible(false);
+      }
+    } catch (error) {
+      Alert.alert(t('notice'), language === 'vi' ? 'Không thể cập nhật sinh trắc học' : 'Unable to update biometric');
+    } finally {
+      setBiometricSaving(false);
+    }
+  }, [
+    biometricConfirm,
+    biometricInput,
+    biometricMode,
+    clearBiometricCredentials,
+    language,
+    readStoredBiometricPassword,
+    saveBiometricCredentials,
+    t,
+    updateLocalUser,
+    user?.email,
+    user?.preferences,
+  ]);
 
   const handleLogout = useCallback(() => {
     Alert.alert(
@@ -135,9 +286,93 @@ export default function SettingsScreen() {
     );
   }, [logout, t]);
 
+  const handleOpenUrl = useCallback(async (url: string) => {
+    const canOpen = await Linking.canOpenURL(url);
+    if (!canOpen) {
+      Alert.alert(t('notice'), t('developing'));
+      return;
+    }
+    Linking.openURL(url);
+  }, [t]);
+
   const handleContact = useCallback(() => {
-    Linking.openURL('mailto:support@phhotel.com');
+    handleOpenUrl(`mailto:${supportEmail}`);
+  }, [handleOpenUrl, supportEmail]);
+
+  const handleOpenTerms = useCallback(() => {
+    handleOpenUrl(termsUrl);
+  }, [handleOpenUrl, termsUrl]);
+
+  const handleOpenSessions = useCallback(() => {
+    handleOpenUrl(privacyUrl);
+  }, [handleOpenUrl, privacyUrl]);
+
+  const handleOpenChangePassword = useCallback(() => {
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+    setBiometricPassword('');
+    setChangePasswordVisible(true);
   }, []);
+
+  const handleSubmitChangePassword = useCallback(async () => {
+    if (!user?.id) {
+      Alert.alert(t('notice'), t('developing'));
+      return;
+    }
+    if (!currentPassword) {
+      Alert.alert(t('notice'), language === 'vi' ? 'Vui lòng nhập mật khẩu hiện tại' : 'Please enter current password');
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      Alert.alert(t('notice'), language === 'vi' ? 'Mật khẩu mới phải có ít nhất 6 ký tự' : 'New password must be at least 6 characters');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert(t('notice'), language === 'vi' ? 'Xác nhận mật khẩu không khớp' : 'Password confirmation does not match');
+      return;
+    }
+    if (biometricEnabled) {
+      const storedPassword = await readStoredBiometricPassword();
+      if (!storedPassword) {
+        Alert.alert(t('notice'), language === 'vi' ? 'Chưa có mật khẩu sinh trắc học' : 'Biometric password not found');
+        return;
+      }
+      if (biometricPassword !== storedPassword) {
+        Alert.alert(t('notice'), language === 'vi' ? 'Mật khẩu sinh trắc học không đúng' : 'Biometric password is incorrect');
+        return;
+      }
+    }
+    setChangePasswordLoading(true);
+    try {
+      await authApi.changePassword(user.id, currentPassword, newPassword);
+      if (biometricEnabled) {
+        await SecureStore.setItemAsync(BIOMETRIC_PASSWORD_KEY, newPassword);
+        const storedCredentials = await readStoredBiometricCredentials();
+        if (storedCredentials?.email) {
+          await saveBiometricCredentials(storedCredentials.email, newPassword);
+        }
+      }
+      setChangePasswordVisible(false);
+      Alert.alert(t('notice'), language === 'vi' ? 'Đổi mật khẩu thành công' : 'Password updated');
+    } catch (error) {
+      Alert.alert(t('notice'), language === 'vi' ? 'Không thể đổi mật khẩu' : 'Unable to change password');
+    } finally {
+      setChangePasswordLoading(false);
+    }
+  }, [
+    biometricEnabled,
+    biometricPassword,
+    confirmPassword,
+    currentPassword,
+    language,
+    newPassword,
+    readStoredBiometricPassword,
+    readStoredBiometricCredentials,
+    saveBiometricCredentials,
+    t,
+    user?.id,
+  ]);
 
   const handleOpenEditProfile = useCallback(() => {
     setEditName(user?.name || '');
@@ -370,26 +605,30 @@ export default function SettingsScreen() {
               title={t('changePassword')}
               textColor={colors.text}
               chevronColor={colors.textSecondary}
-              onPress={() => Alert.alert(t('notice'), t('developing'))}
+              onPress={handleOpenChangePassword}
             />
             <View style={[styles.divider, { backgroundColor: colors.divider }]} />
-            <SettingItem
-              icon={<Smartphone size={20} color="#10b981" />}
-              title={t('biometric')}
-              subtitle={t('biometricDesc')}
-              textColor={colors.text}
-              subtitleColor={colors.textSecondary}
-              showChevron={false}
-              rightElement={
-                <Switch
-                  value={biometricEnabled}
-                  onValueChange={setBiometricEnabled}
-                  trackColor={{ false: colors.switchTrack, true: '#86efac' }}
-                  thumbColor={biometricEnabled ? '#10b981' : '#9ca3af'}
+            {isMobile && (
+              <>
+                <SettingItem
+                  icon={<Smartphone size={20} color="#10b981" />}
+                  title={t('biometric')}
+                  subtitle={t('biometricDesc')}
+                  textColor={colors.text}
+                  subtitleColor={colors.textSecondary}
+                  showChevron={false}
+                  rightElement={
+                    <Switch
+                      value={biometricEnabled}
+                      onValueChange={handleToggleBiometric}
+                      trackColor={{ false: colors.switchTrack, true: '#86efac' }}
+                      thumbColor={biometricEnabled ? '#10b981' : '#9ca3af'}
+                    />
+                  }
                 />
-              }
-            />
-            <View style={[styles.divider, { backgroundColor: colors.divider }]} />
+                <View style={[styles.divider, { backgroundColor: colors.divider }]} />
+              </>
+            )}
             <SettingItem
               icon={<Shield size={20} color="#8b5cf6" />}
               title={t('sessions')}
@@ -397,7 +636,7 @@ export default function SettingsScreen() {
               textColor={colors.text}
               subtitleColor={colors.textSecondary}
               chevronColor={colors.textSecondary}
-              onPress={() => Alert.alert(t('notice'), t('developing'))}
+              onPress={handleOpenSessions}
             />
           </View>
         </View>
@@ -416,7 +655,7 @@ export default function SettingsScreen() {
             <SettingItem
               icon={<MessageSquare size={20} color="#10b981" />}
               title={t('contactSupport')}
-              subtitle="support@phhotel.com"
+              subtitle={supportEmail}
               textColor={colors.text}
               subtitleColor={colors.textSecondary}
               chevronColor={colors.textSecondary}
@@ -428,7 +667,7 @@ export default function SettingsScreen() {
               title={t('terms')}
               textColor={colors.text}
               chevronColor={colors.textSecondary}
-              onPress={() => Alert.alert(t('notice'), t('developing'))}
+              onPress={handleOpenTerms}
             />
           </View>
         </View>
@@ -531,6 +770,160 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={changePasswordVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setChangePasswordVisible(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.changePasswordModal, { backgroundColor: colors.cardBackground }]}>
+            <View style={styles.changePasswordHeader}>
+              <Text style={[styles.changePasswordTitle, { color: colors.text }]}>{t('changePassword')}</Text>
+              <TouchableOpacity onPress={() => setChangePasswordVisible(false)} disabled={changePasswordLoading}>
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.changePasswordFields}>
+              <View style={styles.changePasswordField}>
+                <Text style={[styles.changePasswordLabel, { color: colors.textSecondary }]}>
+                  {language === 'vi' ? 'Mật khẩu hiện tại' : 'Current password'}
+                </Text>
+                <TextInput
+                  style={[styles.changePasswordInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  placeholder={language === 'vi' ? 'Nhập mật khẩu hiện tại' : 'Enter current password'}
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                />
+              </View>
+              <View style={styles.changePasswordField}>
+                <Text style={[styles.changePasswordLabel, { color: colors.textSecondary }]}>
+                  {language === 'vi' ? 'Mật khẩu mới' : 'New password'}
+                </Text>
+                <TextInput
+                  style={[styles.changePasswordInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder={language === 'vi' ? 'Nhập mật khẩu mới' : 'Enter new password'}
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                />
+              </View>
+              <View style={styles.changePasswordField}>
+                <Text style={[styles.changePasswordLabel, { color: colors.textSecondary }]}>
+                  {language === 'vi' ? 'Xác nhận mật khẩu mới' : 'Confirm new password'}
+                </Text>
+                <TextInput
+                  style={[styles.changePasswordInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  placeholder={language === 'vi' ? 'Nhập lại mật khẩu mới' : 'Re-enter new password'}
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                />
+              </View>
+              {biometricEnabled && (
+                <View style={styles.changePasswordField}>
+                  <Text style={[styles.changePasswordLabel, { color: colors.textSecondary }]}>
+                    {language === 'vi' ? 'Mật khẩu sinh trắc học' : 'Biometric password'}
+                  </Text>
+                  <TextInput
+                    style={[styles.changePasswordInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                    value={biometricPassword}
+                    onChangeText={setBiometricPassword}
+                    placeholder={language === 'vi' ? 'Nhập mật khẩu sinh trắc học' : 'Enter biometric password'}
+                    placeholderTextColor={colors.textSecondary}
+                    secureTextEntry
+                  />
+                </View>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.changePasswordButton, changePasswordLoading && styles.changePasswordButtonDisabled]}
+              onPress={handleSubmitChangePassword}
+              disabled={changePasswordLoading}
+            >
+              {changePasswordLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.changePasswordButtonText}>{t('save')}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={biometricModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setBiometricModalVisible(false)}
+      >
+        <Pressable
+          style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}
+          onPress={() => setBiometricModalVisible(false)}
+        >
+          <View style={[styles.biometricModal, { backgroundColor: colors.cardBackground }]}>
+            <Text style={[styles.biometricTitle, { color: colors.text }]}>
+              {biometricMode === 'enable'
+                ? language === 'vi' ? 'Bật sinh trắc học' : 'Enable biometric'
+                : language === 'vi' ? 'Tắt sinh trắc học' : 'Disable biometric'}
+            </Text>
+            <Text style={[styles.biometricSubtitle, { color: colors.textSecondary }]}>
+              {biometricMode === 'enable'
+                ? language === 'vi' ? 'Nhập mật khẩu tài khoản để bật' : 'Enter account password to enable'
+                : language === 'vi' ? 'Nhập mật khẩu sinh trắc học để tắt' : 'Enter biometric password to disable'}
+            </Text>
+
+            <View style={styles.biometricFields}>
+              <TextInput
+                style={[styles.biometricInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                value={biometricInput}
+                onChangeText={setBiometricInput}
+                placeholder={language === 'vi' ? 'Mật khẩu' : 'Password'}
+                placeholderTextColor={colors.textSecondary}
+                secureTextEntry
+              />
+              {biometricMode === 'enable' && (
+                <TextInput
+                  style={[styles.biometricInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={biometricConfirm}
+                  onChangeText={setBiometricConfirm}
+                  placeholder={language === 'vi' ? 'Xác nhận mật khẩu' : 'Confirm password'}
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                />
+              )}
+            </View>
+
+            <View style={styles.biometricActions}>
+              <TouchableOpacity
+                style={styles.biometricActionSecondary}
+                onPress={() => setBiometricModalVisible(false)}
+                disabled={biometricSaving}
+              >
+                <Text style={styles.biometricActionSecondaryText}>{t('cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.biometricActionPrimary, biometricSaving && styles.biometricActionPrimaryDisabled]}
+                onPress={handleConfirmBiometric}
+                disabled={biometricSaving}
+              >
+                {biometricSaving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.biometricActionPrimaryText}>{t('save')}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Pressable>
       </Modal>
 
       <Modal
@@ -817,6 +1210,112 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600' as const,
+  },
+  changePasswordModal: {
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 420,
+  },
+  changePasswordHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  changePasswordTitle: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+  },
+  changePasswordFields: {
+    gap: 14,
+  },
+  changePasswordField: {
+    gap: 6,
+  },
+  changePasswordLabel: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  changePasswordInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 15,
+  },
+  changePasswordButton: {
+    backgroundColor: '#0f766e',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 22,
+  },
+  changePasswordButtonDisabled: {
+    opacity: 0.6,
+  },
+  changePasswordButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  biometricModal: {
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+  },
+  biometricTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    textAlign: 'center',
+  },
+  biometricSubtitle: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  biometricFields: {
+    gap: 12,
+    marginTop: 18,
+  },
+  biometricInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 15,
+  },
+  biometricActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  biometricActionSecondary: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    padding: 14,
+    alignItems: 'center',
+  },
+  biometricActionSecondaryText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#374151',
+  },
+  biometricActionPrimary: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    backgroundColor: '#0f766e',
+  },
+  biometricActionPrimaryDisabled: {
+    opacity: 0.6,
+  },
+  biometricActionPrimaryText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#fff',
   },
   languageModal: {
     borderRadius: 20,

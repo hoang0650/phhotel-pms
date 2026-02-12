@@ -184,7 +184,7 @@ export const staffsApi = {
 
   getSalaryRecords: async (staffId?: string, month?: string): Promise<SalaryRecord[]> => {
     try {
-      let endpoint = `${API_ENDPOINTS.STAFFS.BASE}/salary-records`;
+      let endpoint = `${API_ENDPOINTS.STAFFS.BASE}/payroll`;
       const params = new URLSearchParams();
       if (staffId) params.append('staffId', staffId);
       if (month) params.append('month', month);

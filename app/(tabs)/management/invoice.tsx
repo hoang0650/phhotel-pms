@@ -642,10 +642,6 @@ export default function InvoiceManagementScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.card }]}>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Quản Lý Hóa Đơn</Text>
-        <TouchableOpacity style={[styles.createButton, { backgroundColor: colors.primary }]} onPress={handleCreateInvoice}>
-          <Ionicons name="add" size={20} color="#FFF" />
-          <Text style={styles.createButtonText}>Tạo Mới</Text>
-        </TouchableOpacity>
       </View>
 
       <View style={[styles.searchContainer, { backgroundColor: colors.card }]}>

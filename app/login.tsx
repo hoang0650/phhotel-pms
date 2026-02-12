@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Mail, Lock, Eye, EyeOff, Hotel } from 'lucide-react-native';
@@ -23,10 +25,33 @@ export default function LoginScreen() {
   const router = useRouter();
   const { login, loginLoading } = useAuth();
 
+  const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
+  const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [biometricReady, setBiometricReady] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
+
+  useEffect(() => {
+    const checkBiometric = async () => {
+      if (!isMobile) {
+        setBiometricReady(false);
+        return;
+      }
+      const stored = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
+      if (!stored) {
+        setBiometricReady(false);
+        return;
+      }
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      setBiometricReady(hasHardware && isEnrolled);
+    };
+    checkBiometric();
+  }, [isMobile]);
 
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -59,6 +84,54 @@ export default function LoginScreen() {
         'Đăng nhập thất bại',
         error instanceof Error ? error.message : 'Vui lòng kiểm tra lại thông tin đăng nhập'
       );
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    if (!isMobile) {
+      Alert.alert('Thông báo', 'Thiết bị chưa hỗ trợ sinh trắc học');
+      return;
+    }
+    setBiometricLoading(true);
+    try {
+      const stored = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
+      if (!stored) {
+        Alert.alert('Thông báo', 'Chưa có thông tin đăng nhập sinh trắc học');
+        setBiometricLoading(false);
+        return;
+      }
+      const credentials = JSON.parse(stored) as { email: string; password: string };
+      if (!credentials?.email || !credentials?.password) {
+        Alert.alert('Thông báo', 'Thông tin sinh trắc học không hợp lệ');
+        setBiometricLoading(false);
+        return;
+      }
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      if (!hasHardware) {
+        Alert.alert('Thông báo', 'Thiết bị chưa hỗ trợ sinh trắc học');
+        setBiometricLoading(false);
+        return;
+      }
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!isEnrolled) {
+        Alert.alert('Thông báo', 'Vui lòng cài đặt Face ID hoặc vân tay trước');
+        setBiometricLoading(false);
+        return;
+      }
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Xác thực sinh trắc học',
+        cancelLabel: 'Hủy',
+      });
+      if (!result.success) {
+        setBiometricLoading(false);
+        return;
+      }
+      await login({ email: credentials.email, password: credentials.password });
+      router.replace('/(tabs)/(dashboard)');
+    } catch (error) {
+      Alert.alert('Đăng nhập thất bại', 'Không thể đăng nhập bằng sinh trắc học');
+    } finally {
+      setBiometricLoading(false);
     }
   };
 
@@ -158,6 +231,20 @@ export default function LoginScreen() {
                 <Text style={styles.loginButtonText}>Đăng nhập</Text>
               )}
             </TouchableOpacity>
+
+            {biometricReady && (
+              <TouchableOpacity
+                style={[styles.biometricButton, biometricLoading && styles.biometricButtonDisabled]}
+                onPress={handleBiometricLogin}
+                disabled={biometricLoading}
+              >
+                {biometricLoading ? (
+                  <ActivityIndicator color="#0f766e" />
+                ) : (
+                  <Text style={styles.biometricButtonText}>Đăng nhập bằng Face ID</Text>
+                )}
+              </TouchableOpacity>
+            )}
 
             <View style={styles.registerContainer}>
               <Text style={styles.registerText}>Chưa có tài khoản? </Text>
@@ -291,6 +378,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: '#fff',
+  },
+  biometricButton: {
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#0f766e',
+    marginTop: 14,
+    backgroundColor: '#fff',
+  },
+  biometricButtonDisabled: {
+    opacity: 0.7,
+  },
+  biometricButtonText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#0f766e',
   },
   registerContainer: {
     flexDirection: 'row',

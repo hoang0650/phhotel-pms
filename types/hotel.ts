@@ -57,6 +57,10 @@ export interface Guest {
   phone: string;
   idNumber: string;
   nationality: string;
+  guestType?: 'regular' | 'frequent' | 'group';
+  gender?: string;
+  dateOfBirth?: string;
+  address?: string;
   avatar?: string;
   totalStays: number;
   totalSpent: number;

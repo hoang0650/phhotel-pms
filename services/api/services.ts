@@ -141,11 +141,11 @@ export const servicesApi = {
 
   getOrders: async (hotelId?: string): Promise<ServiceOrder[]> => {
     try {
-      const endpoint = hotelId 
-        ? `${API_ENDPOINTS.SERVICES.ORDERS}?hotelId=${hotelId}`
-        : API_ENDPOINTS.SERVICES.ORDERS;
-      const response = await apiClient.get<ApiServiceOrder[] | { data: ApiServiceOrder[] }>(endpoint);
-      const orders = Array.isArray(response) ? response : (response?.data || []);
+      if (!hotelId) return [];
+      const params = new URLSearchParams({ hotelId });
+      const endpoint = `${API_ENDPOINTS.SERVICES.ORDERS_BY_HOTEL}?${params.toString()}`;
+      const response = await apiClient.get<ApiServiceOrder[] | { data?: ApiServiceOrder[]; orders?: ApiServiceOrder[] }>(endpoint);
+      const orders = Array.isArray(response) ? response : (response?.orders || response?.data || []);
       return orders.map(mapApiServiceOrderToServiceOrder);
     } catch (error) {
       console.error('[servicesApi.getOrders] Error:', error);
