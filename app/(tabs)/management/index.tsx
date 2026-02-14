@@ -40,9 +40,9 @@ const managementModules: ManagementModule[] = [
   },
   {
     id: 'rooms',
-    title: 'Quản Lý Phòng',
-    description: 'Quản lý thông tin và trạng thái phòng',
-    icon: 'bed-outline',
+    title: 'Quản Lý Thu/Chi',
+    description: 'Quản lý phiếu thu và chi',
+    icon: 'cash-outline',
     route: '/management/rooms',
     gradient: ['#F093FB', '#F5576C']
   },

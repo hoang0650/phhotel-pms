@@ -401,6 +401,16 @@ export const roomsApi = {
     }
   },
 
+  delete: async (id: string): Promise<boolean> => {
+    try {
+      await apiClient.delete(API_ENDPOINTS.ROOMS.BY_ID(id));
+      return true;
+    } catch (error) {
+      console.error('[roomsApi.delete] Error:', error);
+      return false;
+    }
+  },
+
   checkIn: async (id: string, payload: unknown) => {
     return apiClient.post(API_ENDPOINTS.ROOMS.CHECKIN(id), payload);
   },
@@ -448,6 +458,41 @@ export const roomsApi = {
     } catch (error) {
       console.error('[roomsApi.getEventsByHotel] Error:', error);
       return [];
+    }
+  },
+
+  getHistory: async (hotelId: string, filterType: string = 'all', page: number = 1, limit: number = 100): Promise<{
+    history: any[];
+    totalPages: number;
+    currentPage: number;
+    totalPayment: number;
+    totalItems: number;
+  }> => {
+    try {
+      const params = new URLSearchParams({
+        hotelId,
+        filterType,
+        page: String(page),
+        limit: String(limit)
+      });
+      const endpoint = `${API_ENDPOINTS.ROOMS.HISTORY}?${params.toString()}`;
+      const response = await apiClient.get<{
+        history: any[];
+        totalPages: number;
+        currentPage: number;
+        totalPayment: number;
+        totalItems: number;
+      }>(endpoint);
+      return response;
+    } catch (error) {
+      console.error('[roomsApi.getHistory] Error:', error);
+      return {
+        history: [],
+        totalPages: 0,
+        currentPage: 1,
+        totalPayment: 0,
+        totalItems: 0
+      };
     }
   },
 };

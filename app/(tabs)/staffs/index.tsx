@@ -177,7 +177,7 @@ export default function StaffsScreen() {
   });
 
   const { data: salaryRecords = [], isLoading: salaryLoading, refetch: refetchSalary } = useQuery({
-    queryKey: ['salaryRecords'],
+    queryKey: ['salaryRecords', selectedHotelId],
     queryFn: () => staffsApi.getSalaryRecords(),
   });
 
@@ -281,7 +281,7 @@ export default function StaffsScreen() {
     mutationFn: ({ staffId, recordId }: { staffId: string; recordId: string }) =>
       staffsApi.paySalary(staffId, recordId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salaryRecords'] });
+      queryClient.invalidateQueries({ queryKey: ['salaryRecords', selectedHotelId] });
       Alert.alert('Thành công', 'Đã thanh toán lương thành công');
     },
   });
@@ -402,7 +402,14 @@ export default function StaffsScreen() {
   const onLeaveStaffs = staffs.filter(s => getStaffStatus(s) === 'on_leave').length;
   const totalSalary = staffs.reduce((sum, s) => sum + (s.employmentInfo?.salary || s.salary || 0), 0);
 
-  const pendingSalaryRecords = salaryRecords.filter(r => r.status === 'pending');
+  const filteredSalaryRecords = useMemo(() => 
+    salaryRecords.filter(r => staffs.some(staff => staff.id === r.staffId)),
+    [salaryRecords, staffs]
+  );
+  const pendingSalaryRecords = useMemo(() => 
+    filteredSalaryRecords.filter(r => r.status === 'pending'),
+    [filteredSalaryRecords]
+  );
 
   const resetStaffForm = (hotelId?: string) => {
     setStaffForm({
@@ -831,7 +838,7 @@ export default function StaffsScreen() {
 
             <Text style={styles.sectionTitle}>Chờ thanh toán</Text>
             {pendingSalaryRecords.map(record => (
-              <View key={record.id} style={styles.salaryCard}>
+              <View key={`${record.staffId}-${record.id}`} style={styles.salaryCard}>
                 <View style={styles.salaryHeader}>
                   <View>
                     <Text style={styles.salaryStaffName}>{record.staffName}</Text>
@@ -901,167 +908,175 @@ export default function StaffsScreen() {
             </View>
 
             {selectedStaff && (
-              <View style={styles.staffDetail}>
-                <View style={styles.staffDetailHeader}>
-                  <View style={styles.staffDetailAvatar}>
-                    {selectedStaff.avatar ? (
-                      <Image source={{ uri: selectedStaff.avatar }} style={styles.detailAvatarImage} />
-                    ) : (
-                      <View style={styles.detailAvatarPlaceholder}>
-                        <Text style={styles.detailAvatarText}>
-                          {getStaffName(selectedStaff).split(' ').pop()?.charAt(0) || 'N'}
+              <>
+                <ScrollView
+                  style={styles.staffDetailScroll}
+                  contentContainerStyle={{ paddingBottom: 16 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <View style={styles.staffDetail}>
+                    <View style={styles.staffDetailHeader}>
+                      <View style={styles.staffDetailAvatar}>
+                        {selectedStaff.avatar ? (
+                          <Image source={{ uri: selectedStaff.avatar }} style={styles.detailAvatarImage} />
+                        ) : (
+                          <View style={styles.detailAvatarPlaceholder}>
+                            <Text style={styles.detailAvatarText}>
+                              {getStaffName(selectedStaff).split(' ').pop()?.charAt(0) || 'N'}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.staffDetailName}>{getStaffName(selectedStaff)}</Text>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          { backgroundColor: `${STATUS_COLORS[getStaffStatus(selectedStaff)]}20` },
+                        ]}
+                      >
+                        <View
+                          style={[styles.statusDot, { backgroundColor: STATUS_COLORS[getStaffStatus(selectedStaff)] }]}
+                        />
+                        <Text style={[styles.statusText, { color: STATUS_COLORS[getStaffStatus(selectedStaff)] }]}>
+                          {STATUS_LABELS[getStaffStatus(selectedStaff)]}
                         </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.staffDetailInfo}>
+                      <View style={styles.detailItem}>
+                        <Briefcase size={18} color={Colors.light.textSecondary} />
+                        <View style={styles.detailItemContent}>
+                          <Text style={styles.detailItemLabel}>Chức vụ</Text>
+                          <Text style={styles.detailItemValue}>
+                            {POSITION_OPTIONS.find(option => option.value === getStaffPosition(selectedStaff))?.label || 'Khác'}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Phone size={18} color={Colors.light.textSecondary} />
+                        <View style={styles.detailItemContent}>
+                          <Text style={styles.detailItemLabel}>Điện thoại</Text>
+                          <Text style={styles.detailItemValue}>{getStaffPhone(selectedStaff)}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Mail size={18} color={Colors.light.textSecondary} />
+                        <View style={styles.detailItemContent}>
+                          <Text style={styles.detailItemLabel}>Email</Text>
+                          <Text style={styles.detailItemValue}>{getStaffEmail(selectedStaff) || '—'}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Calendar size={18} color={Colors.light.textSecondary} />
+                        <View style={styles.detailItemContent}>
+                          <Text style={styles.detailItemLabel}>Ngày bắt đầu</Text>
+                          <Text style={styles.detailItemValue}>
+                            {selectedStaff.employmentInfo?.startDate || selectedStaff.startDate || '—'}
+                          </Text>
+                        </View>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <DollarSign size={18} color={Colors.light.textSecondary} />
+                        <View style={styles.detailItemContent}>
+                          <Text style={styles.detailItemLabel}>Lương</Text>
+                          <Text style={styles.detailItemValue}>
+                            {formatCurrency(selectedStaff.employmentInfo?.salary || selectedStaff.salary || 0)}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <View style={styles.detailSection}>
+                      <Text style={styles.detailSectionTitle}>Thông tin cá nhân</Text>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Họ</Text>
+                        <Text style={styles.detailValue}>{selectedStaff.personalInfo?.firstName || '—'}</Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Tên</Text>
+                        <Text style={styles.detailValue}>{selectedStaff.personalInfo?.lastName || '—'}</Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Giới tính</Text>
+                        <Text style={styles.detailValue}>
+                          {GENDER_OPTIONS.find(option => option.value === selectedStaff.personalInfo?.gender)?.label || '—'}
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Quốc tịch</Text>
+                        <Text style={styles.detailValue}>{selectedStaff.personalInfo?.nationality || '—'}</Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Số giấy tờ</Text>
+                        <Text style={styles.detailValue}>{selectedStaff.personalInfo?.idNumber || '—'}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.detailSection}>
+                      <Text style={styles.detailSectionTitle}>Thông tin liên hệ</Text>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Địa chỉ</Text>
+                        <Text style={styles.detailValue}>
+                          {[
+                            selectedStaff.contactInfo?.address?.street,
+                            selectedStaff.contactInfo?.address?.city,
+                            selectedStaff.contactInfo?.address?.state,
+                            selectedStaff.contactInfo?.address?.country,
+                          ]
+                            .filter(Boolean)
+                            .join(', ') || '—'}
+                        </Text>
+                      </View>
+                      <View style={styles.detailRow}>
+                        <Text style={styles.detailLabel}>Liên hệ khẩn</Text>
+                        <Text style={styles.detailValue}>
+                          {selectedStaff.contactInfo?.emergencyContact?.name || '—'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.detailSection}>
+                      <Text style={styles.detailSectionTitle}>Quyền hạn</Text>
+                      <View style={styles.permissionContainer}>
+                        {(selectedStaff.permissions || ['view']).map(permission => (
+                          <View key={permission} style={styles.permissionChip}>
+                            <Text style={styles.permissionChipText}>
+                              {PERMISSION_OPTIONS.find(option => option.value === permission)?.label || permission}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+
+                    {selectedStaff.schedule && selectedStaff.schedule.length > 0 && (
+                      <View style={styles.detailSection}>
+                        <Text style={styles.detailSectionTitle}>Lịch làm việc</Text>
+                        {selectedStaff.schedule.map((item, index) => (
+                          <View key={`${item.date}-${index}`} style={styles.scheduleRow}>
+                            <Text style={styles.scheduleDate}>{item.date}</Text>
+                            <Text style={styles.scheduleShift}>
+                              {SHIFT_OPTIONS.find(option => option.value === item.shift)?.label || item.shift}
+                            </Text>
+                            <Text style={styles.scheduleTime}>
+                              {item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : '—'}
+                            </Text>
+                            <Text style={styles.scheduleStatus}>
+                              {SCHEDULE_STATUS_OPTIONS.find(option => option.value === item.status)?.label || item.status}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {!!selectedStaff.notes && (
+                      <View style={styles.detailSection}>
+                        <Text style={styles.detailSectionTitle}>Ghi chú</Text>
+                        <Text style={styles.detailNote}>{selectedStaff.notes}</Text>
                       </View>
                     )}
                   </View>
-                  <Text style={styles.staffDetailName}>{getStaffName(selectedStaff)}</Text>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      { backgroundColor: `${STATUS_COLORS[getStaffStatus(selectedStaff)]}20` },
-                    ]}
-                  >
-                    <View
-                      style={[styles.statusDot, { backgroundColor: STATUS_COLORS[getStaffStatus(selectedStaff)] }]}
-                    />
-                    <Text style={[styles.statusText, { color: STATUS_COLORS[getStaffStatus(selectedStaff)] }]}>
-                      {STATUS_LABELS[getStaffStatus(selectedStaff)]}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.staffDetailInfo}>
-                  <View style={styles.detailItem}>
-                    <Briefcase size={18} color={Colors.light.textSecondary} />
-                    <View style={styles.detailItemContent}>
-                      <Text style={styles.detailItemLabel}>Chức vụ</Text>
-                      <Text style={styles.detailItemValue}>
-                        {POSITION_OPTIONS.find(option => option.value === getStaffPosition(selectedStaff))?.label || 'Khác'}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.detailItem}>
-                    <Phone size={18} color={Colors.light.textSecondary} />
-                    <View style={styles.detailItemContent}>
-                      <Text style={styles.detailItemLabel}>Điện thoại</Text>
-                      <Text style={styles.detailItemValue}>{getStaffPhone(selectedStaff)}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.detailItem}>
-                    <Mail size={18} color={Colors.light.textSecondary} />
-                    <View style={styles.detailItemContent}>
-                      <Text style={styles.detailItemLabel}>Email</Text>
-                      <Text style={styles.detailItemValue}>{getStaffEmail(selectedStaff) || '—'}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.detailItem}>
-                    <Calendar size={18} color={Colors.light.textSecondary} />
-                    <View style={styles.detailItemContent}>
-                      <Text style={styles.detailItemLabel}>Ngày bắt đầu</Text>
-                      <Text style={styles.detailItemValue}>
-                        {selectedStaff.employmentInfo?.startDate || selectedStaff.startDate || '—'}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.detailItem}>
-                    <DollarSign size={18} color={Colors.light.textSecondary} />
-                    <View style={styles.detailItemContent}>
-                      <Text style={styles.detailItemLabel}>Lương</Text>
-                      <Text style={styles.detailItemValue}>
-                        {formatCurrency(selectedStaff.employmentInfo?.salary || selectedStaff.salary || 0)}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailSectionTitle}>Thông tin cá nhân</Text>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Họ</Text>
-                    <Text style={styles.detailValue}>{selectedStaff.personalInfo?.firstName || '—'}</Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Tên</Text>
-                    <Text style={styles.detailValue}>{selectedStaff.personalInfo?.lastName || '—'}</Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Giới tính</Text>
-                    <Text style={styles.detailValue}>
-                      {GENDER_OPTIONS.find(option => option.value === selectedStaff.personalInfo?.gender)?.label || '—'}
-                    </Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Quốc tịch</Text>
-                    <Text style={styles.detailValue}>{selectedStaff.personalInfo?.nationality || '—'}</Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Số giấy tờ</Text>
-                    <Text style={styles.detailValue}>{selectedStaff.personalInfo?.idNumber || '—'}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailSectionTitle}>Thông tin liên hệ</Text>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Địa chỉ</Text>
-                    <Text style={styles.detailValue}>
-                      {[
-                        selectedStaff.contactInfo?.address?.street,
-                        selectedStaff.contactInfo?.address?.city,
-                        selectedStaff.contactInfo?.address?.state,
-                        selectedStaff.contactInfo?.address?.country,
-                      ]
-                        .filter(Boolean)
-                        .join(', ') || '—'}
-                    </Text>
-                  </View>
-                  <View style={styles.detailRow}>
-                    <Text style={styles.detailLabel}>Liên hệ khẩn</Text>
-                    <Text style={styles.detailValue}>
-                      {selectedStaff.contactInfo?.emergencyContact?.name || '—'}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.detailSection}>
-                  <Text style={styles.detailSectionTitle}>Quyền hạn</Text>
-                  <View style={styles.permissionContainer}>
-                    {(selectedStaff.permissions || ['view']).map(permission => (
-                      <View key={permission} style={styles.permissionChip}>
-                        <Text style={styles.permissionChipText}>
-                          {PERMISSION_OPTIONS.find(option => option.value === permission)?.label || permission}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-
-                {selectedStaff.schedule && selectedStaff.schedule.length > 0 && (
-                  <View style={styles.detailSection}>
-                    <Text style={styles.detailSectionTitle}>Lịch làm việc</Text>
-                    {selectedStaff.schedule.map((item, index) => (
-                      <View key={`${item.date}-${index}`} style={styles.scheduleRow}>
-                        <Text style={styles.scheduleDate}>{item.date}</Text>
-                        <Text style={styles.scheduleShift}>
-                          {SHIFT_OPTIONS.find(option => option.value === item.shift)?.label || item.shift}
-                        </Text>
-                        <Text style={styles.scheduleTime}>
-                          {item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : '—'}
-                        </Text>
-                        <Text style={styles.scheduleStatus}>
-                          {SCHEDULE_STATUS_OPTIONS.find(option => option.value === item.status)?.label || item.status}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {!!selectedStaff.notes && (
-                  <View style={styles.detailSection}>
-                    <Text style={styles.detailSectionTitle}>Ghi chú</Text>
-                    <Text style={styles.detailNote}>{selectedStaff.notes}</Text>
-                  </View>
-                )}
+                </ScrollView>
 
                 {canManageStaff && (
                   <View style={styles.modalActions}>
@@ -1079,7 +1094,7 @@ export default function StaffsScreen() {
                     </TouchableOpacity>
                   </View>
                 )}
-              </View>
+              </>
             )}
           </View>
         </View>
@@ -2204,6 +2219,9 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
   },
   staffDetail: {},
+  staffDetailScroll: {
+    flex: 1,
+  },
   staffDetailHeader: {
     alignItems: 'center',
     marginBottom: 24,

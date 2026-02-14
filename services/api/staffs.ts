@@ -158,11 +158,21 @@ export const staffsApi = {
 
   calculateSalary: async (staffId: string, month: string): Promise<SalaryRecord | null> => {
     try {
-      const response = await apiClient.post<SalaryRecord>(
-        API_ENDPOINTS.STAFFS.CALCULATE_SALARY(staffId),
-        { month }
-      );
-      return response;
+      const monthKey =
+        /^\d{4}-\d{2}$/.test(month) ? month :
+        /^\d{2}\/\d{4}$/.test(month) ? `${month.split('/')[1]}-${month.split('/')[0]}` :
+        month;
+      const [yearStr, monthStr] = monthKey.split('-');
+      const year = Number(yearStr);
+      const monthIndex = Number(monthStr) - 1;
+      const baseDate = new Date(year, monthIndex, 1, 0, 0, 0, 0);
+      const calculationDate = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+
+      const response = await apiClient.post<any>(API_ENDPOINTS.STAFFS.CALCULATE_SALARY(staffId), {
+        baseDate: baseDate.toISOString(),
+        calculationDate: calculationDate.toISOString(),
+      });
+      return (response as SalaryRecord) || null;
     } catch (error) {
       console.error('[staffsApi.calculateSalary] Error:', error);
       return null;
@@ -171,11 +181,24 @@ export const staffsApi = {
 
   paySalary: async (staffId: string, salaryRecordId: string): Promise<SalaryRecord | null> => {
     try {
-      const response = await apiClient.post<SalaryRecord>(
-        API_ENDPOINTS.STAFFS.PAY_SALARY(staffId),
-        { salaryRecordId }
-      );
-      return response;
+      const now = new Date();
+      const monthKey =
+        /^\d{4}-\d{2}$/.test(salaryRecordId) ? salaryRecordId :
+        /^\d{2}\/\d{4}$/.test(salaryRecordId) ? `${salaryRecordId.split('/')[1]}-${salaryRecordId.split('/')[0]}` :
+        `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+      const [yearStr, monthStr] = monthKey.split('-');
+      const year = Number(yearStr);
+      const monthIndex = Number(monthStr) - 1;
+      const baseDate = new Date(year, monthIndex, 1, 0, 0, 0, 0);
+      const calculationDate = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+
+      const response = await apiClient.post<any>(API_ENDPOINTS.STAFFS.PAY_SALARY(staffId), {
+        baseDate: baseDate.toISOString(),
+        calculationDate: calculationDate.toISOString(),
+        paymentDate: new Date().toISOString(),
+      });
+      return (response as SalaryRecord) || null;
     } catch (error) {
       console.error('[staffsApi.paySalary] Error:', error);
       return null;
@@ -184,7 +207,8 @@ export const staffsApi = {
 
   getSalaryRecords: async (staffId?: string, month?: string): Promise<SalaryRecord[]> => {
     try {
-      let endpoint = `${API_ENDPOINTS.STAFFS.BASE}/payroll`;
+      // Sử dụng endpoint /staffs/payroll theo backend
+      let endpoint = API_ENDPOINTS.STAFFS.PAYROLL;
       const params = new URLSearchParams();
       if (staffId) params.append('staffId', staffId);
       if (month) params.append('month', month);

@@ -29,9 +29,12 @@ interface PaymentRecord {
   advancePayment?: number;
   totalAmount?: number;
   paymentStatus?: string;
+  paymentMethod?: 'cash' | 'card' | 'bank_transfer' | string;
+  advancePaymentMethod?: 'cash' | 'card' | 'bank_transfer' | string;
   payment?: {
     status?: string;
     paymentStatus?: string;
+    method?: 'cash' | 'card' | 'bank_transfer' | string;
   };
 }
 
@@ -60,6 +63,8 @@ export default function PaymentHistoryScreen() {
       totalAmount: typeof e.totalAmount === 'number' ? e.totalAmount : undefined,
       advancePayment: typeof e.advancePayment === 'number' ? e.advancePayment : undefined,
       paymentStatus: e.paymentStatus || e.payment?.status || e.payment?.paymentStatus,
+      paymentMethod: e.paymentMethod || e.payment?.method,
+      advancePaymentMethod: e.advancePaymentMethod,
       payment: e.payment,
     }));
   }, [roomEvents]);

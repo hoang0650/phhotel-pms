@@ -27,6 +27,7 @@ export const API_ENDPOINTS = {
     BOOKING: '/rooms/booking',
     CANCEL_BOOKING: (id: string) => `/rooms/booking/cancel/${id}`,
     BOOKINGS: '/rooms/bookings',
+    HISTORY: '/rooms/history',
   },
   HOTELS: {
     BASE: '/hotels',
@@ -75,6 +76,7 @@ export const API_ENDPOINTS = {
     BY_HOTEL: (hotelId: string) => `/staffs/hotel/${hotelId}`,
     CALCULATE_SALARY: (staffId: string) => `/staffs/${staffId}/calculate-salary`,
     PAY_SALARY: (staffId: string) => `/staffs/${staffId}/pay-salary`,
+    PAYROLL: '/staffs/payroll',
   },
   GUESTS: {
     BASE: '/guests',
