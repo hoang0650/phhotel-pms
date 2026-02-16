@@ -97,7 +97,7 @@ export default function GuestsScreen() {
     enabled: !!effectiveHotelId,
   });
 
-  const { data: rooms = [], isLoading: roomsLoading } = useQuery({
+  const { data: rooms = [], isLoading: roomsLoading, refetch: refetchRooms } = useQuery({
     queryKey: ['rooms', effectiveHotelId],
     queryFn: () => (effectiveHotelId ? roomsApi.getAll(effectiveHotelId) : []),
     enabled: !!effectiveHotelId,
@@ -536,24 +536,57 @@ export default function GuestsScreen() {
     setAssignRoomId(null);
   };
 
-  const handleConfirmAssign = () => {
+  const handleConfirmAssign = async () => {
     if (!assignRoomId) {
       Alert.alert('Thông báo', 'Vui lòng chọn phòng');
       return;
     }
-    setGuestDraft({
-      fullName: form.fullName,
-      phone: form.phone,
-      email: form.email,
-      idNumber: form.idNumber,
-      nationality: form.nationality,
-      address: form.address,
-      gender: form.gender,
-      dateOfBirth: form.dateOfBirth,
-    });
-    closeCreateModal();
-    closeAssignModal();
-    router.push({ pathname: '/(tabs)/rooms', params: { assignRoomId } } as any);
+    if (!effectiveHotelId) {
+      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn trước');
+      return;
+    }
+    try {
+      const payload = {
+        hotelId: effectiveHotelId,
+        guestType: 'regular',
+        personalInfo: {
+          fullName: form.fullName || 'Khách lẻ',
+          idNumber: form.idNumber || undefined,
+          nationality: form.nationality || undefined,
+          gender: form.gender || undefined,
+          dateOfBirth: form.dateOfBirth ? parseDateForBackend(form.dateOfBirth) : undefined,
+        },
+        contactInfo: {
+          phone: form.phone || undefined,
+          email: form.email || undefined,
+          address: form.address ? { street: form.address } : undefined,
+        },
+      };
+      const created = await guestsApi.create(payload);
+      if (!created || !created.id) {
+        Alert.alert('Lỗi', 'Không thể tạo khách để assign');
+        return;
+      }
+      await guestsApi.assignRoom(created.id, assignRoomId, {
+        checkInTime: new Date().toISOString(),
+        rateType: 'hourly',
+        guestInfo: {
+          name: form.fullName || 'Khách lẻ',
+          phone: form.phone || '',
+          email: form.email || '',
+          idNumber: form.idNumber || '',
+          address: form.address || '',
+          guestSource: 'regular',
+        },
+      });
+      Alert.alert('Thành công', 'Đã lưu khách vào phòng');
+      closeCreateModal();
+      closeAssignModal();
+      refetch();
+      refetchRooms();
+    } catch (error: any) {
+      Alert.alert('Lỗi', error?.message || 'Không thể assign khách vào phòng');
+    }
   };
 
   if (isLoading && guests.length === 0) {

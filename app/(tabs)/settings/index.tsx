@@ -40,6 +40,7 @@ import {
   Check,
   Sun,
 } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHotel } from '@/contexts/HotelContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -83,6 +84,7 @@ const roleLabels: Record<string, string> = {
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { selectedHotel } = useHotel();
   const { user, token, logout, logoutLoading, updateProfile, updateProfileLoading, updateLocalUser } = useAuth();
   const { isDark, toggleTheme, colors } = useTheme();
@@ -111,9 +113,7 @@ export default function SettingsScreen() {
   const [editAvatarId, setEditAvatarId] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
-  const termsUrl = 'https://phhotel.vercel.app/terms-of-service';
-  const privacyUrl = 'https://phhotel.vercel.app/privacy-policy';
-  const supportEmail = 'hotro@phhotel.vn';
+  const supportEmail = 'support@phhotel.vn';
   const BIOMETRIC_PASSWORD_KEY = 'biometric_password';
   const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials';
 
@@ -298,14 +298,6 @@ export default function SettingsScreen() {
   const handleContact = useCallback(() => {
     handleOpenUrl(`mailto:${supportEmail}`);
   }, [handleOpenUrl, supportEmail]);
-
-  const handleOpenTerms = useCallback(() => {
-    handleOpenUrl(termsUrl);
-  }, [handleOpenUrl, termsUrl]);
-
-  const handleOpenSessions = useCallback(() => {
-    handleOpenUrl(privacyUrl);
-  }, [handleOpenUrl, privacyUrl]);
 
   const handleOpenChangePassword = useCallback(() => {
     setCurrentPassword('');
@@ -631,12 +623,10 @@ export default function SettingsScreen() {
             )}
             <SettingItem
               icon={<Shield size={20} color="#8b5cf6" />}
-              title={t('sessions')}
-              subtitle={t('sessionsDesc')}
+              title={t('privacyPolicy')}
               textColor={colors.text}
-              subtitleColor={colors.textSecondary}
               chevronColor={colors.textSecondary}
-              onPress={handleOpenSessions}
+              onPress={() => router.push('/settings/privacy-policy')}
             />
           </View>
         </View>
@@ -667,7 +657,7 @@ export default function SettingsScreen() {
               title={t('terms')}
               textColor={colors.text}
               chevronColor={colors.textSecondary}
-              onPress={handleOpenTerms}
+              onPress={() => router.push('/settings/terms-of-service')}
             />
           </View>
         </View>

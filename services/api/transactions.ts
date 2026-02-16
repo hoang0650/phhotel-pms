@@ -111,7 +111,7 @@ export const transactionsApi = {
       const queryParams = new URLSearchParams({
         hotelId: params.hotelId,
         page: String(params.page || 1),
-        limit: String(params.limit || 100),
+        limit: String(params.limit || 1000),
       });
       
       if (params.startDate) {
@@ -121,23 +121,36 @@ export const transactionsApi = {
         queryParams.append('endDate', params.endDate);
       }
 
-      const response = await apiClient.get<{ data: GetExpensesResponse }>(
+      type BackendExpenseList = {
+        message: string;
+        data: ExpenseItem[];
+        pagination?: {
+          currentPage: number;
+          totalPages: number;
+          totalItems: number;
+          itemsPerPage: number;
+        };
+      };
+
+      const response = await apiClient.get<BackendExpenseList>(
         `${API_ENDPOINTS.TRANSACTIONS.EXPENSE}?${queryParams.toString()}`
       );
-      return response?.data || {
-        data: [],
-        total: 0,
-        page: 1,
-        limit: 100,
-        totalPages: 0,
+      const items = (response as any)?.data || [];
+      const pg = (response as any)?.pagination || {};
+      return {
+        data: Array.isArray(items) ? items : [],
+        total: Number(pg.totalItems) || items.length || 0,
+        page: Number(pg.currentPage) || (params.page || 1),
+        limit: Number(pg.itemsPerPage) || (params.limit || 1000),
+        totalPages: Number(pg.totalPages) || 1,
       };
     } catch (error) {
       console.error('[transactionsApi.getExpenses] Error:', error);
       return {
         data: [],
         total: 0,
-        page: 1,
-        limit: 100,
+        page: Number(params.page) || 1,
+        limit: Number(params.limit) || 1000,
         totalPages: 0,
       };
     }
@@ -148,7 +161,7 @@ export const transactionsApi = {
       const queryParams = new URLSearchParams({
         hotelId: params.hotelId,
         page: String(params.page || 1),
-        limit: String(params.limit || 100),
+        limit: String(params.limit || 1000),
       });
       
       if (params.startDate) {
@@ -158,23 +171,36 @@ export const transactionsApi = {
         queryParams.append('endDate', params.endDate);
       }
 
-      const response = await apiClient.get<{ data: GetIncomesResponse }>(
+      type BackendIncomeList = {
+        message: string;
+        data: IncomeItem[];
+        pagination?: {
+          currentPage: number;
+          totalPages: number;
+          totalItems: number;
+          itemsPerPage: number;
+        };
+      };
+
+      const response = await apiClient.get<BackendIncomeList>(
         `${API_ENDPOINTS.TRANSACTIONS.INCOME}?${queryParams.toString()}`
       );
-      return response?.data || {
-        data: [],
-        total: 0,
-        page: 1,
-        limit: 100,
-        totalPages: 0,
+      const items = (response as any)?.data || [];
+      const pg = (response as any)?.pagination || {};
+      return {
+        data: Array.isArray(items) ? items : [],
+        total: Number(pg.totalItems) || items.length || 0,
+        page: Number(pg.currentPage) || (params.page || 1),
+        limit: Number(pg.itemsPerPage) || (params.limit || 1000),
+        totalPages: Number(pg.totalPages) || 1,
       };
     } catch (error) {
       console.error('[transactionsApi.getIncomes] Error:', error);
       return {
         data: [],
         total: 0,
-        page: 1,
-        limit: 100,
+        page: Number(params.page) || 1,
+        limit: Number(params.limit) || 1000,
         totalPages: 0,
       };
     }

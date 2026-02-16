@@ -35,7 +35,7 @@ export default function ManagementLayout() {
       <Stack.Screen 
         name="rooms" 
         options={{ 
-          title: 'Quản Lý Phòng',
+          title: 'Quản Lý Thu/Chi',
           headerShown: true
         }} 
       />

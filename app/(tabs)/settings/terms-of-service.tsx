@@ -23,7 +23,7 @@ export default function TermsOfServiceScreen() {
   };
 
   const openPrivacyPolicy = () => {
-    Linking.openURL('https://phhotel.vercel.app/privacy-policy');
+    Linking.openURL('/settings/privacy-policy');
   };
 
   const openSupportEmail = () => {
@@ -117,7 +117,7 @@ export default function TermsOfServiceScreen() {
               Bên Cung Cấp xác nhận và đồng ý rằng PHHotel được phép thu thập Dữ liệu cá nhân của Bên Cung Cấp (trực tiếp hoặc gián tiếp) từ các nguồn cung cấp dữ liệu khác nhau, bao gồm nhưng không giới hạn: (i) từ các thông tin mà Bên Cung Cấp cung cấp (bằng lời nói, văn bản) khi được tuyển dụng, ký kết Hợp đồng, trong quá trình làm việc tại PHHotel, hoặc theo các chương trình khảo sát mà Bên Cung Cấp tham gia; (ii) từ cơ quan nhà nước, các nhà cung cấp, bên cung cấp dịch vụ, đối tác của PHHotel và các bên thứ ba khác, bao gồm nhưng không giới hạn các bên tư vấn về dịch vụ nhân sự, ngân hàng, tổ chức tín dụng, tổ chức việc làm, người thân của Bên Cung Cấp, …..; (iii) từ nguồn thông tin công cộng có sẵn; (iv) thông qua các tập tin được tạo ra bởi trang mạng mà Bên Cung Cấp truy cập (cookie) hoặc các thiết bị/công cụ giám sát tương tự.
             </Text>
             <Text style={[styles.text, { color: colors.text }]}>
-              Bên Cung Cấp có thể tham khảo để hiểu rõ hơn cách thu thập thông tin trên website của PHHotel tại <Text style={styles.link} onPress={() => Linking.openURL('https://phhotel.vn/chinh-sach-bao-mat.html')}>https://phhotel.vn/chinh-sach-bao-mat.html</Text>
+              Bên Cung Cấp có thể tham khảo để hiểu rõ hơn cách thu thập thông tin trên website của PHHotel tại <Text style={styles.link} onPress={() => Linking.openURL('https://phhotel.vn/terms-of-service')}>https://phhotel.vn/chinh-sach-bao-mat.html</Text>
             </Text>
 
             <Text style={[styles.subsectionTitle, { color: colors.text }]}>3.</Text>
@@ -143,7 +143,7 @@ export default function TermsOfServiceScreen() {
 
             <Text style={[styles.subsectionTitle, { color: colors.text }]}>2.</Text>
             <Text style={[styles.text, { color: colors.text }]}>
-              Bên Cung Cấp có thể thực hiện các quyền trên của mình bằng cách gửi văn bản có chữ ký hợp pháp qua đường bưu điện đến địa chỉ trụ sở chính của PHHotel, hoặc gửi thư điện tử đến địa chỉ <Text style={styles.link} onPress={openSupportEmail}>hotro@phhotel.vn</Text>.
+              Bên Cung Cấp có thể thực hiện các quyền trên của mình bằng cách gửi văn bản có chữ ký hợp pháp qua đường bưu điện đến địa chỉ trụ sở chính của PHHotel, hoặc gửi thư điện tử đến địa chỉ <Text style={styles.link} onPress={openSupportEmail}>support@phhotel.vn</Text>.
             </Text>
           </View>
 

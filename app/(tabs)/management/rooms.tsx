@@ -57,6 +57,7 @@ interface Income {
 export default function IncomeExpenseManagementScreen() {
   const { selectedHotelId, hotels, selectHotel, canSelectMultipleHotels, isLoading: hotelsLoading } = useHotel();
   const { user } = useAuth();
+  const [hotelModalVisible, setHotelModalVisible] = useState(false);
   
   // State for room revenue
   const [roomRevenue, setRoomRevenue] = useState(0);
@@ -161,7 +162,7 @@ export default function IncomeExpenseManagementScreen() {
     }
     setExpenseLoading(true);
     try {
-      const params: any = { hotelId: selectedHotelId || '' };
+      const params: any = { hotelId: selectedHotelId || '', page: 1, limit: 1000 };
       if (dateFilter !== 'all') {
         const now = new Date();
         let startDate: Date;
@@ -197,7 +198,7 @@ export default function IncomeExpenseManagementScreen() {
     }
     setIncomeLoading(true);
     try {
-      const params: any = { hotelId: selectedHotelId || '' };
+      const params: any = { hotelId: selectedHotelId || '', page: 1, limit: 1000 };
       if (dateFilter !== 'all') {
         const now = new Date();
         let startDate: Date;
@@ -366,6 +367,40 @@ export default function IncomeExpenseManagementScreen() {
       payer: '',
     });
   };
+  
+  const openExpenseModal = useCallback(() => {
+    if (!selectedHotelId) {
+      Alert.alert('Lỗi', 'Vui lòng chọn khách sạn');
+      return;
+    }
+    setExpenseForm({
+      amount: '',
+      method: 'cash',
+      expenseCategory: 'other',
+      description: '',
+      notes: '',
+      recipient: '',
+    });
+    setIsExpenseModalVisible(true);
+    loadExpenses();
+  }, [selectedHotelId, loadExpenses]);
+  
+  const openIncomeModal = useCallback(() => {
+    if (!selectedHotelId) {
+      Alert.alert('Lỗi', 'Vui lòng chọn khách sạn');
+      return;
+    }
+    setIncomeForm({
+      amount: '',
+      method: 'cash',
+      incomeCategory: 'other',
+      description: '',
+      notes: '',
+      payer: '',
+    });
+    setIsIncomeModalVisible(true);
+    loadIncomes();
+  }, [selectedHotelId, loadIncomes]);
 
   const filteredData = useMemo(() => {
     let data = [];
@@ -426,11 +461,15 @@ export default function IncomeExpenseManagementScreen() {
         <Text style={styles.headerTitle}>Quản lý thu chi</Text>
         <TouchableOpacity
           style={styles.hotelSelector}
-          onPress={() => { /* Hotel selection modal */ }}
+          onPress={() => {
+            if (canSelectMultipleHotels) {
+              setHotelModalVisible(true);
+            }
+          }}
         >
           <Ionicons name="business" size={16} color="#666" />
           <Text style={styles.hotelSelectorText}>
-            {hotels.find(h => h._id === selectedHotelId)?.name || 'Chọn khách sạn'}
+            {hotels.find(h => h.id === selectedHotelId)?.name || 'Chọn khách sạn'}
           </Text>
           <Ionicons name="chevron-down" size={16} color="#666" />
         </TouchableOpacity>
@@ -477,7 +516,7 @@ export default function IncomeExpenseManagementScreen() {
       <View style={styles.actionContainer}>
         <TouchableOpacity
           style={[styles.actionButton, styles.incomeButton]}
-          onPress={() => setIsIncomeModalVisible(true)}
+          onPress={openIncomeModal}
         >
           <Ionicons name="add-circle" size={20} color="#fff" />
           <Text style={styles.actionButtonText}>Tạo phiếu thu</Text>
@@ -485,7 +524,7 @@ export default function IncomeExpenseManagementScreen() {
         
         <TouchableOpacity
           style={[styles.actionButton, styles.expenseButton]}
-          onPress={() => setIsExpenseModalVisible(true)}
+          onPress={openExpenseModal}
         >
           <Ionicons name="remove-circle" size={20} color="#fff" />
           <Text style={styles.actionButtonText}>Tạo phiếu chi</Text>
@@ -742,6 +781,59 @@ export default function IncomeExpenseManagementScreen() {
             <TouchableOpacity style={styles.submitButton} onPress={submitExpense}>
               <Text style={styles.submitButtonText}>Tạo phiếu chi</Text>
             </TouchableOpacity>
+            
+            <Text style={styles.modalSectionTitle}>Danh sách phiếu chi</Text>
+            {expenseLoading ? (
+              <View style={styles.loadingSmall}>
+                <ActivityIndicator size="small" color="#1890ff" />
+                <Text>Đang tải...</Text>
+              </View>
+            ) : (
+              <View style={styles.modalListContainer}>
+                {expenses.map((expense) => (
+                  <View key={expense._id} style={styles.transactionItem}>
+                    <View style={styles.transactionHeader}>
+                      <Text style={styles.transactionDate}>{formatDate(expense.createdAt || '')}</Text>
+                      <Text style={[styles.transactionAmount, styles.expenseAmount]}>
+                        -{formatCurrency(expense.amount)}
+                      </Text>
+                    </View>
+                    <View style={styles.transactionContent}>
+                      <View style={styles.transactionInfo}>
+                        <Text style={styles.transactionDescription}>{expense.description}</Text>
+                        <Text style={styles.transactionCategory}>
+                          {getExpenseCategoryText(expense.expenseCategory || 'other')}
+                        </Text>
+                        <Text style={styles.transactionMethod}>{getMethodText(expense.method)}</Text>
+                        {!!expense.recipient && (
+                          <Text style={styles.transactionRecipient}>Người nhận: {expense.recipient}</Text>
+                        )}
+                      </View>
+                      <View style={styles.transactionActions}>
+                        {!expense.shiftHandoverId && (
+                          <TouchableOpacity
+                            style={styles.deleteButton}
+                            onPress={() => expense._id && deleteExpense(expense._id)}
+                          >
+                            <Ionicons name="trash" size={16} color="#ff4d4f" />
+                            <Text style={styles.deleteButtonText}>Xóa</Text>
+                          </TouchableOpacity>
+                        )}
+                        {!!expense.shiftHandoverId && (
+                          <Text style={styles.shiftHandoveredText}>Đã giao ca</Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                ))}
+                {expenses.length === 0 && (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="document-text" size={48} color="#ccc" />
+                    <Text style={styles.emptyText}>Không có phiếu chi</Text>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
         </ScrollView>
       </Modal>
@@ -851,8 +943,111 @@ export default function IncomeExpenseManagementScreen() {
             <TouchableOpacity style={styles.submitButton} onPress={submitIncome}>
               <Text style={styles.submitButtonText}>Tạo phiếu thu</Text>
             </TouchableOpacity>
+            
+            <Text style={styles.modalSectionTitle}>Danh sách phiếu thu</Text>
+            {incomeLoading ? (
+              <View style={styles.loadingSmall}>
+                <ActivityIndicator size="small" color="#1890ff" />
+                <Text>Đang tải...</Text>
+              </View>
+            ) : (
+              <View style={styles.modalListContainer}>
+                {incomes.map((income) => (
+                  <View key={income._id} style={styles.transactionItem}>
+                    <View style={styles.transactionHeader}>
+                      <Text style={styles.transactionDate}>{formatDate(income.createdAt || '')}</Text>
+                      <Text style={[styles.transactionAmount, styles.incomeAmount]}>
+                        +{formatCurrency(income.amount)}
+                      </Text>
+                    </View>
+                    <View style={styles.transactionContent}>
+                      <View style={styles.transactionInfo}>
+                        <Text style={styles.transactionDescription}>{income.description}</Text>
+                        <Text style={styles.transactionCategory}>
+                          {getIncomeCategoryText(income.incomeCategory || 'other')}
+                        </Text>
+                        <Text style={styles.transactionMethod}>{getMethodText(income.method)}</Text>
+                        {!!income.payer && (
+                          <Text style={styles.transactionPayer}>Người nộp: {income.payer}</Text>
+                        )}
+                      </View>
+                      <View style={styles.transactionActions}>
+                        {!income.shiftHandoverId && (
+                          <TouchableOpacity
+                            style={styles.deleteButton}
+                            onPress={() => income._id && deleteIncome(income._id)}
+                          >
+                            <Ionicons name="trash" size={16} color="#ff4d4f" />
+                            <Text style={styles.deleteButtonText}>Xóa</Text>
+                          </TouchableOpacity>
+                        )}
+                        {!!income.shiftHandoverId && (
+                          <Text style={styles.shiftHandoveredText}>Đã giao ca</Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                ))}
+                {incomes.length === 0 && (
+                  <View style={styles.emptyContainer}>
+                    <Ionicons name="document-text" size={48} color="#ccc" />
+                    <Text style={styles.emptyText}>Không có phiếu thu</Text>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
         </ScrollView>
+      </Modal>
+      
+      {/* Hotel Selection Modal */}
+      <Modal
+        visible={hotelModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setHotelModalVisible(false)}
+      >
+        <View style={styles.hotelModalBackdrop}>
+          <View style={styles.hotelModalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chọn Khách Sạn</Text>
+              <TouchableOpacity onPress={() => setHotelModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.hotelModalBody}>
+              {hotelsLoading ? (
+                <View style={styles.loadingSmall}>
+                  <ActivityIndicator size="small" color="#1890ff" />
+                  <Text>Đang tải khách sạn...</Text>
+                </View>
+              ) : (
+                hotels.map((hotel) => (
+                  <TouchableOpacity
+                    key={hotel.id}
+                    style={[
+                      styles.hotelOption,
+                      selectedHotelId === hotel.id && styles.hotelOptionSelected
+                    ]}
+                    onPress={() => {
+                      selectHotel(hotel.id);
+                      setHotelModalVisible(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.hotelOptionText,
+                        selectedHotelId === hotel.id && styles.hotelOptionTextSelected
+                      ]}
+                    >
+                      {hotel.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </ScrollView>
   );
@@ -1210,5 +1405,55 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  modalSectionTitle: {
+    marginTop: 24,
+    marginBottom: 12,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  modalListContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 8,
+  },
+  hotelModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  hotelModalCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    maxHeight: '80%',
+    padding: 16,
+  },
+  hotelModalBody: {
+    maxHeight: '70%',
+  },
+  hotelOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#f5f5f5',
+    marginBottom: 8,
+  },
+  hotelOptionSelected: {
+    backgroundColor: '#1890ff',
+  },
+  hotelOptionText: {
+    fontSize: 16,
+    color: '#000',
+  },
+  hotelOptionTextSelected: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  loadingSmall: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
   },
 });

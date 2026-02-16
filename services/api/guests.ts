@@ -165,4 +165,20 @@ export const guestsApi = {
       return [];
     }
   },
+  
+  assignRoom: async (
+    guestId: string,
+    roomId: string,
+    payload?: { checkInTime?: string; rateType?: string; guestInfo?: { name?: string; phone?: string; email?: string; idNumber?: string; address?: string; guestSource?: string } }
+  ): Promise<{ message?: string }> => {
+    try {
+      const endpoint = API_ENDPOINTS.GUESTS.ASSIGN_ROOM(guestId);
+      const body = { guestId, roomId, ...(payload || {}) };
+      const response = await apiClient.post<{ message?: string }>(endpoint, body);
+      return response;
+    } catch (error: any) {
+      console.error('[guestsApi.assignRoom] Error:', error);
+      throw error;
+    }
+  },
 };

@@ -57,8 +57,8 @@ export default function LoginScreen() {
     const newErrors: { email?: string; password?: string } = {};
     
     if (!email.trim()) {
-      newErrors.email = 'Vui lòng nhập email';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = 'Vui lòng nhập email hoặc tên đăng nhập';
+    } else if (email.includes('@') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       newErrors.email = 'Email không hợp lệ';
     }
     
@@ -172,14 +172,14 @@ export default function LoginScreen() {
                 <Mail size={20} color={Colors.light.textSecondary} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Nhập email của bạn"
+                  placeholder="Nhập email hoặc tên đăng nhập"
                   placeholderTextColor={Colors.light.textSecondary}
                   value={email}
                   onChangeText={(text) => {
                     setEmail(text);
                     if (errors.email) setErrors({ ...errors, email: undefined });
                   }}
-                  keyboardType="email-address"
+                  keyboardType="default"
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
