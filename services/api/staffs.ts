@@ -111,7 +111,7 @@ export const staffsApi = {
       const staffs = Array.isArray(response) ? response : (response?.data || []);
       return staffs.map(mapApiStaffToStaff);
     } catch (error) {
-      console.error('[staffsApi.getAll] Error:', error);
+      console.warn('[staffsApi.getAll] Error:', error);
       return [];
     }
   },
@@ -121,7 +121,7 @@ export const staffsApi = {
       const response = await apiClient.get<ApiStaff>(API_ENDPOINTS.STAFFS.BY_ID(id));
       return mapApiStaffToStaff(response);
     } catch (error) {
-      console.error('[staffsApi.getById] Error:', error);
+      console.warn('[staffsApi.getById] Error:', error);
       return null;
     }
   },
@@ -131,7 +131,7 @@ export const staffsApi = {
       const response = await apiClient.post<ApiStaff>(API_ENDPOINTS.STAFFS.BASE, normalizeStaffPayload(staff));
       return mapApiStaffToStaff(response);
     } catch (error) {
-      console.error('[staffsApi.create] Error:', error);
+      console.warn('[staffsApi.create] Error:', error);
       return null;
     }
   },
@@ -141,7 +141,7 @@ export const staffsApi = {
       const response = await apiClient.put<ApiStaff>(API_ENDPOINTS.STAFFS.BY_ID(id), normalizeStaffPayload(staff));
       return mapApiStaffToStaff(response);
     } catch (error) {
-      console.error('[staffsApi.update] Error:', error);
+      console.warn('[staffsApi.update] Error:', error);
       return null;
     }
   },
@@ -151,7 +151,7 @@ export const staffsApi = {
       await apiClient.delete(API_ENDPOINTS.STAFFS.BY_ID(id));
       return true;
     } catch (error) {
-      console.error('[staffsApi.delete] Error:', error);
+      console.warn('[staffsApi.delete] Error:', error);
       return false;
     }
   },
@@ -174,7 +174,7 @@ export const staffsApi = {
       });
       return (response as SalaryRecord) || null;
     } catch (error) {
-      console.error('[staffsApi.calculateSalary] Error:', error);
+      console.warn('[staffsApi.calculateSalary] Error:', error);
       return null;
     }
   },
@@ -200,7 +200,7 @@ export const staffsApi = {
       });
       return (response as SalaryRecord) || null;
     } catch (error) {
-      console.error('[staffsApi.paySalary] Error:', error);
+      console.warn('[staffsApi.paySalary] Error:', error);
       return null;
     }
   },
@@ -217,7 +217,7 @@ export const staffsApi = {
       const response = await apiClient.get<SalaryRecord[]>(endpoint);
       return Array.isArray(response) ? response : [];
     } catch (error) {
-      console.error('[staffsApi.getSalaryRecords] Error:', error);
+      console.warn('[staffsApi.getSalaryRecords] Error:', error);
       return [];
     }
   },

@@ -77,7 +77,6 @@ export default function RegisterScreen() {
       });
       router.replace('/(tabs)/(dashboard)');
     } catch (error) {
-      console.error('[RegisterScreen] Register error:', error);
       Alert.alert(
         'Đăng ký thất bại',
         error instanceof Error ? error.message : 'Vui lòng thử lại sau'

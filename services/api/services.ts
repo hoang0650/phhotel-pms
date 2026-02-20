@@ -94,7 +94,12 @@ export const servicesApi = {
       const services = Array.isArray(response) ? response : (response?.data || []);
       return services.map(mapApiServiceToService);
     } catch (error) {
-      console.error('[servicesApi.getAll] Error:', error);
+      // Ignore 401 errors during logout to avoid red screens
+      if (error instanceof Error && error.message === 'UNAUTHORIZED') {
+        console.warn('[servicesApi.getAll] Unauthorized - returning empty list');
+        return [];
+      }
+      console.warn('[servicesApi.getAll] Error:', error);
       return [];
     }
   },
@@ -104,7 +109,7 @@ export const servicesApi = {
       const response = await apiClient.get<ApiService>(API_ENDPOINTS.SERVICES.BY_ID(id));
       return mapApiServiceToService(response);
     } catch (error) {
-      console.error('[servicesApi.getById] Error:', error);
+      console.warn('[servicesApi.getById] Error:', error);
       return null;
     }
   },
@@ -114,7 +119,7 @@ export const servicesApi = {
       const response = await apiClient.post<ApiService>(API_ENDPOINTS.SERVICES.BASE, service);
       return mapApiServiceToService(response);
     } catch (error) {
-      console.error('[servicesApi.create] Error:', error);
+      console.warn('[servicesApi.create] Error:', error);
       return null;
     }
   },
@@ -124,7 +129,7 @@ export const servicesApi = {
       const response = await apiClient.put<ApiService>(API_ENDPOINTS.SERVICES.BY_ID(id), service);
       return mapApiServiceToService(response);
     } catch (error) {
-      console.error('[servicesApi.update] Error:', error);
+      console.warn('[servicesApi.update] Error:', error);
       return null;
     }
   },
@@ -134,7 +139,7 @@ export const servicesApi = {
       await apiClient.delete(API_ENDPOINTS.SERVICES.BY_ID(id));
       return true;
     } catch (error) {
-      console.error('[servicesApi.delete] Error:', error);
+      console.warn('[servicesApi.delete] Error:', error);
       return false;
     }
   },
@@ -148,7 +153,7 @@ export const servicesApi = {
       const orders = Array.isArray(response) ? response : (response?.orders || response?.data || []);
       return orders.map(mapApiServiceOrderToServiceOrder);
     } catch (error) {
-      console.error('[servicesApi.getOrders] Error:', error);
+      console.warn('[servicesApi.getOrders] Error:', error);
       return [];
     }
   },
@@ -159,7 +164,7 @@ export const servicesApi = {
       const orders = Array.isArray(response) ? response : [];
       return orders.map(mapApiServiceOrderToServiceOrder);
     } catch (error) {
-      console.error('[servicesApi.getOrdersByRoom] Error:', error);
+      console.warn('[servicesApi.getOrdersByRoom] Error:', error);
       return [];
     }
   },
@@ -169,7 +174,7 @@ export const servicesApi = {
       const response = await apiClient.post<ApiServiceOrder>(API_ENDPOINTS.SERVICES.ORDERS, order);
       return mapApiServiceOrderToServiceOrder(response);
     } catch (error) {
-      console.error('[servicesApi.createOrder] Error:', error);
+      console.warn('[servicesApi.createOrder] Error:', error);
       return null;
     }
   },
@@ -182,7 +187,7 @@ export const servicesApi = {
       );
       return mapApiServiceOrderToServiceOrder(response);
     } catch (error) {
-      console.error('[servicesApi.updateOrderStatus] Error:', error);
+      console.warn('[servicesApi.updateOrderStatus] Error:', error);
       return null;
     }
   },

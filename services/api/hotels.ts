@@ -44,7 +44,7 @@ export const hotelsApi = {
       const hotels = Array.isArray(response) ? response : (response?.data || []);
       return hotels.map(mapApiHotelToHotel);
     } catch (error) {
-      console.error('[hotelsApi.getAll] Error:', error);
+      console.warn('[hotelsApi.getAll] Error:', error);
       return [];
     }
   },
@@ -54,7 +54,7 @@ export const hotelsApi = {
       const response = await apiClient.get<ApiHotel>(API_ENDPOINTS.HOTELS.BY_ID(id));
       return mapApiHotelToHotel(response);
     } catch (error) {
-      console.error('[hotelsApi.getById] Error:', error);
+      console.warn('[hotelsApi.getById] Error:', error);
       return null;
     }
   },
@@ -64,7 +64,7 @@ export const hotelsApi = {
       const response = await apiClient.post<ApiHotel>(API_ENDPOINTS.HOTELS.BASE, hotelData);
       return mapApiHotelToHotel(response);
     } catch (error) {
-      console.error('[hotelsApi.create] Error:', error);
+      console.warn('[hotelsApi.create] Error:', error);
       return null;
     }
   },
@@ -74,7 +74,7 @@ export const hotelsApi = {
       const response = await apiClient.put<ApiHotel>(API_ENDPOINTS.HOTELS.BY_ID(id), hotelData);
       return mapApiHotelToHotel(response);
     } catch (error) {
-      console.error('[hotelsApi.update] Error:', error);
+      console.warn('[hotelsApi.update] Error:', error);
       return null;
     }
   },
@@ -84,7 +84,7 @@ export const hotelsApi = {
       await apiClient.delete(API_ENDPOINTS.HOTELS.BY_ID(id));
       return true;
     } catch (error) {
-      console.error('[hotelsApi.delete] Error:', error);
+      console.warn('[hotelsApi.delete] Error:', error);
       return false;
     }
   },

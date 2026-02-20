@@ -352,7 +352,7 @@ export const roomsApi = {
       const rooms = Array.isArray(response) ? response : [];
       return rooms.map(mapApiRoomToRoom);
     } catch (error) {
-      console.error('[roomsApi.getAll] Error:', error);
+      console.warn('[roomsApi.getAll] Error:', error);
       return [];
     }
   },
@@ -362,7 +362,7 @@ export const roomsApi = {
       const response = await apiClient.get<ApiRoom>(API_ENDPOINTS.ROOMS.BY_ID(id));
       return mapApiRoomToRoom(response);
     } catch (error) {
-      console.error('[roomsApi.getById] Error:', error);
+      console.warn('[roomsApi.getById] Error:', error);
       return null;
     }
   },
@@ -376,7 +376,7 @@ export const roomsApi = {
       const rooms = Array.isArray(response) ? response : [];
       return rooms.map(mapApiRoomToRoom);
     } catch (error) {
-      console.error('[roomsApi.getAvailable] Error:', error);
+      console.warn('[roomsApi.getAvailable] Error:', error);
       return [];
     }
   },
@@ -386,7 +386,7 @@ export const roomsApi = {
       const response = await apiClient.post<ApiRoom>(API_ENDPOINTS.ROOMS.BASE, roomData);
       return mapApiRoomToRoom(response);
     } catch (error) {
-      console.error('[roomsApi.create] Error:', error);
+      console.warn('[roomsApi.create] Error:', error);
       return null;
     }
   },
@@ -396,7 +396,7 @@ export const roomsApi = {
       const response = await apiClient.put<ApiRoom>(API_ENDPOINTS.ROOMS.BY_ID(id), roomData);
       return mapApiRoomToRoom(response);
     } catch (error) {
-      console.error('[roomsApi.update] Error:', error);
+      console.warn('[roomsApi.update] Error:', error);
       return null;
     }
   },
@@ -406,7 +406,7 @@ export const roomsApi = {
       await apiClient.delete(API_ENDPOINTS.ROOMS.BY_ID(id));
       return true;
     } catch (error) {
-      console.error('[roomsApi.delete] Error:', error);
+      console.warn('[roomsApi.delete] Error:', error);
       return false;
     }
   },
@@ -456,7 +456,7 @@ export const roomsApi = {
       const events = Array.isArray(response) ? response : (response as any)?.data || [];
       return events.map(mapApiRoomEventToRoomEvent);
     } catch (error) {
-      console.error('[roomsApi.getEventsByHotel] Error:', error);
+      console.warn('[roomsApi.getEventsByHotel] Error:', error);
       return [];
     }
   },
@@ -485,7 +485,7 @@ export const roomsApi = {
       }>(endpoint);
       return response;
     } catch (error) {
-      console.error('[roomsApi.getHistory] Error:', error);
+      console.warn('[roomsApi.getHistory] Error:', error);
       return {
         history: [],
         totalPages: 0,

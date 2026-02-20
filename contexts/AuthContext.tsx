@@ -30,7 +30,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       setUser(newUser);
       console.log('[AuthContext] Saved auth state for user:', newUser.email);
     } catch (error) {
-      console.error('[AuthContext] Error saving auth state:', error);
+      console.warn('[AuthContext] Error saving auth state:', error);
     }
   }, []);
 
@@ -49,7 +49,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
         console.log('[AuthContext] Refreshed user profile');
       }
     } catch (error) {
-      console.error('[AuthContext] Error refreshing user profile:', error);
+      console.warn('[AuthContext] Error refreshing user profile:', error);
     }
   }, [token, saveAuthState]);
 
@@ -81,7 +81,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
             .catch(err => console.warn('[AuthContext] Background refresh failed:', err));
         }
       } catch (error) {
-        console.error('[AuthContext] Error loading auth state:', error);
+        console.warn('[AuthContext] Error loading auth state:', error);
       } finally {
         setIsInitialized(true);
         setIsLoading(false);
@@ -101,7 +101,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       setUser(null);
       console.log('[AuthContext] Cleared auth state');
     } catch (error) {
-      console.error('[AuthContext] Error clearing auth state:', error);
+      console.warn('[AuthContext] Error clearing auth state:', error);
     }
   }, []);
 
@@ -113,7 +113,7 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(updatedUser));
       console.log('[AuthContext] Updated local user');
     } catch (error) {
-      console.error('[AuthContext] Error updating local user:', error);
+      console.warn('[AuthContext] Error updating local user:', error);
     }
   }, [user]);
 
@@ -123,7 +123,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       await saveAuthState(response.token, response.user);
     },
     onError: (error) => {
-      console.error('[AuthContext] Login failed:', error);
+      // Avoid red screen for expected login failures
+      console.warn('[AuthContext] Login failed:', error);
     },
   });
 
@@ -133,14 +134,14 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       await saveAuthState(response.token, response.user);
     },
     onError: (error) => {
-      console.error('[AuthContext] Register failed:', error);
+      console.warn('[AuthContext] Register failed:', error);
     },
   });
 
   const forgotPasswordMutation = useMutation({
     mutationFn: (data: ForgotPasswordRequest) => authApi.forgotPassword(data),
     onError: (error) => {
-      console.error('[AuthContext] Forgot password failed:', error);
+      console.warn('[AuthContext] Forgot password failed:', error);
     },
   });
 
@@ -156,12 +157,19 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       }
     },
     onError: (error) => {
-      console.error('[AuthContext] Profile update failed:', error);
+      console.warn('[AuthContext] Profile update failed:', error);
     },
   });
 
   const logoutMutation = useMutation({
-    mutationFn: () => authApi.logout(),
+    mutationFn: async () => {
+      // Avoid calling server if token already missing/cleared
+      const currentToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+      if (!currentToken) {
+        return;
+      }
+      return authApi.logout();
+    },
     onSettled: async () => {
       await clearAuthState();
     },

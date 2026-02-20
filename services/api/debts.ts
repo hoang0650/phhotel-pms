@@ -140,7 +140,7 @@ export const debtsApi = {
       const response = await apiClient.get(endpoint);
       return buildDebtResponse(response);
     } catch (error) {
-      console.error('[debtsApi.getDebts] Error:', error);
+      console.warn('[debtsApi.getDebts] Error:', error);
       return { debts: [], total: 0, page: 1, totalPages: 1 };
     }
   },
@@ -152,7 +152,7 @@ export const debtsApi = {
       if (!debt) return null;
       return mapApiDebtToDebt(debt);
     } catch (error) {
-      console.error('[debtsApi.settleDebt] Error:', error);
+      console.warn('[debtsApi.settleDebt] Error:', error);
       return null;
     }
   },
@@ -164,7 +164,7 @@ export const debtsApi = {
       if (!debt) return null;
       return mapApiDebtToDebt(debt);
     } catch (error) {
-      console.error('[debtsApi.updateLabels] Error:', error);
+      console.warn('[debtsApi.updateLabels] Error:', error);
       return null;
     }
   },
@@ -174,7 +174,7 @@ export const debtsApi = {
       await apiClient.delete(API_ENDPOINTS.DEBTS.BY_ID(id));
       return true;
     } catch (error) {
-      console.error('[debtsApi.deleteDebt] Error:', error);
+      console.warn('[debtsApi.deleteDebt] Error:', error);
       return false;
     }
   },

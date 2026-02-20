@@ -18,7 +18,7 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
           setTheme(stored);
         }
       } catch (error) {
-        console.error('[ThemeContext] Error loading theme:', error);
+        console.warn('[ThemeContext] Error loading theme:', error);
       } finally {
         setIsInitialized(true);
       }
@@ -33,7 +33,7 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
       await AsyncStorage.setItem(THEME_KEY, newTheme);
       console.log('[ThemeContext] Theme saved:', newTheme);
     } catch (error) {
-      console.error('[ThemeContext] Error saving theme:', error);
+      console.warn('[ThemeContext] Error saving theme:', error);
     }
   }, [theme]);
 
@@ -42,7 +42,7 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
     try {
       await AsyncStorage.setItem(THEME_KEY, mode);
     } catch (error) {
-      console.error('[ThemeContext] Error saving theme:', error);
+      console.warn('[ThemeContext] Error saving theme:', error);
     }
   }, []);
 

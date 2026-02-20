@@ -91,7 +91,7 @@ export const transactionsApi = {
       await apiClient.post(API_ENDPOINTS.TRANSACTIONS.EXPENSE, payload);
       return true;
     } catch (error) {
-      console.error('[transactionsApi.createExpense] Error:', error);
+      console.warn('[transactionsApi.createExpense] Error:', error);
       return false;
     }
   },
@@ -101,7 +101,7 @@ export const transactionsApi = {
       await apiClient.post(API_ENDPOINTS.TRANSACTIONS.INCOME, payload);
       return true;
     } catch (error) {
-      console.error('[transactionsApi.createIncome] Error:', error);
+      console.warn('[transactionsApi.createIncome] Error:', error);
       return false;
     }
   },
@@ -145,7 +145,7 @@ export const transactionsApi = {
         totalPages: Number(pg.totalPages) || 1,
       };
     } catch (error) {
-      console.error('[transactionsApi.getExpenses] Error:', error);
+      console.warn('[transactionsApi.getExpenses] Error:', error);
       return {
         data: [],
         total: 0,
@@ -195,7 +195,7 @@ export const transactionsApi = {
         totalPages: Number(pg.totalPages) || 1,
       };
     } catch (error) {
-      console.error('[transactionsApi.getIncomes] Error:', error);
+      console.warn('[transactionsApi.getIncomes] Error:', error);
       return {
         data: [],
         total: 0,

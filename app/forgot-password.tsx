@@ -47,7 +47,6 @@ export default function ForgotPasswordScreen() {
       await forgotPassword({ email: email.trim() });
       setIsSuccess(true);
     } catch (error) {
-      console.error('[ForgotPasswordScreen] Error:', error);
       Alert.alert(
         'Lỗi',
         error instanceof Error ? error.message : 'Không thể gửi yêu cầu. Vui lòng thử lại sau.'

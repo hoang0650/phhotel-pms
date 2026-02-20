@@ -257,7 +257,7 @@ export const [LanguageProvider, useLanguage] = createContextHook(() => {
           setLanguageState(stored);
         }
       } catch (error) {
-        console.error('[LanguageContext] Error loading language:', error);
+        console.warn('[LanguageContext] Error loading language:', error);
       } finally {
         setIsInitialized(true);
       }
@@ -271,7 +271,7 @@ export const [LanguageProvider, useLanguage] = createContextHook(() => {
       await AsyncStorage.setItem(LANGUAGE_KEY, lang);
       console.log('[LanguageContext] Language saved:', lang);
     } catch (error) {
-      console.error('[LanguageContext] Error saving language:', error);
+      console.warn('[LanguageContext] Error saving language:', error);
     }
   }, []);
 

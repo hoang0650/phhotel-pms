@@ -79,11 +79,13 @@ export default function LoginScreen() {
       await login({ email: email.trim(), password });
       router.replace('/(tabs)/(dashboard)');
     } catch (error) {
-      console.error('[LoginScreen] Login error:', error);
-      Alert.alert(
-        'Đăng nhập thất bại',
-        error instanceof Error ? error.message : 'Vui lòng kiểm tra lại thông tin đăng nhập'
-      );
+      const message =
+        error instanceof Error && (error.message === 'UNAUTHORIZED' || /invalid|credentials/i.test(error.message))
+          ? 'Email hoặc mật khẩu không đúng'
+          : error instanceof Error
+            ? error.message
+            : 'Vui lòng kiểm tra lại thông tin đăng nhập';
+      Alert.alert('Đăng nhập thất bại', message);
     }
   };
 

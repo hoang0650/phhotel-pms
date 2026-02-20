@@ -278,7 +278,7 @@ export default function SettingsScreen() {
               await logout();
               console.log('[Settings] Logout successful');
             } catch (error) {
-              console.error('[Settings] Logout error:', error);
+              console.warn('[Settings] Logout error:', error);
             }
           },
         },
@@ -418,7 +418,7 @@ export default function SettingsScreen() {
         setEditAvatarId(imageId);
       }
     } catch (error) {
-      console.error('[Settings] Upload avatar error:', error);
+      console.warn('[Settings] Upload avatar error:', error);
       Alert.alert(language === 'vi' ? 'Lỗi' : 'Error', language === 'vi' ? 'Không thể tải ảnh lên' : 'Failed to upload image');
     } finally {
       setAvatarUploading(false);
@@ -442,7 +442,7 @@ export default function SettingsScreen() {
       setEditProfileVisible(false);
       Alert.alert(t('success'), t('profileUpdated'));
     } catch (error) {
-      console.error('[Settings] Update profile error:', error);
+      console.warn('[Settings] Update profile error:', error);
       await updateLocalUser({
         name: editName,
         email: editEmail,

@@ -57,6 +57,21 @@ export interface RevenueBreakdownRange {
 export const revenueApi = {
   getRevenueByPeriod: async (params: RevenueChartParams): Promise<RevenueChartData> => {
     try {
+      if (!params?.hotelId) {
+        return {
+          message: 'No hotel selected',
+          labels: [],
+          revenueData: [],
+          paymentData: [],
+          expenseData: [],
+          totalRevenue: 0,
+          totalPayment: 0,
+          totalExpense: 0,
+          period: params?.period || 'day',
+          startDate: params?.startDate || new Date().toISOString(),
+          endDate: params?.endDate || new Date().toISOString(),
+        };
+      }
       const endpoint = '/shift-handover/revenue/period';
       const queryParams = new URLSearchParams({
         hotelId: params.hotelId,
@@ -75,7 +90,7 @@ export const revenueApi = {
       const response = await apiClient.get<RevenueChartData>(`${endpoint}?${queryParams.toString()}`);
       return response;
     } catch (error) {
-      console.error('[revenueApi.getRevenueByPeriod] Error:', error);
+      console.warn('[revenueApi.getRevenueByPeriod] Error:', error);
       return {
         message: 'Error',
         labels: [],
@@ -114,7 +129,7 @@ export const revenueApi = {
         revenue: response.revenueData[index] || 0
       }));
     } catch (error) {
-      console.error('[revenueApi.getDaily] Error:', error);
+      console.warn('[revenueApi.getDaily] Error:', error);
       return [];
     }
   },
@@ -145,7 +160,7 @@ export const revenueApi = {
         serviceRevenue: response.serviceRevenue || 0,
       };
     } catch (error) {
-      console.error('[revenueApi.getSummary] Error:', error);
+      console.warn('[revenueApi.getSummary] Error:', error);
       return {
         todayRevenue: 0,
         yesterdayRevenue: 0,
@@ -161,6 +176,16 @@ export const revenueApi = {
 
   getRevenueByRange: async (hotelId: string, startDate: string, endDate: string): Promise<RevenueBreakdownRange> => {
     try {
+      if (!hotelId) {
+        return {
+          roomRevenue: 0,
+          serviceRevenue: 0,
+          receiptRevenue: 0,
+          otherRevenue: 0,
+          totalRevenue: 0,
+          period: { startDate, endDate },
+        };
+      }
       const params = new URLSearchParams({ hotelId, startDate, endDate });
       const response = await apiClient.get<{ roomRevenue: number; serviceRevenue: number }>(
         `/revenue/date-range?${params.toString()}`
@@ -170,7 +195,7 @@ export const revenueApi = {
         serviceRevenue: Number((response as any)?.serviceRevenue) || 0,
       };
     } catch (error) {
-      console.error('[revenueApi.getRevenueByRange] Error:', error);
+      console.warn('[revenueApi.getRevenueByRange] Error:', error);
       return {
         roomRevenue: 0,
         serviceRevenue: 0,
@@ -180,6 +205,16 @@ export const revenueApi = {
 
   getBreakdownByRange: async (hotelId: string, startDate: string, endDate: string): Promise<RevenueBreakdownRange> => {
     try {
+      if (!hotelId) {
+        return {
+          roomRevenue: 0,
+          serviceRevenue: 0,
+          receiptRevenue: 0,
+          otherRevenue: 0,
+          totalRevenue: 0,
+          period: { startDate, endDate },
+        };
+      }
       const params = new URLSearchParams({ hotelId, startDate, endDate });
       const response = await apiClient.get<{ message: string; data: any }>(
         `${API_ENDPOINTS.FINANCIAL.SUMMARY}?${params.toString()}`
@@ -195,7 +230,7 @@ export const revenueApi = {
         period: data?.period,
       };
     } catch (error) {
-      console.error('[revenueApi.getBreakdownByRange] Error:', error);
+      console.warn('[revenueApi.getBreakdownByRange] Error:', error);
       return {
         roomRevenue: 0,
         serviceRevenue: 0,
@@ -219,7 +254,7 @@ export const revenueApi = {
         revenue: revenues[index] || 0,
       }));
     } catch (error) {
-      console.error('[revenueApi.getWeekly] Error:', error);
+      console.warn('[revenueApi.getWeekly] Error:', error);
       return [];
     }
   },
@@ -238,7 +273,7 @@ export const revenueApi = {
         revenue: revenues[index] || 0,
       }));
     } catch (error) {
-      console.error('[revenueApi.getMonthly] Error:', error);
+      console.warn('[revenueApi.getMonthly] Error:', error);
       return [];
     }
   }

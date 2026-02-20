@@ -185,24 +185,24 @@ export default function DashboardScreen() {
   // Calculate stats based on hotelapp logic
   // guestOutRooms: rooms where status is occupied and guestStatus is out
   // occupancyRate: (occupied rooms / total rooms) * 100
-  const occupiedRoomsCount = rooms.filter(r => r.status === 'occupied').length;
-  const totalRoomsCount = rooms.length;
+  const occupiedRoomsCount = (rooms || []).filter(r => r.status === 'occupied').length || 0;
+  const totalRoomsCount = (rooms || []).length || 0;
   
   const stats = {
-    totalRooms: totalRoomsCount,
-    occupiedRooms: occupiedRoomsCount,
-    vacantRooms: rooms.filter(r => r.status === 'vacant').length,
-    dirtyRooms: rooms.filter(r => r.status === 'dirty').length,
-    cleaningRooms: rooms.filter(r => r.status === 'cleaning').length,
-    maintenanceRooms: rooms.filter(r => r.status === 'maintenance').length,
-    bookedRooms: rooms.filter(r => r.status === 'booked').length,
-    guestOutRooms: rooms.filter(r => r.status === 'occupied' && r.guestStatus === 'out').length,
-    todayCheckIns: bookings.filter(b => b.checkIn === today && b.status === 'confirmed').length,
-    todayCheckOuts: bookings.filter(b => b.checkOut === today && b.status === 'checked_in').length,
+    totalRooms: totalRoomsCount || 0,
+    occupiedRooms: occupiedRoomsCount || 0,
+    vacantRooms: (rooms || []).filter(r => r.status === 'vacant').length || 0,
+    dirtyRooms: (rooms || []).filter(r => r.status === 'dirty').length || 0,
+    cleaningRooms: (rooms || []).filter(r => r.status === 'cleaning').length || 0,
+    maintenanceRooms: (rooms || []).filter(r => r.status === 'maintenance').length || 0,
+    bookedRooms: (rooms || []).filter(r => r.status === 'booked').length || 0,
+    guestOutRooms: (rooms || []).filter(r => r.status === 'occupied' && r.guestStatus === 'out').length || 0,
+    todayCheckIns: (bookings || []).filter(b => b.checkIn === today && b.status === 'confirmed').length || 0,
+    todayCheckOuts: (bookings || []).filter(b => b.checkOut === today && b.status === 'checked_in').length || 0,
     occupancyRate: totalRoomsCount > 0 
       ? Math.round((occupiedRoomsCount / totalRoomsCount) * 100) 
       : 0,
-    totalRevenue: totalRevenuePeriod,
+    totalRevenue: totalRevenuePeriod || 0,
     todayRevenue: revenueSummary?.todayRevenue || 0
   };
 

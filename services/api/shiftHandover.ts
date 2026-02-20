@@ -60,21 +60,46 @@ export const shiftHandoverApi = {
   },
 
   getRevenue: async (hotelId: string, startDate?: string, endDate?: string): Promise<ShiftRevenueResponse> => {
-    const params = new URLSearchParams({ hotelId });
-    if (startDate) params.append('startDate', startDate);
-    if (endDate) params.append('endDate', endDate);
-    const response = await apiClient.get<{ data: ShiftRevenueResponse }>(
-      `${API_ENDPOINTS.SHIFT_HANDOVER.REVENUE}?${params.toString()}`
-    );
-    return response?.data || {
-      cashTotal: 0,
-      bankTransferTotal: 0,
-      cardTotal: 0,
-      expenseTotal: 0,
-      incomeTotal: 0,
-      totalRevenue: 0,
-      netRevenue: 0,
-    };
+    try {
+      if (!hotelId) {
+        return {
+          cashTotal: 0,
+          bankTransferTotal: 0,
+          cardTotal: 0,
+          expenseTotal: 0,
+          incomeTotal: 0,
+          totalRevenue: 0,
+          netRevenue: 0,
+        };
+      }
+      const params = new URLSearchParams({ hotelId });
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+      const response = await apiClient.get<{ data: ShiftRevenueResponse }>(
+        `${API_ENDPOINTS.SHIFT_HANDOVER.REVENUE}?${params.toString()}`
+      );
+      return response?.data || {
+        cashTotal: 0,
+        bankTransferTotal: 0,
+        cardTotal: 0,
+        expenseTotal: 0,
+        incomeTotal: 0,
+        totalRevenue: 0,
+        netRevenue: 0,
+      };
+    } catch (error: any) {
+      // On FORBIDDEN or any error, return zeros and avoid throwing
+      console.warn('[shiftHandoverApi.getRevenue] Error:', error?.message || error);
+      return {
+        cashTotal: 0,
+        bankTransferTotal: 0,
+        cardTotal: 0,
+        expenseTotal: 0,
+        incomeTotal: 0,
+        totalRevenue: 0,
+        netRevenue: 0,
+      };
+    }
   },
 
   getHistory: async (hotelId: string, page = 1, limit = 20): Promise<ShiftHandoverHistoryResponse> => {

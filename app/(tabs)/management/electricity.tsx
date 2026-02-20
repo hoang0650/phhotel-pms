@@ -160,7 +160,7 @@ export default function ElectricityScreen() {
       setDevices(mappedDevices);
       setRooms(Array.from(roomMap.values()));
     } catch (error) {
-      console.error('[Electricity] Load devices error:', error);
+      console.warn('[Electricity] Load devices error:', error);
       Alert.alert(language === 'vi' ? 'Lỗi' : 'Error', language === 'vi' ? 'Không thể tải thiết bị' : 'Failed to load devices');
     } finally {
       setIsLoading(false);
@@ -194,7 +194,7 @@ export default function ElectricityScreen() {
         )
       );
     } catch (error) {
-      console.error('[Electricity] Toggle device error:', error);
+      console.warn('[Electricity] Toggle device error:', error);
       Alert.alert(language === 'vi' ? 'Lỗi' : 'Error', language === 'vi' ? 'Không thể điều khiển thiết bị' : 'Failed to control device');
     } finally {
       setIsToggling(prev => ({ ...prev, [device.deviceId]: false }));
@@ -221,7 +221,7 @@ export default function ElectricityScreen() {
                 )
               );
             } catch (error) {
-              console.error('[Electricity] Turn on all error:', error);
+              console.warn('[Electricity] Turn on all error:', error);
               Alert.alert(language === 'vi' ? 'Lỗi' : 'Error', language === 'vi' ? 'Không thể bật tất cả thiết bị' : 'Failed to turn on all devices');
             }
           },
@@ -250,7 +250,7 @@ export default function ElectricityScreen() {
                 )
               );
             } catch (error) {
-              console.error('[Electricity] Turn off all error:', error);
+              console.warn('[Electricity] Turn off all error:', error);
               Alert.alert(language === 'vi' ? 'Lỗi' : 'Error', language === 'vi' ? 'Không thể tắt tất cả thiết bị' : 'Failed to turn off all devices');
             }
           },

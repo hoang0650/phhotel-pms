@@ -41,8 +41,8 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
       return [];
     }
 
-    // 3. Manager/Staff see hotels matching hotelId
-    if (user.role === 'hotel_manager' || user.role === 'staff') {
+    // 3. Manager/Receptionist/Staff/HotelManager see hotels matching hotelId
+    if (user.role === 'manager' || user.role === 'receptionist' || user.role === 'staff' || (user as any).role === 'hotel_manager') {
       const userHotelId = extractId(user.hotelId);
       if (userHotelId) {
         return allHotels.filter(hotel => {
@@ -50,7 +50,13 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
           return hId === userHotelId;
         });
       }
-      // Fallback: if no hotelId on user, maybe return empty or handle error
+      // Fallback: if no single hotelId, try array hotelIds
+      const userHotelIds = (user as any).hotelIds as string[] | undefined;
+      if (userHotelIds && userHotelIds.length > 0) {
+        const idSet = new Set(userHotelIds);
+        return allHotels.filter(hotel => idSet.has(extractId(hotel.id) || extractId((hotel as any)._id) || ''));
+      }
+      // Fallback: if no hotel reference on user, maybe return empty or handle error
       console.warn('[HotelContext] Staff/Manager user missing hotelId');
       return [];
     }
@@ -66,7 +72,7 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
           setSelectedHotelId(storedId);
         }
       } catch (error) {
-        console.error('[HotelContext] Error loading selected hotel:', error);
+        console.warn('[HotelContext] Error loading selected hotel:', error);
       } finally {
         setIsInitialized(true);
       }
@@ -85,13 +91,13 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
         const firstHotel = hotels[0];
         console.log('[HotelContext] Auto-selecting first hotel:', firstHotel.name);
         setSelectedHotelId(firstHotel.id);
-        AsyncStorage.setItem(SELECTED_HOTEL_KEY, firstHotel.id).catch(console.error);
+        AsyncStorage.setItem(SELECTED_HOTEL_KEY, firstHotel.id).catch((e) => console.warn('[HotelContext] Error auto-saving first hotel:', e));
       }
     } else if (isInitialized && hotels.length === 0) {
       // Nếu không có hotel nào
       if (selectedHotelId) {
         setSelectedHotelId(null);
-        AsyncStorage.removeItem(SELECTED_HOTEL_KEY).catch(console.error);
+        AsyncStorage.removeItem(SELECTED_HOTEL_KEY).catch((e) => console.warn('[HotelContext] Error clearing selected hotel:', e));
       }
     }
   }, [hotels, selectedHotelId, isInitialized]);
@@ -107,7 +113,7 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
     try {
       await AsyncStorage.setItem(SELECTED_HOTEL_KEY, hotelId);
     } catch (error) {
-      console.error('[HotelContext] Error saving selected hotel:', error);
+      console.warn('[HotelContext] Error saving selected hotel:', error);
     }
   }, [hotels]);
 

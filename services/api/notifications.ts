@@ -147,7 +147,7 @@ export const notificationsApi = {
         expiresAt: a.endDate,
       }));
     } catch (error) {
-      console.error('[notificationsApi.getAll] Error:', error);
+      console.warn('[notificationsApi.getAll] Error:', error);
       return [];
     }
   },
@@ -161,7 +161,7 @@ export const notificationsApi = {
       }
       return [];
     } catch (error) {
-      console.error('[notificationsApi.getAnnouncements] Error:', error);
+      console.warn('[notificationsApi.getAnnouncements] Error:', error);
       return [];
     }
   },
@@ -177,7 +177,7 @@ export const notificationsApi = {
       }
       return { total: 0, system: 0, hotel: 0 };
     } catch (error) {
-      console.error('[notificationsApi.getUnreadCount] Error:', error);
+      console.warn('[notificationsApi.getUnreadCount] Error:', error);
       return { total: 0, system: 0, hotel: 0 };
     }
   },
@@ -187,7 +187,7 @@ export const notificationsApi = {
     try {
       await apiClient.put(`${API_ENDPOINTS.NOTIFICATIONS.BASE}/${id}/read`, {});
     } catch (error) {
-      console.error('[notificationsApi.markAsRead] Error:', error);
+      console.warn('[notificationsApi.markAsRead] Error:', error);
     }
   },
 
@@ -196,7 +196,7 @@ export const notificationsApi = {
     try {
       await apiClient.post(`${API_ENDPOINTS.NOTIFICATIONS.BASE}/${id}/read`, {});
     } catch (error) {
-      console.error('[notificationsApi.markAnnouncementAsRead] Error:', error);
+      console.warn('[notificationsApi.markAnnouncementAsRead] Error:', error);
     }
   },
 
@@ -205,7 +205,7 @@ export const notificationsApi = {
     try {
       await apiClient.post(`${API_ENDPOINTS.NOTIFICATIONS.BASE}/read-all`, {});
     } catch (error) {
-      console.error('[notificationsApi.markAllAsRead] Error:', error);
+      console.warn('[notificationsApi.markAllAsRead] Error:', error);
     }
   },
 
@@ -218,7 +218,7 @@ export const notificationsApi = {
       );
       return response;
     } catch (error) {
-      console.error('[notificationsApi.createAnnouncement] Error:', error);
+      console.warn('[notificationsApi.createAnnouncement] Error:', error);
       throw error;
     }
   },
@@ -232,7 +232,7 @@ export const notificationsApi = {
       );
       return response;
     } catch (error) {
-      console.error('[notificationsApi.updateAnnouncement] Error:', error);
+      console.warn('[notificationsApi.updateAnnouncement] Error:', error);
       throw error;
     }
   },
@@ -245,7 +245,7 @@ export const notificationsApi = {
       );
       return response;
     } catch (error) {
-      console.error('[notificationsApi.deleteAnnouncement] Error:', error);
+      console.warn('[notificationsApi.deleteAnnouncement] Error:', error);
       throw error;
     }
   },

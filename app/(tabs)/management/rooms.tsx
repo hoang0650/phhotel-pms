@@ -184,7 +184,7 @@ export default function IncomeExpenseManagementScreen() {
       const response = await transactionsApi.getExpenses(params);
       setExpenses(response.data || []);
     } catch (error) {
-      console.error('Error loading expenses:', error);
+      console.warn('Error loading expenses:', error);
       Alert.alert('Lỗi', 'Không thể tải danh sách chi tiêu');
     } finally {
       setExpenseLoading(false);
@@ -220,7 +220,7 @@ export default function IncomeExpenseManagementScreen() {
       const response = await transactionsApi.getIncomes(params);
       setIncomes(response.data || []);
     } catch (error) {
-      console.error('Error loading incomes:', error);
+      console.warn('Error loading incomes:', error);
       Alert.alert('Lỗi', 'Không thể tải danh sách thu nhập');
     } finally {
       setIncomeLoading(false);
@@ -260,7 +260,7 @@ export default function IncomeExpenseManagementScreen() {
       resetExpenseForm();
       loadExpenses();
     } catch (error) {
-      console.error('Error creating expense:', error);
+      console.warn('Error creating expense:', error);
       Alert.alert('Lỗi', 'Không thể tạo phiếu chi');
     }
   };
@@ -293,7 +293,7 @@ export default function IncomeExpenseManagementScreen() {
       resetIncomeForm();
       loadIncomes();
     } catch (error) {
-      console.error('Error creating income:', error);
+      console.warn('Error creating income:', error);
       Alert.alert('Lỗi', 'Không thể tạo phiếu thu');
     }
   };
@@ -313,7 +313,7 @@ export default function IncomeExpenseManagementScreen() {
               Alert.alert('Thành công', 'Xóa phiếu chi thành công');
               loadExpenses();
             } catch (error) {
-              console.error('Error deleting expense:', error);
+              console.warn('Error deleting expense:', error);
               Alert.alert('Lỗi', 'Không thể xóa phiếu chi');
             }
           },
@@ -337,7 +337,7 @@ export default function IncomeExpenseManagementScreen() {
               Alert.alert('Thành công', 'Xóa phiếu thu thành công');
               loadIncomes();
             } catch (error) {
-              console.error('Error deleting income:', error);
+              console.warn('Error deleting income:', error);
               Alert.alert('Lỗi', 'Không thể xóa phiếu thu');
             }
           },

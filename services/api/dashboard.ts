@@ -73,7 +73,7 @@ export const dashboardApi = {
         monthlyRevenue,
       };
     } catch (error) {
-      console.error('[dashboardApi.getStats] Error:', error);
+      console.warn('[dashboardApi.getStats] Error:', error);
       return {
         totalRooms: 0,
         occupiedRooms: 0,
@@ -105,7 +105,7 @@ export const dashboardApi = {
 
       return { checkIns, checkOuts };
     } catch (error) {
-      console.error('[dashboardApi.getTodayBookings] Error:', error);
+      console.warn('[dashboardApi.getTodayBookings] Error:', error);
       return { checkIns: [], checkOuts: [] };
     }
   },

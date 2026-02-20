@@ -1,5 +1,6 @@
 import { API_CONFIG } from './config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
 
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -10,6 +11,7 @@ interface RequestOptions {
 class ApiClient {
   private baseUrl: string;
   private timeout: number;
+  private static lastForbiddenAlert = 0;
 
   constructor() {
     this.baseUrl = API_CONFIG.BASE_URL;
@@ -54,9 +56,37 @@ class ApiClient {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[API Error] ${response.status}: ${errorText}`);
-        throw new Error(`API Error: ${response.status} - ${errorText}`);
+        // Try parse JSON for consistent messages
+        let errorMessage = '';
+        try {
+          const json = await response.json();
+          errorMessage = json?.message || JSON.stringify(json);
+        } catch {
+          errorMessage = await response.text();
+        }
+        if (response.status === 401) {
+          // Gracefully handle unauthorized: clear local auth and throw a typed error
+          console.warn('[API] 401 Unauthorized - clearing local auth and stopping further requests');
+          try {
+            await AsyncStorage.removeItem('auth_token');
+            await AsyncStorage.removeItem('auth_user');
+          } catch {}
+          // Do not spam console.error for 401 to avoid red error screens on logout
+          throw new Error('UNAUTHORIZED');
+        }
+        if (response.status === 403) {
+          const now = Date.now();
+          if (now - ApiClient.lastForbiddenAlert > 2000) {
+            ApiClient.lastForbiddenAlert = now;
+            try {
+              Alert.alert('Không có quyền', 'Bạn không có quyền thực hiện thao tác này');
+            } catch {}
+          }
+          console.warn(`[API Warning] 403 Forbidden: ${errorMessage}`);
+          throw new Error('FORBIDDEN');
+        }
+        console.warn(`[API Error] ${response.status}: ${errorMessage}`);
+        throw new Error(errorMessage || `API Error: ${response.status}`);
       }
 
       const data = await response.json();
@@ -68,7 +98,7 @@ class ApiClient {
         throw new Error('Request timeout');
       }
       if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        console.error('[API] CORS or network error - server may not allow requests from this origin');
+        console.warn('[API] CORS or network error - server may not allow requests from this origin');
         throw new Error('Network error: Unable to connect to server. This may be due to CORS restrictions.');
       }
       throw error;

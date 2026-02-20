@@ -130,7 +130,7 @@ export const bookingsApi = {
       const bookings = Array.isArray(response) ? response : (response?.data || []);
       return bookings.map(mapApiBookingToBooking);
     } catch (error) {
-      console.error('[bookingsApi.getAll] Error:', error);
+      console.warn('[bookingsApi.getAll] Error:', error);
       return [];
     }
   },
@@ -140,7 +140,7 @@ export const bookingsApi = {
       const response = await apiClient.get<ApiBooking>(API_ENDPOINTS.BOOKINGS.BY_ID(id));
       return mapApiBookingToBooking(response);
     } catch (error) {
-      console.error('[bookingsApi.getById] Error:', error);
+      console.warn('[bookingsApi.getById] Error:', error);
       return null;
     }
   },
@@ -150,7 +150,7 @@ export const bookingsApi = {
       const response = await apiClient.post<ApiBooking>(API_ENDPOINTS.BOOKINGS.BASE, bookingData);
       return mapApiBookingToBooking(response);
     } catch (error) {
-      console.error('[bookingsApi.create] Error:', error);
+      console.warn('[bookingsApi.create] Error:', error);
       return null;
     }
   },
@@ -160,7 +160,7 @@ export const bookingsApi = {
       const response = await apiClient.put<ApiBooking>(API_ENDPOINTS.BOOKINGS.BY_ID(id), bookingData);
       return mapApiBookingToBooking(response);
     } catch (error) {
-      console.error('[bookingsApi.update] Error:', error);
+      console.warn('[bookingsApi.update] Error:', error);
       return null;
     }
   },
@@ -170,7 +170,7 @@ export const bookingsApi = {
       await apiClient.post(API_ENDPOINTS.ROOMS.CANCEL_BOOKING(id), {});
       return true;
     } catch (error) {
-      console.error('[bookingsApi.cancel] Error:', error);
+      console.warn('[bookingsApi.cancel] Error:', error);
       return false;
     }
   },
@@ -183,7 +183,7 @@ export const bookingsApi = {
       const bookings = Array.isArray(response) ? response : (response?.data || []);
       return bookings.map(mapApiBookingToBooking);
     } catch (error) {
-      console.error('[bookingsApi.getByHotel] Error:', error);
+      console.warn('[bookingsApi.getByHotel] Error:', error);
       return [];
     }
   },
@@ -193,7 +193,7 @@ export const bookingsApi = {
       await apiClient.delete(API_ENDPOINTS.BOOKINGS.BY_ID(id));
       return true;
     } catch (error) {
-      console.error('[bookingsApi.delete] Error:', error);
+      console.warn('[bookingsApi.delete] Error:', error);
       return false;
     }
   },

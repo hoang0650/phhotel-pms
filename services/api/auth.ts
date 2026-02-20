@@ -2,7 +2,7 @@ import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
 import { extractId, extractIds } from './utils';
 
-export type UserRole = 'superadmin' | 'admin' | 'business' | 'manager' | 'receptionist' | 'staff';
+export type UserRole = 'superadmin' | 'admin' | 'business' | 'manager' | 'receptionist' | 'staff' | 'hotel_manager';
 
 export interface User {
   id: string;
@@ -153,7 +153,7 @@ export const authApi = {
       }
       return mapApiUserToUser(userData);
     } catch (error) {
-      console.error('[authApi.updateProfile] Error:', error);
+      console.warn('[authApi.updateProfile] Error:', error);
       throw error;
     }
   },

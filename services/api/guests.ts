@@ -87,7 +87,7 @@ export const guestsApi = {
       const response = await apiClient.get<ApiGuest[] | { data?: ApiGuest[]; guests?: ApiGuest[] }>(API_ENDPOINTS.GUESTS.BASE);
       return extractGuests(response).map(mapApiGuestToGuest);
     } catch (error) {
-      console.error('[guestsApi.getAll] Error:', error);
+      console.warn('[guestsApi.getAll] Error:', error);
       return [];
     }
   },
@@ -97,7 +97,7 @@ export const guestsApi = {
       const response = await apiClient.get<ApiGuest>(API_ENDPOINTS.GUESTS.BY_ID(id));
       return mapApiGuestToGuest(response);
     } catch (error) {
-      console.error('[guestsApi.getById] Error:', error);
+      console.warn('[guestsApi.getById] Error:', error);
       return null;
     }
   },
@@ -107,7 +107,7 @@ export const guestsApi = {
       const response = await apiClient.post<ApiGuest>(API_ENDPOINTS.GUESTS.BASE, guestData);
       return mapApiGuestToGuest(response);
     } catch (error) {
-      console.error('[guestsApi.create] Error:', error);
+      console.warn('[guestsApi.create] Error:', error);
       return null;
     }
   },
@@ -117,7 +117,7 @@ export const guestsApi = {
       const response = await apiClient.put<ApiGuest>(API_ENDPOINTS.GUESTS.BY_ID(id), guestData);
       return mapApiGuestToGuest(response);
     } catch (error) {
-      console.error('[guestsApi.update] Error:', error);
+      console.warn('[guestsApi.update] Error:', error);
       return null;
     }
   },
@@ -127,7 +127,7 @@ export const guestsApi = {
       await apiClient.delete(API_ENDPOINTS.GUESTS.BY_ID(id));
       return true;
     } catch (error) {
-      console.error('[guestsApi.delete] Error:', error);
+      console.warn('[guestsApi.delete] Error:', error);
       return false;
     }
   },
@@ -138,7 +138,7 @@ export const guestsApi = {
       const guests = Array.isArray(response) ? response : [];
       return guests.map(mapApiGuestToGuest);
     } catch (error) {
-      console.error('[guestsApi.find] Error:', error);
+      console.warn('[guestsApi.find] Error:', error);
       return [];
     }
   },
@@ -150,7 +150,7 @@ export const guestsApi = {
       );
       return extractGuests(response).map(mapApiGuestToGuest);
     } catch (error) {
-      console.error('[guestsApi.getByHotel] Error:', error);
+      console.warn('[guestsApi.getByHotel] Error:', error);
       return [];
     }
   },
@@ -161,7 +161,7 @@ export const guestsApi = {
       const guests = Array.isArray(response) ? response : [];
       return guests.map(mapApiGuestToGuest);
     } catch (error) {
-      console.error('[guestsApi.getByRoom] Error:', error);
+      console.warn('[guestsApi.getByRoom] Error:', error);
       return [];
     }
   },
@@ -177,7 +177,7 @@ export const guestsApi = {
       const response = await apiClient.post<{ message?: string }>(endpoint, body);
       return response;
     } catch (error: any) {
-      console.error('[guestsApi.assignRoom] Error:', error);
+      console.warn('[guestsApi.assignRoom] Error:', error);
       throw error;
     }
   },
