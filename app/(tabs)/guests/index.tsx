@@ -312,100 +312,125 @@ export default function GuestsScreen() {
     });
   };
 
-  const handleScanOneImage = async () => {
-    setOcrLoading(true);
-    setOcrPhase('upload');
-    setOcrStatus('Đang chọn ảnh...');
-    try {
-      const file = await pickSingleImage();
-      if (!file) return;
-      setOcrImages([file.uri]);
-      setOcrPhase('upload');
-      setOcrStatus('Đang upload ảnh lên AI...');
-      const data = await aiApi.ocr(file);
-      setOcrPhase('scan');
-      setOcrStatus('Đang scan OCR...');
-      setOcrPhase('process');
-      setOcrStatus('Đang xử lý kết quả...');
-      const next = normalizeOcrData(data);
-      setForm(prev => ({ ...prev, ...next }));
-      setGuestDraft({
-        fullName: next.fullName,
-        phone: next.phone,
-        idNumber: next.idNumber,
-        nationality: next.nationality,
-        address: next.address,
-        gender: next.gender,
-        dateOfBirth: next.dateOfBirth,
-      });
-    } catch (e: any) {
-      console.warn('OCR error', e?.message || e);
-    } finally {
-      setOcrLoading(false);
-      setOcrStatus('');
-      setOcrPhase('');
+  // 1. Hàm bổ trợ để bóc tách dữ liệu từ mọi loại Response (Đồng bộ với Web)
+const extractOcrData = (res: any) => {
+  // Tìm lớp chứa data thật sự
+  let raw = res?.result?.data || res?.data?.data || res?.data || res;
+  
+  // Logic Fix địa chỉ ngược
+  const fixAddress = (addr: string) => {
+    if (!addr) return '';
+    const parts = addr.split(',').map(p => p.trim());
+    const bigUnits = /\b(Tỉnh|Thành phố|TP|Hồ Chí Minh|Hà Nội|Đồng Nai)\b/i;
+    if (parts.length > 1 && bigUnits.test(parts[0])) {
+      return parts.reverse().join(', ');
     }
+    return addr;
   };
 
-  const handleScanTwoImages = async () => {
-    setOcrLoading(true);
-    setOcrPhase('upload');
-    setOcrStatus('Đang chọn 2 ảnh...');
-    try {
-      const picked = await pickTwoImages();
-      let front = picked[0];
-      let back = picked[1];
+  const rawAddr = raw['Địa chỉ thường trú'] || raw['Địa chỉ'] || raw['Quê quán'] || raw.address || '';
 
-      if (!front) return;
-      if (!back) {
-        setOcrImages([front.uri]);
-        setOcrStatus('Đang chọn ảnh mặt sau...');
-        const backPicked = await pickSingleImage();
-        if (!backPicked) return;
-        back = backPicked;
+  return {
+    fullName: (raw['Họ tên'] || raw['Họ và tên'] || raw.fullName || raw.name || '').toUpperCase(),
+    idNumber: (raw['Số ID'] || raw['Số CCCD'] || raw.idNumber || '').replace(/\s/g, ''),
+    dateOfBirth: raw['Ngày sinh'] || raw.dob || '',
+    gender: raw['Giới tính'] || raw.gender || '',
+    address: fixAddress(rawAddr),
+    nationality: raw['Quốc tịch'] || raw.nationality || 'Việt Nam'
+  };
+};
+
+// 2. Cập nhật Handle Scan 1 Ảnh
+const handleScanOneImage = async () => {
+  setOcrLoading(true);
+  setOcrStatus('Đang xử lý 1 ảnh...');
+  try {
+    const file = await pickSingleImage();
+    if (!file) return;
+
+    setOcrImages([file.uri]);
+    
+    const res = await aiApi.ocr(file);
+    const next = extractOcrData(res); // Dùng hàm dùng chung
+
+    setForm(prev => ({ ...prev, ...next }));
+    setGuestDraft({ ...next }); // Cập nhật store
+
+    Alert.alert('Thành công', 'Đã nhận diện 1 mặt');
+  } catch (e: any) {
+    Alert.alert('Lỗi', 'Không thể nhận diện ảnh này');
+  } finally {
+    setOcrLoading(false);
+  }
+};
+
+// 3. Cập nhật Handle Scan 2 Ảnh
+const handleScanTwoImages = async () => {
+  setOcrLoading(true);
+  setOcrStatus('Đang xử lý 2 ảnh...');
+  try {
+    const picked = await pickTwoImages();
+    if (!picked || picked.length < 2) return;
+
+    setOcrImages([picked[0].uri, picked[1].uri]);
+
+    const res = await aiApi.ocrCard(picked[0], picked[1]);
+    const next = extractOcrData(res); // Dùng chung logic parse với 1 ảnh
+
+    setForm(prev => ({ ...prev, ...next }));
+    setGuestDraft({ ...next });
+
+    Alert.alert('Thành công', 'Đã nhận diện 2 mặt');
+  } catch (e: any) {
+    Alert.alert('Lỗi', 'Lỗi quét 2 mặt');
+  } finally {
+    setOcrLoading(false);
+  }
+};
+
+  const normalizeGender = (value: any): string => {
+    const normalized = (value || '').toString().trim().toLowerCase();
+    if (!normalized) return '';
+    if (normalized === 'male' || normalized.includes('nam')) return 'male';
+    if (normalized === 'female' || normalized.includes('nữ') || normalized === 'nu') return 'female';
+    return '';
+  };
+
+  const getOcrValue = (raw: any, backend: Record<string, any>, keys: string[]): any => {
+    for (const key of keys) {
+      const fromBackend = backend?.[key];
+      if (fromBackend !== undefined && fromBackend !== null && `${fromBackend}`.trim() !== '') {
+        return fromBackend;
       }
-
-      setOcrImages([front.uri, back.uri]);
-      setOcrPhase('upload');
-      setOcrStatus('Đang upload 2 ảnh lên AI...');
-      const data = await aiApi.ocrCard(front, back);
-      setOcrPhase('scan');
-      setOcrStatus('Đang scan OCR...');
-      setOcrPhase('process');
-      setOcrStatus('Đang xử lý kết quả...');
-      const next = normalizeOcrData(data);
-      setForm(prev => ({ ...prev, ...next }));
-      setGuestDraft({
-        fullName: next.fullName,
-        phone: next.phone,
-        idNumber: next.idNumber,
-        nationality: next.nationality,
-        address: next.address,
-        gender: next.gender,
-        dateOfBirth: next.dateOfBirth,
-      });
-    } catch (e: any) {
-      console.warn('OCR error', e?.message || e);
-    } finally {
-      setOcrLoading(false);
-      setOcrStatus('');
-      setOcrPhase('');
+      const fromRaw = raw?.[key];
+      if (fromRaw !== undefined && fromRaw !== null && `${fromRaw}`.trim() !== '') {
+        return fromRaw;
+      }
     }
+    return '';
   };
 
   const normalizeOcrData = (ocrData: any) => {
-    const fullNameServer = typeof ocrData?.fullName === 'string' ? ocrData.fullName.trim() : '';
-    const idNum = typeof ocrData?.idNumber === 'string' ? ocrData.idNumber.replace(/\s+/g, '').trim() : '';
-    const nationality = ocrData?.nationality || 'Việt Nam';
-    const gender = ocrData?.gender && (ocrData.gender === 'male' || ocrData.gender === 'female') ? ocrData.gender : '';
-    const dateOfBirth = parseDateToISO(ocrData?.dateOfBirth) || '';
+    const backendData = (ocrData?.success && ocrData?.result?.data && typeof ocrData.result.data === 'object')
+      ? ocrData.result.data
+      : {};
+
+    const fullNameServer = getOcrValue(ocrData, backendData, ['Họ tên', 'Họ và tên', 'fullName', 'name']).toString().trim();
+    const idNum = getOcrValue(ocrData, backendData, ['Số ID', 'Số CCCD', 'idNumber', 'cccd']).toString().replace(/\s+/g, '').trim();
+    const nationality = getOcrValue(ocrData, backendData, ['Quốc tịch', 'nationality']) || 'Việt Nam';
+    const gender = normalizeGender(getOcrValue(ocrData, backendData, ['Giới tính', 'gender']));
+    const dateOfBirth = parseDateToISO(getOcrValue(ocrData, backendData, ['Ngày sinh', 'dateOfBirth', 'dob'])) || '';
     const rawText = Array.isArray(ocrData?.rawText)
       ? ocrData.rawText
       : typeof ocrData?.rawText === 'string'
         ? ocrData.rawText.split(/\r?\n/)
-        : [];
+        : Array.isArray(ocrData?.parsedData?.rawText)
+          ? ocrData.parsedData.rawText
+          : typeof ocrData?.parsedData?.rawText === 'string'
+            ? ocrData.parsedData.rawText.split(/\r?\n/)
+            : [];
     const normLines = rawText.map((l: string) => (l || '').trim()).filter((l: string) => l.length > 0);
-    let address = typeof ocrData?.address === 'string' ? ocrData.address : '';
+    let address = getOcrValue(ocrData, backendData, ['Địa chỉ thường trú', 'Địa chỉ', 'Quê quán', 'address']).toString();
     address = address.replace(/\bplace\s*of\s*birth\b/iu, '').replace(/(nơi\s*sinh|quê\s*quán)/iu, '').trim();
     if (!address && normLines.length) {
       address = buildAddressFromRaw(normLines);
@@ -413,10 +438,10 @@ export default function GuestsScreen() {
     const next = {
       fullName: fullNameServer || form.fullName,
       idNumber: idNum || form.idNumber,
-      nationality,
+      nationality: nationality.toString(),
       address: address || form.address,
-    gender: gender || form.gender,
-    dateOfBirth: dateOfBirth || form.dateOfBirth,
+      gender: gender || form.gender,
+      dateOfBirth: dateOfBirth || form.dateOfBirth,
       phone: form.phone,
       email: form.email,
     };
@@ -773,7 +798,7 @@ export default function GuestsScreen() {
             </View>
             <View style={styles.inputRow}>
               <Text style={styles.inputLabel}>Giới tính</Text>
-              <TextInput style={styles.input} value={form.gender} onChangeText={(v) => setForm({ ...form, gender: v })} placeholder="male hoặc female" />
+              <TextInput style={styles.input} value={form.gender} onChangeText={(v) => setForm({ ...form, gender: v })} placeholder="Nam/Nữ" />
             </View>
             <View style={styles.inputRow}>
               <Text style={styles.inputLabel}>Ngày sinh</Text>
