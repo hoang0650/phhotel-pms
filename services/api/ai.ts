@@ -122,13 +122,24 @@ class AiClient {
     return this.postForm('/ocr-card', form);
   }
 
-  async chat(tenantId: string, question: string, context?: string): Promise<{ answer?: string }> {
+  async chat(
+    tenantId: string,
+    question: string,
+    context?: string,
+    userRole?: string | null,
+    userId?: string | null,
+    userToken?: string | null
+  ): Promise<{ answer?: string }> {
+    const token = userToken || (await AsyncStorage.getItem('auth_token'));
     return this.requestJson('/chat', {
       method: 'POST',
       body: {
         tenant_id: tenantId,
         question,
         context,
+        user_role: userRole || null,
+        user_id: userId || null,
+        user_token: token || null,
       },
     });
   }

@@ -6,7 +6,6 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
-  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -14,6 +13,7 @@ import {
   Modal,
   Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -47,7 +47,7 @@ const DEFAULT_CONVERSATION_ID = 'default-ai-chat';
 
 export default function AIChatScreen() {
   const { language } = useLanguage();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const router = useRouter();
   const [conversations, setConversations] = useState<Conversation[]>([
     {
@@ -205,7 +205,14 @@ export default function AIChatScreen() {
     setIsLoading(true);
 
     try {
-      const response = await aiApi.chat(tenantId, userMessage.content);
+      const response = await aiApi.chat(
+        tenantId,
+        userMessage.content,
+        undefined,
+        user?.role || null,
+        (user as any)?._id || null,
+        token || null
+      );
       const answerText = response?.answer || 'Xin lỗi, tôi chưa có dữ liệu để tư vấn.';
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -247,7 +254,11 @@ export default function AIChatScreen() {
       room_status: 'Xem trạng thái phòng',
       update_price: 'Cập nhật giá phòng',
       add_room: 'Thêm phòng mới',
-      monthly_revenue: 'Xem doanh thu tháng',
+      monthly_revenue: 'Doanh thu tháng này',
+      daily_revenue: 'Doanh thu hôm nay',
+      yesterday_revenue: 'Doanh thu hôm qua',
+      weekly_revenue: 'Doanh thu tuần này',
+      yearly_revenue: 'Doanh thu năm nay',
       operational_costs: 'Xem chi phí vận hành',
       occupancy_rate: 'Xem tỷ suất lấp đầy',
     };
@@ -470,6 +481,13 @@ export default function AIChatScreen() {
   };
 
   const currentConversation = conversations.find(c => c.id === currentConversationId);
+  const revenueQuickActions = [
+    { label: language === 'en' ? 'Revenue today' : 'Doanh thu hôm nay', query: 'Doanh thu hôm nay' },
+    { label: language === 'en' ? 'Revenue yesterday' : 'Doanh thu hôm qua', query: 'Doanh thu hôm qua' },
+    { label: language === 'en' ? 'Revenue this week' : 'Doanh thu tuần này', query: 'Doanh thu tuần này' },
+    { label: language === 'en' ? 'Revenue this month' : 'Doanh thu tháng này', query: 'Doanh thu tháng này' },
+    { label: language === 'en' ? 'Revenue this year' : 'Doanh thu năm nay', query: 'Doanh thu năm nay' },
+  ];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -574,6 +592,24 @@ export default function AIChatScreen() {
             )}
           </ScrollView>
         )}
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.quickActionsContainer}
+          contentContainerStyle={styles.quickActionsContent}
+        >
+          {revenueQuickActions.map(action => (
+            <TouchableOpacity
+              key={action.query}
+              style={styles.quickActionButton}
+              onPress={() => sendMessage(action.query)}
+              disabled={isLoading}
+            >
+              <Text style={styles.quickActionText}>{action.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
 
         <View style={styles.inputContainer}>
           <TouchableOpacity style={styles.attachmentButton} onPress={openDatasetModal}>
@@ -820,6 +856,30 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     color: '#666',
     fontSize: 14,
+  },
+  quickActionsContainer: {
+    maxHeight: 44,
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  quickActionsContent: {
+    gap: 8,
+    alignItems: 'center',
+  },
+  quickActionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  quickActionText: {
+    fontSize: 12,
+    color: '#333',
   },
   inputContainer: {
     flexDirection: 'row',
