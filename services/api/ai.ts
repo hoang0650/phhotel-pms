@@ -109,7 +109,7 @@ class AiClient {
 
   async ocr(image: ImageFile): Promise<any> {
     const form = new FormData();
-    await this.appendImage(form, 'image', image, 'image.jpg');
+    await this.appendImage(form, 'file', image, 'image.jpg');
     return this.postForm('/ocr', form);
   }
 
@@ -191,7 +191,7 @@ class AiClient {
 
   getWebSocketUrl(tenantId: string): string {
     const wsBase = this.baseUrl.replace(/^http/, 'ws');
-    return `${wsBase}/ws/${tenantId}`;
+    return `${wsBase}/ws/messages/${tenantId}`;
   }
 }
 

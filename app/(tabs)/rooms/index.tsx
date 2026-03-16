@@ -132,6 +132,7 @@ export default function RoomsScreen() {
   const { t, language } = useLanguage();
   const router = useRouter();
   const { assignRoomId } = useLocalSearchParams<{ assignRoomId?: string }>();
+  const isCompactHeader = SCREEN_WIDTH < 380;
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<RoomStatus | 'all' | 'guest_out'>('all');
@@ -451,8 +452,8 @@ export default function RoomsScreen() {
       rateType: (room.rateType as RateType) || 'hourly',
       paymentMethod: (room.paymentMethod as PaymentMethod) || 'cash',
       advancePayment: room.advancePayment ? String(room.advancePayment) : '',
-      additionalCharges: room.additionalCharges ? String(room.additionalCharges) : '',
-      discount: room.discount ? String(room.discount) : '',
+      additionalCharges: '',
+      discount: '',
       notes: '',
     }));
     setSelectedServices([]);
@@ -491,7 +492,7 @@ export default function RoomsScreen() {
     if (!selectedRoom?.selectedServices || selectedRoom.selectedServices.length === 0) return;
     setSelectedServices(selectedRoom.selectedServices.map(service => ({
       serviceId: typeof service.serviceId === 'string' ? service.serviceId : (service.serviceId as any)?._id || '',
-      serviceName: service.serviceName || service.name || t('service'),
+      serviceName: service.serviceName || service.name || t('services'),
       price: Number(service.price || service.unitPrice || 0),
       quantity: Number(service.quantity || 1),
       totalPrice: Number(service.totalPrice || (service.price || service.unitPrice || 0) * (service.quantity || 1)),
@@ -568,19 +569,26 @@ export default function RoomsScreen() {
         }
       }
     }
-    const additionalCharges = Number(checkOutForm.additionalCharges) || 0;
-    const discount = Number(checkOutForm.discount) || 0;
-    const advancePayment = Number(checkOutForm.advancePayment) || 0;
+    const baseAdditionalCharges = Number(selectedRoom?.additionalCharges) || 0;
+    const baseDiscount = Number(selectedRoom?.discount) || 0;
+    const baseAdvancePayment = Number(selectedRoom?.advancePayment) || 0;
+    const checkoutAdditionalCharges = Number(checkOutForm.additionalCharges) || 0;
+    const checkoutDiscount = Number(checkOutForm.discount) || 0;
+    const totalAdditionalCharges = baseAdditionalCharges + checkoutAdditionalCharges;
+    const totalDiscount = baseDiscount + checkoutDiscount;
+    const advancePayment = checkOutForm.advancePayment !== ''
+      ? Number(checkOutForm.advancePayment) || 0
+      : baseAdvancePayment;
     const totalAmount = calculateRoomTotalAmount(
       roomTotal,
       serviceTotal,
-      additionalCharges,
-      discount,
+      totalAdditionalCharges,
+      totalDiscount,
       advancePayment
     );
-    const grossTotal = roomTotal + serviceTotal + additionalCharges - discount;
-    const remainingAmount = grossTotal - advancePayment;
-    return { roomTotal, additionalCharges, discount, advancePayment, totalAmount, grossTotal, remainingAmount };
+    const grossTotal = roomTotal + serviceTotal + totalAdditionalCharges - totalDiscount;
+    const remainingAmount = totalAmount;
+    return { roomTotal, additionalCharges: totalAdditionalCharges, discount: totalDiscount, advancePayment, totalAmount, grossTotal, remainingAmount };
   }, [selectedRoom, checkOutForm, serviceTotal]);
   const handleRoomPress = useCallback((room: Room) => {
     openRoomModal(room, getModalModeForStatus(room.status));
@@ -642,6 +650,7 @@ export default function RoomsScreen() {
 
   const handleSaveCheckOutInfo = useCallback(() => {
     if (!selectedRoom) return;
+    const { additionalCharges, discount, advancePayment } = checkoutTotals;
     doSaveCheckinInfo({
       id: selectedRoom.id,
       payload: {
@@ -651,15 +660,15 @@ export default function RoomsScreen() {
           idNumber: checkOutForm.guestId,
           guestSource: 'walkin',
         },
-        advancePayment: Number(checkOutForm.advancePayment) || 0,
+        advancePayment: advancePayment || 0,
         rateType: checkOutForm.rateType,
-        additionalCharges: Number(checkOutForm.additionalCharges) || 0,
-        discount: Number(checkOutForm.discount) || 0,
+        additionalCharges,
+        discount,
         selectedServices: servicePayload,
         advancePaymentMethod: checkOutForm.paymentMethod,
       },
     });
-  }, [selectedRoom, checkOutForm, doSaveCheckinInfo, servicePayload]);
+  }, [selectedRoom, checkOutForm, checkoutTotals, doSaveCheckinInfo, servicePayload]);
 
   const handleCheckOut = useCallback(() => {
     if (!selectedRoom) return;
@@ -1999,41 +2008,41 @@ export default function RoomsScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <View style={styles.headerTop}>
+        <View style={[styles.headerTop, isCompactHeader && styles.headerTopCompact]}>
           <View>
             <Text style={[styles.title, { color: colors.text }]}>{t('roomManagement')}</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{rooms.length} {t('rooms')}</Text>
           </View>
-          <View style={styles.headerActions}>
+          <View style={[styles.viewToggle, isCompactHeader && styles.viewToggleCompact, { backgroundColor: colors.cardBackground }]}>
             <TouchableOpacity
-              style={[styles.voucherBtn, { borderColor: colors.tint }]}
-              onPress={() => setIncomeModalVisible(true)}
+              style={[styles.viewToggleBtn, viewMode === 'list' && { backgroundColor: colors.tint }]}
+              onPress={() => setViewMode('list')}
             >
-              <PlusCircle size={16} color={colors.tint} />
-              <Text style={[styles.voucherBtnText, { color: colors.tint }]}>Phiếu thu</Text>
+              <List size={18} color={viewMode === 'list' ? '#fff' : colors.textSecondary} />
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.voucherBtn, { borderColor: colors.textSecondary }]}
-              onPress={() => setExpenseModalVisible(true)}
+              style={[styles.viewToggleBtn, viewMode === 'grid' && { backgroundColor: colors.tint }]}
+              onPress={() => setViewMode('grid')}
             >
-              <MinusCircle size={16} color={colors.textSecondary} />
-              <Text style={[styles.voucherBtnText, { color: colors.textSecondary }]}>Phiếu chi</Text>
+              <Grid3X3 size={18} color={viewMode === 'grid' ? '#fff' : colors.textSecondary} />
             </TouchableOpacity>
-            <View style={[styles.viewToggle, { backgroundColor: colors.cardBackground }]}>
-              <TouchableOpacity
-                style={[styles.viewToggleBtn, viewMode === 'list' && { backgroundColor: colors.tint }]}
-                onPress={() => setViewMode('list')}
-              >
-                <List size={18} color={viewMode === 'list' ? '#fff' : colors.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.viewToggleBtn, viewMode === 'grid' && { backgroundColor: colors.tint }]}
-                onPress={() => setViewMode('grid')}
-              >
-                <Grid3X3 size={18} color={viewMode === 'grid' ? '#fff' : colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
           </View>
+        </View>
+        <View style={[styles.headerActions, isCompactHeader && styles.headerActionsCompact]}>
+          <TouchableOpacity
+            style={[styles.voucherBtn, isCompactHeader && styles.voucherBtnCompact, { borderColor: colors.tint }]}
+            onPress={() => setIncomeModalVisible(true)}
+          >
+            <PlusCircle size={16} color={colors.tint} />
+            <Text style={[styles.voucherBtnText, { color: colors.tint }]}>Phiếu thu</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.voucherBtn, isCompactHeader && styles.voucherBtnCompact, { borderColor: colors.textSecondary }]}
+            onPress={() => setExpenseModalVisible(true)}
+          >
+            <MinusCircle size={16} color={colors.textSecondary} />
+            <Text style={[styles.voucherBtnText, { color: colors.textSecondary }]}>Phiếu chi</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -2579,6 +2588,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerTopCompact: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerActionsCompact: {
+    width: '100%',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    rowGap: 8,
+    columnGap: 8,
+    marginTop: 10,
+  },
   title: {
     fontSize: 28,
     fontWeight: '700' as const,
@@ -2591,6 +2619,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderRadius: 10,
     padding: 4,
+  },
+  viewToggleCompact: {
+    alignSelf: 'flex-end',
+    flexShrink: 0,
   },
   viewToggleBtn: {
     padding: 8,
@@ -2605,9 +2637,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
+  voucherBtnCompact: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    flexShrink: 1,
+  },
   voucherBtnText: {
     fontSize: 12,
     fontWeight: '600' as const,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   searchContainer: {
     paddingHorizontal: 20,
@@ -2844,10 +2884,6 @@ const styles = StyleSheet.create({
   },
   formRow: {
     marginBottom: 12,
-  },
-  formLabel: {
-    fontSize: 13,
-    marginBottom: 6,
   },
   input: {
     borderWidth: 1,
@@ -3151,6 +3187,9 @@ const styles = StyleSheet.create({
   },
   serviceList: {
     gap: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
   serviceDropdown: {
     gap: 10,
@@ -3160,17 +3199,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 12,
+    gap: 10,
+    borderRadius: 14,
     borderWidth: 1,
-    padding: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 54,
   },
   serviceDropdownTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600' as const,
   },
   serviceDropdownSubtitle: {
     fontSize: 12,
-    marginTop: 2,
+    marginTop: 4,
   },
   serviceDropdownList: {
     borderRadius: 12,
@@ -3179,13 +3221,9 @@ const styles = StyleSheet.create({
     zIndex: 50,
     elevation: 8,
   },
-  serviceList: {
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
   serviceDropdownScroll: {
-    maxHeight: 180,
+    maxHeight: 220,
+    paddingVertical: 6,
   },
   serviceDropdownItem: {
     flexDirection: 'row',
@@ -3204,20 +3242,20 @@ const styles = StyleSheet.create({
   },
   serviceDropdownPrice: {
     fontSize: 12,
-    marginTop: 2,
+    marginTop: 4,
   },
   serviceListItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderBottomWidth: 1,
   },
   serviceListActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   serviceDropdownActions: {
     flexDirection: 'row',
@@ -3237,7 +3275,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   selectedServiceList: {
-    gap: 8,
+    gap: 10,
   },
   selectedServiceItem: {
     flexDirection: 'row',
@@ -3245,7 +3283,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderRadius: 12,
     borderWidth: 1,
-    padding: 10,
+    padding: 12,
   },
   selectedServiceInfo: {
     flex: 1,
@@ -3255,7 +3293,7 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
   },
   selectedServiceMeta: {
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 2,
   },
   selectedServiceActions: {
@@ -3264,7 +3302,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   selectedServiceTotal: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700' as const,
   },
   removeServiceBtn: {

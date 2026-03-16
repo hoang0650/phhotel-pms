@@ -4,6 +4,7 @@ import { extractId } from './utils';
 
 export interface Hotel {
   id: string;
+  _id?: string;
   name: string;
   address?: string;
   phone?: string;

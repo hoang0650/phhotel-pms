@@ -261,6 +261,7 @@ export interface ShiftRoomHistory {
   roomNumber: string;
   bookingId?: string;
   action: RoomActionType;
+  customerName?: string;
   guestName?: string;
   guestSource?: string;
   amount: number;
@@ -291,6 +292,7 @@ export interface ShiftInvoice {
 export interface ShiftExpense {
   expenseId?: string;
   description: string;
+  content?: string;
   amount: number;
   category?: string;
   recipient?: string;
@@ -302,6 +304,7 @@ export interface ShiftExpense {
 export interface ShiftIncome {
   incomeId?: string;
   description: string;
+  content?: string;
   amount: number;
   category?: string;
   source?: string;
@@ -355,6 +358,8 @@ export interface ShiftHandover {
   invoices?: ShiftInvoice[];
   expenses?: ShiftExpense[];
   incomes?: ShiftIncome[];
+  expenseDetails?: ShiftExpense[];
+  incomeDetails?: ShiftIncome[];
   serviceOrders?: ShiftServiceOrder[];
   confirmedByPassword: boolean;
   confirmed: boolean;

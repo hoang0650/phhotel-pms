@@ -272,14 +272,22 @@ export default function FanpageManagementScreen() {
 
   const loadPages = useCallback(async () => {
     const response = await aiApi.getFacebookPages(tenantId);
-    const nextPages = Array.isArray(response?.pages) ? response.pages : [];
+    const nextPages = Array.isArray(response)
+      ? response
+      : Array.isArray(response?.pages)
+        ? response.pages
+        : [];
     setPages(nextPages);
     return nextPages;
   }, [tenantId]);
 
   const loadMessages = useCallback(async (pageId: string) => {
     const response = await aiApi.getFacebookMessages(tenantId, pageId);
-    const rawMessages = Array.isArray(response?.messages) ? response.messages : [];
+    const rawMessages = Array.isArray(response)
+      ? response
+      : Array.isArray(response?.messages)
+        ? response.messages
+        : [];
     const normalized: FacebookMessage[] = rawMessages.map((m: any) => ({
       id: m.mid || String(m.timestamp || Date.now()),
       page_id: m.page_id,

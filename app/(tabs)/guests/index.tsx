@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -45,7 +45,7 @@ export default function GuestsScreen() {
   const [assignVisible, setAssignVisible] = useState(false);
   const [assignRoomId, setAssignRoomId] = useState<string | null>(null);
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
-  const [form, setForm] = useState({
+  const initialForm = {
     fullName: '',
     phone: '',
     email: '',
@@ -54,12 +54,15 @@ export default function GuestsScreen() {
     address: '',
     gender: '',
     dateOfBirth: '',
-  });
+  };
+  const [form, setForm] = useState(initialForm);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrStatus, setOcrStatus] = useState('');
   const [ocrPhase, setOcrPhase] = useState<'upload' | 'scan' | 'process' | ''>('');
   const [ocrImages, setOcrImages] = useState<string[]>([]);
   const setGuestDraft = useGuestDraftStore(s => s.setDraft);
+  const guestDraft = useGuestDraftStore(s => s.draft);
+  const clearGuestDraft = useGuestDraftStore(s => s.clear);
   const router = useRouter();
 
   const clearOcrImages = () => {
@@ -77,11 +80,20 @@ export default function GuestsScreen() {
   };
 
   const closeCreateModal = () => {
+    setGuestDraft(form);
     setCreateVisible(false);
     setOcrLoading(false);
     setOcrStatus('');
     setOcrPhase('');
+  };
+  
+  const resetCreateModal = () => {
+    setForm(initialForm);
+    setOcrLoading(false);
+    setOcrStatus('');
+    setOcrPhase('');
     setOcrImages([]);
+    clearGuestDraft();
   };
 
   const effectiveHotelId = selectedHotelId || selectedHotel?.id;
@@ -314,36 +326,55 @@ export default function GuestsScreen() {
 
   // 1. Hàm bổ trợ để bóc tách dữ liệu từ mọi loại Response (Đồng bộ với Web)
 const extractOcrData = (res: any) => {
-  // Tìm lớp chứa data thật sự
-  let raw = res?.result?.data || res?.data?.data || res?.data || res;
-  
-  // Logic Fix địa chỉ ngược
-  const fixAddress = (addr: string) => {
-    if (!addr) return '';
-    const parts = addr.split(',').map(p => p.trim());
-    const bigUnits = /\b(Tỉnh|Thành phố|TP|Hồ Chí Minh|Hà Nội|Đồng Nai)\b/i;
-    if (parts.length > 1 && bigUnits.test(parts[0])) {
-      return parts.reverse().join(', ');
-    }
-    return addr;
-  };
-
-  const rawAddr = raw['Địa chỉ thường trú'] || raw['Địa chỉ'] || raw['Quê quán'] || raw.address || '';
-
+  const backendData = (res?.success && res?.result?.data && typeof res.result.data === 'object')
+    ? res.result.data
+    : (res?.result?.data && typeof res.result.data === 'object')
+      ? res.result.data
+      : (res?.data?.data && typeof res.data.data === 'object')
+        ? res.data.data
+        : (res?.data && typeof res.data === 'object')
+          ? res.data
+          : {};
+  const parsedData = (res?.parsedData && typeof res.parsedData === 'object')
+    ? res.parsedData
+    : (res?.result?.parsedData && typeof res.result.parsedData === 'object')
+      ? res.result.parsedData
+      : null;
+  const rawText = Array.isArray(res?.rawText)
+    ? res.rawText
+    : typeof res?.rawText === 'string'
+      ? res.rawText.split(/\r?\n/)
+      : Array.isArray(parsedData?.rawText)
+        ? parsedData.rawText
+        : typeof parsedData?.rawText === 'string'
+          ? parsedData.rawText.split(/\r?\n/)
+          : [];
+  const fullName = getOcrValue(res, backendData, ['Họ tên', 'Họ và tên', 'fullName', 'name']).toString().trim();
+  const idNumber = getOcrValue(res, backendData, ['Số ID', 'Số CCCD', 'idNumber', 'cccd']).toString().replace(/\s+/g, '').trim();
+  const nationality = getOcrValue(res, backendData, ['Quốc tịch', 'nationality']) || 'Việt Nam';
+  const gender = normalizeGender(getOcrValue(res, backendData, ['Giới tính', 'gender']));
+  const dateOfBirth = parseDateToISO(getOcrValue(res, backendData, ['Ngày sinh', 'dateOfBirth', 'dob']) || parsedData?.dateOfBirth) || '';
+  let address = getOcrValue(res, backendData, ['Địa chỉ thường trú', 'Địa chỉ', 'Quê quán', 'address']).toString();
+  address = address.replace(/\bplace\s*of\s*birth\b/iu, '').replace(/(nơi\s*sinh|quê\s*quán)/iu, '').trim();
+  if (!address && rawText.length) {
+    const normLines = rawText.map((l: string) => (l || '').trim()).filter((l: string) => l.length > 0);
+    address = buildAddressFromRaw(normLines);
+  }
   return {
-    fullName: (raw['Họ tên'] || raw['Họ và tên'] || raw.fullName || raw.name || '').toUpperCase(),
-    idNumber: (raw['Số ID'] || raw['Số CCCD'] || raw.idNumber || '').replace(/\s/g, ''),
-    dateOfBirth: raw['Ngày sinh'] || raw.dob || '',
-    gender: raw['Giới tính'] || raw.gender || '',
-    address: fixAddress(rawAddr),
-    nationality: raw['Quốc tịch'] || raw.nationality || 'Việt Nam'
+    fullName: fullName || form.fullName,
+    idNumber: idNumber || form.idNumber,
+    dateOfBirth: dateOfBirth || form.dateOfBirth,
+    gender: gender || form.gender,
+    address: address || form.address,
+    nationality: nationality.toString(),
   };
 };
 
 // 2. Cập nhật Handle Scan 1 Ảnh
-const handleScanOneImage = async () => {
+  const handleScanOneImage = async () => {
   setOcrLoading(true);
   setOcrStatus('Đang xử lý 1 ảnh...');
+    setOcrPhase('scan');
   try {
     const file = await pickSingleImage();
     if (!file) return;
@@ -368,6 +399,7 @@ const handleScanOneImage = async () => {
 const handleScanTwoImages = async () => {
   setOcrLoading(true);
   setOcrStatus('Đang xử lý 2 ảnh...');
+    setOcrPhase('scan');
   try {
     const picked = await pickTwoImages();
     if (!picked || picked.length < 2) return;
@@ -527,7 +559,7 @@ const handleScanTwoImages = async () => {
     }
     const payload = {
       hotelId: effectiveHotelId,
-      guestType: 'regular',
+      guestType: 'regular' as const,
       personalInfo: {
         fullName: form.fullName || 'Khách lẻ',
         idNumber: form.idNumber || undefined,
@@ -543,7 +575,8 @@ const handleScanTwoImages = async () => {
     };
     const created = await guestsApi.create(payload);
     if (created) {
-      closeCreateModal();
+      resetCreateModal();
+      setCreateVisible(false);
       refetch();
     }
   };
@@ -573,7 +606,7 @@ const handleScanTwoImages = async () => {
     try {
       const payload = {
         hotelId: effectiveHotelId,
-        guestType: 'regular',
+        guestType: 'regular' as const,
         personalInfo: {
           fullName: form.fullName || 'Khách lẻ',
           idNumber: form.idNumber || undefined,
@@ -601,11 +634,12 @@ const handleScanTwoImages = async () => {
           email: form.email || '',
           idNumber: form.idNumber || '',
           address: form.address || '',
-          guestSource: 'regular',
+          guestSource: 'walkin',
         },
       });
       Alert.alert('Thành công', 'Đã lưu khách vào phòng');
-      closeCreateModal();
+      resetCreateModal();
+      setCreateVisible(false);
       closeAssignModal();
       refetch();
       refetchRooms();
@@ -613,6 +647,12 @@ const handleScanTwoImages = async () => {
       Alert.alert('Lỗi', error?.message || 'Không thể assign khách vào phòng');
     }
   };
+  
+  useEffect(() => {
+    if (!createVisible) return;
+    if (!guestDraft) return;
+    setForm(prev => ({ ...prev, ...guestDraft }));
+  }, [createVisible, guestDraft]);
 
   if (isLoading && guests.length === 0) {
     return (

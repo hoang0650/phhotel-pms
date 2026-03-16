@@ -121,7 +121,7 @@ export default function StaffsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { selectedHotelId } = useHotel();
-  const { user } = useAuth();
+  const { user, isAdmin, isBusiness } = useAuth();
   const [activeTab, setActiveTab] = useState<'staffs' | 'salary'>('staffs');
   const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -186,10 +186,10 @@ export default function StaffsScreen() {
     userItem.fullName || userItem.name || userItem.email || getUserId(userItem);
 
   const canManageStaff =
-    user?.role === 'superadmin' ||
-    user?.role === 'admin' ||
-    user?.role === 'business' ||
-    user?.role === 'hotel';
+    isAdmin ||
+    isBusiness ||
+    user?.role === 'manager' ||
+    user?.role === 'hotel_manager';
 
   const { data: availableUsers = [] } = useQuery({
     queryKey: [
@@ -350,10 +350,14 @@ export default function StaffsScreen() {
     staff.employmentInfo?.position || staff.position || 'other';
   const getStaffDepartment = (staff: Staff) =>
     staff.employmentInfo?.department || staff.department || '';
-  const getStaffStatus = (staff: Staff) => {
-    const status = staff.employmentInfo?.status || staff.status || 'active';
-    return status === 'inactive' ? 'terminated' : status;
+  const normalizeStaffStatus = (value?: string): StaffEmploymentInfo['status'] => {
+    if (value === 'inactive') return 'terminated';
+    if (value === 'active' || value === 'on_leave' || value === 'terminated') return value;
+    return 'active';
   };
+
+  const getStaffStatus = (staff: Staff) =>
+    normalizeStaffStatus(staff.employmentInfo?.status || staff.status);
 
   const filteredStaffs = staffs.filter(staff => {
     const department = getStaffDepartment(staff);
@@ -1846,7 +1850,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 20,
-    paddingBottom: 0,
+    paddingBottom: 8,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
   },
@@ -1872,9 +1876,9 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: 14,
+    padding: 18,
+    marginBottom: 18,
   },
   statItem: {
     flex: 1,
@@ -1898,9 +1902,9 @@ const styles = StyleSheet.create({
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 4,
-    marginBottom: -20,
+    marginBottom: -18,
   },
   tab: {
     flex: 1,
@@ -1937,25 +1941,22 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    marginTop: 32,
+    marginTop: 28,
     paddingHorizontal: 16,
   },
   searchContainer: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
   searchInput: {
     flex: 1,
@@ -1963,15 +1964,16 @@ const styles = StyleSheet.create({
     color: Colors.light.text,
   },
   departmentsContainer: {
-    marginBottom: 16,
+    marginBottom: 14,
   },
   departmentsContent: {
     gap: 8,
+    paddingRight: 8,
   },
   departmentChip: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: 18,
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#e5e7eb',
@@ -1989,23 +1991,26 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   staffsList: {
-    gap: 12,
+    gap: 10,
   },
   staffCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
   },
   staffAvatar: {
     position: 'relative',
-    marginRight: 14,
+    marginRight: 12,
   },
   avatarImage: {
     width: 50,
@@ -2039,7 +2044,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   staffName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600' as const,
     color: Colors.light.text,
   },
@@ -2070,14 +2075,16 @@ const styles = StyleSheet.create({
   },
   salaryOverviewCard: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 14,
+    padding: 18,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
   },
   salaryOverviewLabel: {
     fontSize: 13,
@@ -2098,13 +2105,15 @@ const styles = StyleSheet.create({
   },
   salaryCard: {
     backgroundColor: '#fff',
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.03,
+    shadowRadius: 2,
+    elevation: 1,
   },
   salaryHeader: {
     flexDirection: 'row',
@@ -2137,9 +2146,9 @@ const styles = StyleSheet.create({
     fontWeight: '500' as const,
   },
   salaryDetails: {
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f8fafc',
     borderRadius: 12,
-    padding: 14,
+    padding: 12,
     marginBottom: 16,
   },
   salaryRow: {
@@ -2203,8 +2212,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
+    padding: 20,
+    paddingBottom: 36,
     maxHeight: '80%',
   },
   modalHeader: {

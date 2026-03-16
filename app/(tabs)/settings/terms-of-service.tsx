@@ -23,7 +23,7 @@ export default function TermsOfServiceScreen() {
   };
 
   const openPrivacyPolicy = () => {
-    Linking.openURL('/settings/privacy-policy');
+    router.push('/settings/privacy-policy');
   };
 
   const openSupportEmail = () => {
@@ -153,10 +153,10 @@ export default function TermsOfServiceScreen() {
               Để biết thêm thông tin chi tiết, vui lòng tham khảo
             </Text>
             <TouchableOpacity style={styles.linkButton} onPress={openPrivacyPolicy}>
-              <Text style={[styles.linkButtonText, { color: colors.primary }]}>
+              <Text style={[styles.linkButtonText, { color: colors.tint }]}>
                 {language === 'vi' ? 'Chính sách bảo mật' : 'Privacy Policy'}
               </Text>
-              <ExternalLink size={16} color={colors.primary} />
+              <ExternalLink size={16} color={colors.tint} />
             </TouchableOpacity>
           </View>
         </View>

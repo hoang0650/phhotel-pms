@@ -347,10 +347,13 @@ export default function ShiftHandoverScreen() {
     return staffs.filter(staff => {
       if (fromStaff?.id && staff.id === fromStaff.id) return false;
       if (!keyword) return true;
+      const name = (staff.name || '').toLowerCase();
+      const email = (staff.email || '').toLowerCase();
+      const phone = (staff.phone || '').toLowerCase();
       return (
-        staff.name.toLowerCase().includes(keyword) ||
-        staff.email.toLowerCase().includes(keyword) ||
-        staff.phone.toLowerCase().includes(keyword)
+        name.includes(keyword) ||
+        email.includes(keyword) ||
+        phone.includes(keyword)
       );
     });
   }, [staffs, staffSearch, fromStaff?.id]);
@@ -494,6 +497,14 @@ export default function ShiftHandoverScreen() {
   const getTotalAmount = (items: any[]) => {
     return items.reduce((sum, item) => sum + (item.totalAmount || 0), 0);
   };
+  
+  const getExpenseDetails = (record: ShiftHandover) => {
+    return record.expenseDetails || record.expenses || [];
+  };
+  
+  const getIncomeDetails = (record: ShiftHandover) => {
+    return record.incomeDetails || record.incomes || [];
+  };
 
   // Helper functions for enhanced customer payments table
   const getRoomTotal = (room: any) => room.roomTotal || 0;
@@ -535,10 +546,6 @@ export default function ShiftHandoverScreen() {
   };
 
   const isLoading = staffsLoading || previousLoading || revenueLoading || historyLoading || paymentHistoryLoading || expensesLoading || incomesLoading;
-
-  const handleViewHistory = () => {
-    router.push('/management/shift-handover-history');
-  };
 
   const historyItems = historyData?.data || [];
   const totalPages = historyData?.pagination?.totalPages || 1;
@@ -758,7 +765,12 @@ export default function ShiftHandoverScreen() {
               </TouchableOpacity>
             </View>
             
-            <ScrollView style={styles.detailScroll} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.detailScroll}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+              scrollEventThrottle={16}
+            >
               {selectedRecord && (
                 <View style={styles.detailContent}>
                   {/* Thông tin cơ bản */}
@@ -838,10 +850,10 @@ export default function ShiftHandoverScreen() {
                   )}
 
                   {/* Chi tiết phiếu chi */}
-                  {(selectedRecord.expenseDetails && selectedRecord.expenseDetails.length > 0) && (
+                  {getExpenseDetails(selectedRecord).length > 0 && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailSectionTitle}>
-                        Chi tiết phiếu chi - Tổng: {formatCurrency(getTotalAmount(selectedRecord.expenseDetails))}
+                        Chi tiết phiếu chi - Tổng: {formatCurrency(getTotalAmount(getExpenseDetails(selectedRecord)))}
                       </Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                         <View>
@@ -850,7 +862,7 @@ export default function ShiftHandoverScreen() {
                   <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Số tiền</Text>
                   <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Phương thức</Text>
                 </View>
-                {selectedRecord.expenseDetails.map((expense, index) => (
+                {getExpenseDetails(selectedRecord).map((expense, index) => (
                   <View key={index} style={styles.tableRow}>
                     <Text style={[styles.tableCell, { minWidth: 300 }]}>{expense.description || expense.content || 'N/A'}</Text>
                     <Text style={[styles.tableCell, { minWidth: 100, textAlign: 'right' }]}>{formatCurrency(expense.amount || 0)}</Text>
@@ -863,10 +875,10 @@ export default function ShiftHandoverScreen() {
                   )}
 
                   {/* Chi tiết phiếu thu */}
-                  {(selectedRecord.incomeDetails && selectedRecord.incomeDetails.length > 0) && (
+                  {getIncomeDetails(selectedRecord).length > 0 && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailSectionTitle}>
-                        Chi tiết phiếu thu - Tổng: {formatCurrency(getTotalAmount(selectedRecord.incomeDetails))}
+                        Chi tiết phiếu thu - Tổng: {formatCurrency(getTotalAmount(getIncomeDetails(selectedRecord)))}
                       </Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={true}>
                         <View>
@@ -875,7 +887,7 @@ export default function ShiftHandoverScreen() {
                   <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Số tiền</Text>
                   <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Phương thức</Text>
                 </View>
-                {selectedRecord.incomeDetails.map((income, index) => (
+                {getIncomeDetails(selectedRecord).map((income, index) => (
                   <View key={index} style={styles.tableRow}>
                     <Text style={[styles.tableCell, { minWidth: 300 }]}>{income.description || income.content || 'N/A'}</Text>
                     <Text style={[styles.tableCell, { minWidth: 100, textAlign: 'right' }]}>{formatCurrency(income.amount || 0)}</Text>
@@ -894,7 +906,7 @@ export default function ShiftHandoverScreen() {
                         Tổng doanh thu = Tiền mặt + Chuyển khoản + Thẻ tín dụng + Phiếu Thu - Phiếu Chi: {formatCurrency(getTotalRevenue(selectedRecord))}
                       </Text>
                       <View style={styles.tableContainer}>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={true} nestedScrollEnabled>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={true} nestedScrollEnabled scrollEventThrottle={16}>
                           <View>
                             <View style={styles.tableHeader}>
                               <Text style={[styles.tableHeaderText, { minWidth: 80 }]}>Phòng</Text>
@@ -913,7 +925,13 @@ export default function ShiftHandoverScreen() {
                               <Text style={[styles.tableHeaderText, { minWidth: 140 }]}>Check-in</Text>
                               <Text style={[styles.tableHeaderText, { minWidth: 140 }]}>Check-out</Text>
                             </View>
-                            <ScrollView style={styles.tableVerticalScroll} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                            <ScrollView
+                              style={styles.tableVerticalScroll}
+                              nestedScrollEnabled
+                              showsVerticalScrollIndicator={true}
+                              scrollEventThrottle={16}
+                              removeClippedSubviews
+                            >
                               {getCustomerPayments(selectedRecord).map((room, index) => (
                                 <View key={index} style={styles.tableRow}>
                                   <Text style={[styles.tableCell, { minWidth: 80 }]}>Phòng {room.roomNumber}</Text>
@@ -1526,11 +1544,6 @@ const styles = StyleSheet.create({
   highlight: {
     backgroundColor: '#E3F2FD',
     borderColor: '#1890ff',
-  },
-  summaryLabel: {
-    fontSize: 12,
-    color: '#6C757D',
-    marginBottom: 4,
   },
   summaryAmount: {
     fontSize: 16,
