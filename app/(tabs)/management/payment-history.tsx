@@ -70,7 +70,7 @@ export default function PaymentHistoryScreen() {
   }, [roomEvents]);
 
   const normalizePaymentStatus = (item: PaymentRecord) => {
-    const raw = (item.paymentStatus || item.payment?.status || item.payment?.paymentStatus || item.status || 'paid').toLowerCase();
+    const raw = (item.paymentStatus || item.payment?.status || item.payment?.paymentStatus || 'paid').toLowerCase();
     const map: Record<string, 'paid' | 'pending' | 'unpaid' | 'refunded' | 'cancelled'> = {
       completed: 'paid',
       success: 'paid',
@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#FFF',
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: 10,
     paddingBottom: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',

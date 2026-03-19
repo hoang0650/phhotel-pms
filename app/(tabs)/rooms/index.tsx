@@ -204,7 +204,13 @@ export default function RoomsScreen() {
     queryFn: () => (selectedRoom ? servicesApi.getOrdersByRoom(selectedRoom.id) : Promise.resolve([])),
     enabled: !!selectedRoom && modalMode === 'checkout',
   });
+  const { data: checkoutRoomDetail } = useQuery({
+    queryKey: ['roomDetailCheckout', selectedRoom?.id],
+    queryFn: () => (selectedRoom ? roomsApi.getById(selectedRoom.id) : Promise.resolve(null)),
+    enabled: !!selectedRoom && modalMode === 'checkout',
+  });
   const { user } = useAuth();
+  const checkoutRoom = checkoutRoomDetail || selectedRoom;
 
   const serviceTotal = useMemo(() => {
     return selectedServices.reduce((sum, service) => sum + (service.totalPrice || 0), 0);
@@ -718,15 +724,23 @@ export default function RoomsScreen() {
     if (!modalVisible || modalMode !== 'checkout') return;
     if (selectedServices.length > 0) return;
     if (serviceOrders.length > 0) return;
-    if (!selectedRoom?.selectedServices || selectedRoom.selectedServices.length === 0) return;
-    setSelectedServices(selectedRoom.selectedServices.map(service => ({
+    if (!checkoutRoom?.selectedServices || checkoutRoom.selectedServices.length === 0) return;
+    setSelectedServices(checkoutRoom.selectedServices.map(service => ({
       serviceId: typeof service.serviceId === 'string' ? service.serviceId : (service.serviceId as any)?._id || '',
       serviceName: service.serviceName || service.name || t('services'),
       price: Number(service.price || service.unitPrice || 0),
       quantity: Number(service.quantity || 1),
       totalPrice: Number(service.totalPrice || (service.price || service.unitPrice || 0) * (service.quantity || 1)),
     })));
-  }, [modalVisible, modalMode, selectedRoom, selectedServices.length, serviceOrders.length, t]);
+  }, [modalVisible, modalMode, checkoutRoom, selectedServices.length, serviceOrders.length, t]);
+
+  useEffect(() => {
+    if (!modalVisible || modalMode !== 'checkout') return;
+    if (!checkoutRoomDetail?.rateType) return;
+    if (checkOutForm.rateType === checkoutRoomDetail.rateType) return;
+    if (checkOutForm.rateType !== 'hourly') return;
+    setCheckOutForm(prev => ({ ...prev, rateType: checkoutRoomDetail.rateType as RateType }));
+  }, [modalVisible, modalMode, checkoutRoomDetail, checkOutForm.rateType]);
 
   const updateServiceQuantity = useCallback((service: Service, delta: number) => {
     setSelectedServices(prev => {
@@ -784,23 +798,138 @@ export default function RoomsScreen() {
   }, [selectedServiceOption, selectedServiceQuantity]);
 
   const checkoutTotals = useMemo(() => {
-    let roomTotal = selectedRoom?.price || 0;
+    let roomTotal = checkoutRoom?.price || 0;
     const roomPriceInfo = getRoomPriceDetails(
-      selectedRoom,
-      selectedRoom?.checkInTime,
+      checkoutRoom,
+      checkoutRoom?.checkInTime,
       checkOutForm.rateType
     );
     if (roomPriceInfo?.total && roomPriceInfo.total > 0) {
       roomTotal = roomPriceInfo.total;
     }
-    const roomPriceDetails = roomPriceInfo?.details || null;
-    const earlyCheckinSurcharge = Number(roomPriceDetails?.earlyCheckinSurcharge) || 0;
-    const lateCheckoutSurcharge = Number(roomPriceDetails?.lateCheckoutSurcharge) || 0;
-    const earlyCheckinHours = Number(roomPriceDetails?.earlyCheckinHours) || 0;
-    const lateCheckoutHours = Number(roomPriceDetails?.lateCheckoutHours) || 0;
-    const baseAdditionalCharges = Number(selectedRoom?.additionalCharges) || 0;
-    const baseDiscount = Number(selectedRoom?.discount) || 0;
-    const baseAdvancePayment = Number(selectedRoom?.advancePayment) || 0;
+    const roomPriceDetails: any = roomPriceInfo?.details || null;
+    const parseNumber = (value: unknown) => {
+      if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+      if (typeof value === 'string') {
+        const normalized = value.replace(/[^\d.-]/g, '');
+        const parsed = Number(normalized);
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+      return 0;
+    };
+    const parseTime = (timeStr: string) => {
+      const [hour, minute] = String(timeStr || '0:0').split(':').map(Number);
+      return { hour: hour || 0, minute: minute || 0 };
+    };
+    const calcEarlyHours = (actualTime: Date, standardTime: string) => {
+      const actualMinutes = actualTime.getHours() * 60 + actualTime.getMinutes();
+      const { hour, minute } = parseTime(standardTime);
+      const standardMinutes = hour * 60 + minute;
+      if (actualMinutes < standardMinutes) {
+        return Math.ceil((standardMinutes - actualMinutes) / 60);
+      }
+      return 0;
+    };
+    const getFallbackSurcharge = () => {
+      if (!checkoutRoom?.checkInTime) {
+        return {
+          earlyHours: 0,
+          earlySurcharge: 0,
+          lateHours: 0,
+          lateSurcharge: 0
+        };
+      }
+      const checkInDate = new Date(checkoutRoom.checkInTime);
+      const now = new Date();
+      if (isNaN(checkInDate.getTime()) || isNaN(now.getTime())) {
+        return {
+          earlyHours: 0,
+          earlySurcharge: 0,
+          lateHours: 0,
+          lateSurcharge: 0
+        };
+      }
+      const priceConfig = (checkoutRoom as any)?.priceConfig;
+      const priceSettings = (checkoutRoom as any)?.priceSettings;
+      const dailyStartTime = priceConfig?.dailyRates?.checkInTime || priceSettings?.dailyStartTime || '12:00';
+      const dailyCheckOutTime = priceConfig?.dailyRates?.checkOutTime || priceSettings?.dailyEndTime || '12:00';
+      const nightlyStartTime = priceConfig?.nightlyRates?.startTime || priceSettings?.nightlyStartTime || '20:00';
+      const nightlyEndTime = priceConfig?.nightlyRates?.endTime || priceSettings?.nightlyEndTime || '12:00';
+      const dailyEarlyRate = parseNumber(priceConfig?.dailyRates?.earlyCheckinSurcharge || priceSettings?.dailyEarlyCheckinSurcharge);
+      const dailyLateRate = parseNumber(priceConfig?.dailyRates?.latecheckOutFee || priceSettings?.dailyLateCheckoutFee);
+      const nightlyEarlyRate = parseNumber(priceConfig?.nightlyRates?.earlyCheckinSurcharge || priceSettings?.nightlyEarlyCheckinSurcharge);
+      const nightlyLateRate = parseNumber(priceConfig?.nightlyRates?.lateCheckoutSurcharge || priceSettings?.nightlyLateCheckoutSurcharge);
+      const checkOutDateOnly = new Date(now);
+      checkOutDateOnly.setHours(0, 0, 0, 0);
+      const checkInDateOnly = new Date(checkInDate);
+      checkInDateOnly.setHours(0, 0, 0, 0);
+      const isNextDay = checkOutDateOnly.getTime() > checkInDateOnly.getTime();
+
+      if (checkOutForm.rateType === 'daily') {
+        const earlyHours = calcEarlyHours(checkInDate, dailyStartTime);
+        const checkOutMinutes = now.getHours() * 60 + now.getMinutes();
+        const { hour, minute } = parseTime(dailyCheckOutTime);
+        const checkoutLimitMinutes = hour * 60 + minute;
+        const lateHours = isNextDay && checkOutMinutes > checkoutLimitMinutes
+          ? Math.ceil((checkOutMinutes - checkoutLimitMinutes) / 60)
+          : 0;
+        return {
+          earlyHours,
+          earlySurcharge: earlyHours * dailyEarlyRate,
+          lateHours,
+          lateSurcharge: lateHours * dailyLateRate
+        };
+      }
+      if (checkOutForm.rateType === 'nightly') {
+        const checkInMinutes = checkInDate.getHours() * 60 + checkInDate.getMinutes();
+        const nightlyStart = parseTime(nightlyStartTime);
+        const nightlyEnd = parseTime(nightlyEndTime);
+        const nightlyStartMinutes = nightlyStart.hour * 60 + nightlyStart.minute;
+        const nightlyEndMinutes = nightlyEnd.hour * 60 + nightlyEnd.minute;
+        const isInNightlyTime = checkInMinutes >= nightlyStartMinutes || checkInMinutes <= nightlyEndMinutes;
+        const earlyHours = isInNightlyTime ? 0 : calcEarlyHours(checkInDate, nightlyStartTime);
+        const checkOutMinutes = now.getHours() * 60 + now.getMinutes();
+        const lateHours = isNextDay && checkOutMinutes > nightlyEndMinutes
+          ? Math.ceil((checkOutMinutes - nightlyEndMinutes) / 60)
+          : 0;
+        return {
+          earlyHours,
+          earlySurcharge: earlyHours * nightlyEarlyRate,
+          lateHours,
+          lateSurcharge: lateHours * nightlyLateRate
+        };
+      }
+      return {
+        earlyHours: 0,
+        earlySurcharge: 0,
+        lateHours: 0,
+        lateSurcharge: 0
+      };
+    };
+    const fallbackSurcharge = getFallbackSurcharge();
+    const earlyCheckinSurcharge = parseNumber(
+      roomPriceDetails?.breakdown?.beforeNightly?.earlyCheckinSurcharge ??
+      roomPriceDetails?.earlyCheckinSurcharge ??
+      fallbackSurcharge.earlySurcharge
+    );
+    const lateCheckoutSurcharge = parseNumber(
+      roomPriceDetails?.breakdown?.afterNightly?.lateCheckoutSurcharge ??
+      roomPriceDetails?.lateCheckoutSurcharge ??
+      fallbackSurcharge.lateSurcharge
+    );
+    const earlyCheckinHours = parseNumber(
+      roomPriceDetails?.breakdown?.beforeNightly?.hours ??
+      roomPriceDetails?.earlyCheckinHours ??
+      fallbackSurcharge.earlyHours
+    );
+    const lateCheckoutHours = parseNumber(
+      roomPriceDetails?.breakdown?.afterNightly?.hours ??
+      roomPriceDetails?.lateCheckoutHours ??
+      fallbackSurcharge.lateHours
+    );
+    const baseAdditionalCharges = Number(checkoutRoom?.additionalCharges) || 0;
+    const baseDiscount = Number(checkoutRoom?.discount) || 0;
+    const baseAdvancePayment = Number(checkoutRoom?.advancePayment) || 0;
     const checkoutAdditionalCharges = Number(checkOutForm.additionalCharges) || 0;
     const checkoutDiscount = Number(checkOutForm.discount) || 0;
     const totalAdditionalCharges = baseAdditionalCharges + checkoutAdditionalCharges;
@@ -831,7 +960,7 @@ export default function RoomsScreen() {
       lateCheckoutHours,
       roomPriceDetails,
     };
-  }, [selectedRoom, checkOutForm, serviceTotal, getRoomPriceDetails]);
+  }, [checkoutRoom, checkOutForm, serviceTotal, getRoomPriceDetails]);
   const handleRoomPress = useCallback((room: Room) => {
     openRoomModal(room, getModalModeForStatus(room.status));
   }, [openRoomModal, getModalModeForStatus]);
@@ -2038,22 +2167,22 @@ export default function RoomsScreen() {
                     )}
                   </>
                 )}
-                {checkoutTotals.earlyCheckinHours > 0 && (
+                {checkoutTotals.earlyCheckinSurcharge > 0 && (
                   <View style={styles.summaryDetailRow}>
                     <Text style={[styles.summaryDetailLabel, { color: colors.textSecondary }]}>
-                      {`Phụ thu check-in sớm (${checkoutTotals.earlyCheckinHours} giờ):`}
+                      {`Phụ thu checkin sớm${checkoutTotals.earlyCheckinHours > 0 ? ` (${checkoutTotals.earlyCheckinHours} giờ)` : ''}:`}
                     </Text>
-                    <Text style={[styles.summaryDetailValue, { color: colors.text }]}>
+                    <Text style={[styles.summaryDetailValue, styles.summarySurchargeValue]}>
                       {`+ ${formatCurrency(checkoutTotals.earlyCheckinSurcharge)}`}
                     </Text>
                   </View>
                 )}
-                {checkoutTotals.lateCheckoutHours > 0 && (
+                {checkoutTotals.lateCheckoutSurcharge > 0 && (
                   <View style={styles.summaryDetailRow}>
                     <Text style={[styles.summaryDetailLabel, { color: colors.textSecondary }]}>
-                      {`Phụ thu check-out trễ (${checkoutTotals.lateCheckoutHours} giờ):`}
+                      {`Phụ thu checkout trễ${checkoutTotals.lateCheckoutHours > 0 ? ` (${checkoutTotals.lateCheckoutHours} giờ)` : ''}:`}
                     </Text>
-                    <Text style={[styles.summaryDetailValue, { color: colors.text }]}>
+                    <Text style={[styles.summaryDetailValue, styles.summarySurchargeValue]}>
                       {`+ ${formatCurrency(checkoutTotals.lateCheckoutSurcharge)}`}
                     </Text>
                   </View>
@@ -3684,6 +3813,9 @@ const styles = StyleSheet.create({
   summaryDetailValue: {
     fontSize: 12,
     fontWeight: '600' as const,
+  },
+  summarySurchargeValue: {
+    color: '#f59e0b',
   },
   summaryDivider: {
     height: 1,

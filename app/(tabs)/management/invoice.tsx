@@ -56,7 +56,7 @@ const InvoiceCard = ({ item, onPress }: { item: Invoice; onPress: () => void }) 
         return { color: colors.primary, text: 'Thanh toán một phần' };
       case 'cancelled':
         return { color: colors.danger, text: 'Đã hủy' };
-      case 'included_in_room_charge':
+      case 'paid':
         return { color: colors.textSecondary, text: 'Đã tính vào tiền phòng' };
       default:
         return { color: colors.text, text: 'Không xác định' };
@@ -288,11 +288,13 @@ const InvoiceDetailModal = ({ visible, invoice, onClose }: {
   if (!invoice) return null;
 
   // Tính toán các giá trị
-  const subtotal = (invoice.products || []).reduce((total, item) => {
+  const products = invoice.products ?? [];
+  const services = invoice.services ?? [];
+  const subtotal = products.reduce((total, item) => {
     return total + (item.price || 0) * (item.quantity || 1);
   }, 0);
 
-  const serviceTotal = (invoice.services || []).reduce((total, item) => {
+  const serviceTotal = services.reduce((total, item) => {
     return total + (item.price || 0) * (item.quantity || 1);
   }, 0);
 
@@ -432,14 +434,14 @@ const InvoiceDetailModal = ({ visible, invoice, onClose }: {
             </View>
 
             {/* Chi tiết sản phẩm/dịch vụ */}
-            {(invoice.products?.length > 0 || invoice.services?.length > 0) && (
+            {(products.length > 0 || services.length > 0) && (
               <View style={[styles.productsSection, { backgroundColor: colors.card, margin: 16, borderRadius: 12, padding: 16 }]}>
                 <Text style={[styles.sectionTitle, { color: colors.text, fontWeight: 'bold', fontSize: 16, marginBottom: 12 }]}>
                   Chi tiết dịch vụ
                 </Text>
                 
                 {/* Sản phẩm */}
-                {invoice.products?.length > 0 && (
+                {products.length > 0 && (
                   <View style={styles.productTable}>
                     <View style={styles.tableHeader}>
                       <Text style={[styles.tableHeaderText, { color: colors.textSecondary, flex: 2 }]}>Tên hàng (Product)</Text>
@@ -447,7 +449,7 @@ const InvoiceDetailModal = ({ visible, invoice, onClose }: {
                       <Text style={[styles.tableHeaderText, { color: colors.textSecondary, flex: 2, textAlign: 'right' }]}>Đơn giá (Unit)</Text>
                       <Text style={[styles.tableHeaderText, { color: colors.textSecondary, flex: 2, textAlign: 'right' }]}>Thành tiền (Price)</Text>
                     </View>
-                    {invoice.products.map((product, index) => (
+                    {products.map((product, index) => (
                       <View key={index} style={styles.tableRow}>
                         <Text style={[styles.tableCell, { color: colors.text, flex: 2 }]}>{product.name}</Text>
                         <Text style={[styles.tableCell, { color: colors.text, flex: 1, textAlign: 'center' }]}>
@@ -465,15 +467,15 @@ const InvoiceDetailModal = ({ visible, invoice, onClose }: {
                 )}
 
                 {/* Dịch vụ */}
-                {invoice.services?.length > 0 && (
-                  <View style={[styles.serviceTable, invoice.products?.length > 0 && { marginTop: 16 }]}>
+                {services.length > 0 && (
+                  <View style={[styles.serviceTable, products.length > 0 && { marginTop: 16 }]}>
                     <View style={styles.tableHeader}>
                       <Text style={[styles.tableHeaderText, { color: colors.textSecondary, flex: 2 }]}>Dịch vụ</Text>
                       <Text style={[styles.tableHeaderText, { color: colors.textSecondary, flex: 1, textAlign: 'center' }]}>Số lượng</Text>
                       <Text style={[styles.tableHeaderText, { color: colors.textSecondary, flex: 2, textAlign: 'right' }]}>Đơn giá</Text>
                       <Text style={[styles.tableHeaderText, { color: colors.textSecondary, flex: 2, textAlign: 'right' }]}>Thành tiền</Text>
                     </View>
-                    {invoice.services.map((service, index) => (
+                    {services.map((service, index) => (
                       <View key={index} style={styles.tableRow}>
                         <Text style={[styles.tableCell, { color: colors.text, flex: 2 }]}>{service.name}</Text>
                         <Text style={[styles.tableCell, { color: colors.text, flex: 1, textAlign: 'center' }]}>
@@ -600,7 +602,7 @@ export default function InvoiceManagementScreen() {
 
   const handleCreateInvoice = () => {
     // Navigate to a new screen for creating invoices
-    router.push('/(modals)/invoice-editor');
+    router.push('/management/invoice-editor');
   };
 
   const handleViewInvoice = (invoice: Invoice) => {
@@ -692,7 +694,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: 50,
+    paddingTop: 10,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
@@ -839,6 +841,9 @@ const styles = StyleSheet.create({
   detailGrid: {
     marginBottom: 0,
   },
+  headerInfoContainer: {
+    marginBottom: 0,
+  },
   gridRow: {
     flexDirection: 'row',
   },
@@ -902,9 +907,6 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 12,
     fontWeight: '600',
-  },
-  roomInfo: {
-    marginBottom: 0,
   },
   productsSection: {
     marginBottom: 0,

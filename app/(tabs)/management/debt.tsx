@@ -292,6 +292,16 @@ export default function DebtManagementScreen() {
     return found?.color || '#8E8E93';
   };
 
+  const isOverdue = (debt: Debt) => {
+    if (!debt.dueDate) return false;
+    const due = new Date(debt.dueDate);
+    if (isNaN(due.getTime())) return false;
+    due.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return due.getTime() < today.getTime() && debt.remainingAmount > 0;
+  };
+
   const filteredDebts = useMemo(() => {
     const keyword = searchQuery.trim().toLowerCase();
     return debts.filter(debt => {
@@ -305,6 +315,26 @@ export default function DebtManagementScreen() {
       return matchesSearch && matchesStatus;
     });
   }, [debts, searchQuery, statusFilter]);
+
+  const debtStats = useMemo(() => {
+    return filteredDebts.reduce((acc, debt) => {
+      const debtAmount = Number(debt.debtAmount) || 0;
+      const paidAmount = Number(debt.paidAmount) || 0;
+      const remainingAmount = Number(debt.remainingAmount) || 0;
+      acc.totalDebt += debtAmount;
+      acc.totalPaid += paidAmount;
+      acc.totalRemaining += remainingAmount;
+      if (isOverdue(debt)) {
+        acc.overdueCount += 1;
+      }
+      return acc;
+    }, {
+      totalDebt: 0,
+      totalPaid: 0,
+      totalRemaining: 0,
+      overdueCount: 0
+    });
+  }, [filteredDebts]);
 
   if (loading) {
     return (
@@ -320,88 +350,108 @@ export default function DebtManagementScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Quản Lý Công Nợ</Text>
         <View style={styles.headerStats}>
-          <Text style={styles.statText}>Tổng: {total} công nợ</Text>
+          <Text style={styles.statText}>Hiển thị {filteredDebts.length}/{total} công nợ</Text>
         </View>
-      </View>
-
-      <View style={styles.filterContainer}>
-        {canSelectMultipleHotels && (
-          <TouchableOpacity style={styles.hotelSelector} onPress={() => setHotelModalVisible(true)}>
-            <Ionicons name="business-outline" size={18} color="#007AFF" />
-            <Text style={styles.hotelSelectorText}>
-              {selectedHotelId
-                ? hotels.find(hotel => hotel.id === selectedHotelId)?.name || 'Chọn khách sạn'
-                : 'Chọn khách sạn'}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <View style={styles.filterContainer}>
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#8E8E93" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Tìm theo tên, SĐT, số phòng, hóa đơn..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-
-        <View style={styles.dateRangeRow}>
-          <TextInput
-            style={styles.dateInput}
-            placeholder="Từ ngày (YYYY-MM-DD)"
-            value={startDateInput}
-            onChangeText={setStartDateInput}
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={styles.dateInput}
-            placeholder="Đến ngày (YYYY-MM-DD)"
-            value={endDateInput}
-            onChangeText={setEndDateInput}
-            autoCapitalize="none"
-          />
-          <TouchableOpacity style={styles.applyDateButton} onPress={applyDateRange}>
-            <Text style={styles.applyDateText}>Lọc</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.statusFilterContainer}
-        >
-          {statusOptions.map((option) => (
-            <TouchableOpacity
-              key={option.value}
-              style={[
-                styles.statusFilterButton,
-                statusFilter === option.value && styles.activeStatusFilter
-              ]}
-              onPress={() => {
-                setStatusFilter(option.value);
-                setPageIndex(1);
-              }}
-            >
-              <Text style={[
-                styles.statusFilterText,
-                statusFilter === option.value && styles.activeStatusFilterText
-              ]}>
-                {option.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statCardLabel}>Tổng công nợ</Text>
+            <Text style={styles.statCardValue}>{formatCurrency(debtStats.totalDebt)}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statCardLabel}>Đã thanh toán</Text>
+            <Text style={[styles.statCardValue, styles.successValue]}>{formatCurrency(debtStats.totalPaid)}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statCardLabel}>Còn phải thu</Text>
+            <Text style={[styles.statCardValue, styles.warningValue]}>{formatCurrency(debtStats.totalRemaining)}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statCardLabel}>Quá hạn</Text>
+            <Text style={[styles.statCardValue, styles.dangerValue]}>{debtStats.overdueCount}</Text>
+          </View>
         </ScrollView>
       </View>
 
-      {/* Debt List */}
-      <ScrollView style={styles.debtList}>
+      <View style={styles.filterContainer}>
+        <View style={styles.filterCard}>
+          {canSelectMultipleHotels && (
+            <TouchableOpacity style={styles.hotelSelector} onPress={() => setHotelModalVisible(true)}>
+              <Ionicons name="business-outline" size={18} color="#007AFF" />
+              <Text style={styles.hotelSelectorText}>
+                {selectedHotelId
+                  ? hotels.find(hotel => hotel.id === selectedHotelId)?.name || 'Chọn khách sạn'
+                  : 'Chọn khách sạn'}
+              </Text>
+              <Ionicons name="chevron-down" size={18} color="#007AFF" />
+            </TouchableOpacity>
+          )}
+
+          <View style={styles.searchContainer}>
+            <Ionicons name="search" size={20} color="#8E8E93" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Tìm theo tên, SĐT, số phòng, hóa đơn..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+
+          <View style={styles.dateRangeRow}>
+            <TextInput
+              style={styles.dateInput}
+              placeholder="Từ ngày (YYYY-MM-DD)"
+              value={startDateInput}
+              onChangeText={setStartDateInput}
+              autoCapitalize="none"
+            />
+            <TextInput
+              style={styles.dateInput}
+              placeholder="Đến ngày (YYYY-MM-DD)"
+              value={endDateInput}
+              onChangeText={setEndDateInput}
+              autoCapitalize="none"
+            />
+            <TouchableOpacity style={styles.applyDateButton} onPress={applyDateRange}>
+              <Text style={styles.applyDateText}>Lọc</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.statusFilterContainer}
+            contentContainerStyle={styles.statusFilterContent}
+          >
+            {statusOptions.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.statusFilterButton,
+                  statusFilter === option.value && styles.activeStatusFilter
+                ]}
+                onPress={() => {
+                  setStatusFilter(option.value);
+                  setPageIndex(1);
+                }}
+              >
+                <Text style={[
+                  styles.statusFilterText,
+                  statusFilter === option.value && styles.activeStatusFilterText
+                ]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+
+      <ScrollView style={styles.debtList} contentContainerStyle={styles.debtListContent}>
         {filteredDebts.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="wallet-outline" size={64} color="#C7C7CC" />
             <Text style={styles.emptyText}>Không có công nợ nào</Text>
+            <Text style={styles.emptySubText}>Thử thay đổi bộ lọc hoặc khoảng thời gian</Text>
           </View>
         ) : (
           filteredDebts.map((debt) => (
@@ -423,9 +473,24 @@ export default function DebtManagementScreen() {
                       {getStatusText(debt.status)}
                     </Text>
                   </View>
+                  {isOverdue(debt) ? (
+                    <View style={styles.overdueBadge}>
+                      <Text style={styles.overdueText}>Quá hạn</Text>
+                    </View>
+                  ) : null}
                 </View>
               </View>
-              
+
+              <View style={styles.remainingHighlight}>
+                <Text style={styles.remainingLabel}>Còn lại cần thu</Text>
+                <Text style={[
+                  styles.remainingValue,
+                  isOverdue(debt) ? styles.remainingDanger : styles.remainingNormal
+                ]}>
+                  {formatCurrency(debt.remainingAmount)}
+                </Text>
+              </View>
+
               <View style={styles.debtDetails}>
                 <View style={styles.amountRow}>
                   <Text style={styles.amountLabel}>Tổng công nợ:</Text>
@@ -776,41 +841,84 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#FFF',
     paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
+    paddingTop: 10,
+    paddingBottom: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: 'bold',
     color: '#000',
-    marginBottom: 5,
+    marginBottom: 4,
   },
   headerStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: 10,
   },
   statText: {
     fontSize: 14,
     color: '#8E8E93',
   },
+  statsRow: {
+    gap: 10,
+    paddingRight: 8,
+  },
+  statCard: {
+    minWidth: 150,
+    borderRadius: 12,
+    backgroundColor: '#F7F9FC',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E9EEF5',
+  },
+  statCardLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 6,
+  },
+  statCardValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  successValue: {
+    color: '#16a34a',
+  },
+  warningValue: {
+    color: '#d97706',
+  },
+  dangerValue: {
+    color: '#dc2626',
+  },
   filterContainer: {
-    backgroundColor: '#FFF',
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingTop: 12,
+  },
+  filterCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#E5EAF1',
   },
   hotelSelector: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F2F2F7',
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     borderRadius: 10,
+    marginBottom: 12,
   },
   hotelSelectorText: {
     marginLeft: 8,
-    fontSize: 16,
+    marginRight: 'auto',
+    fontSize: 15,
     color: '#007AFF',
     fontWeight: '600',
   },
@@ -821,7 +929,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 12,
     borderRadius: 10,
-    marginBottom: 15,
+    marginBottom: 12,
   },
   searchIcon: {
     marginRight: 10,
@@ -834,7 +942,7 @@ const styles = StyleSheet.create({
   dateRangeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 12,
     gap: 8,
   },
   dateInput: {
@@ -860,6 +968,9 @@ const styles = StyleSheet.create({
   statusFilterContainer: {
     flexDirection: 'row',
   },
+  statusFilterContent: {
+    paddingRight: 8,
+  },
   statusFilterButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -881,6 +992,10 @@ const styles = StyleSheet.create({
   debtList: {
     flex: 1,
     paddingHorizontal: 20,
+  },
+  debtListContent: {
+    paddingTop: 12,
+    paddingBottom: 16,
   },
   paginationContainer: {
     flexDirection: 'row',
@@ -921,15 +1036,22 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
     marginTop: 10,
   },
+  emptySubText: {
+    marginTop: 6,
+    fontSize: 14,
+    color: '#9CA3AF',
+  },
   debtCard: {
     backgroundColor: '#FFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#EAEFF5',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 5,
     elevation: 2,
   },
   debtHeader: {
@@ -963,6 +1085,7 @@ const styles = StyleSheet.create({
   },
   statusContainer: {
     alignItems: 'flex-end',
+    gap: 6,
   },
   statusBadge: {
     paddingHorizontal: 12,
@@ -972,6 +1095,44 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '600',
+  },
+  overdueBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    backgroundColor: '#FEE2E2',
+  },
+  overdueText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  remainingHighlight: {
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E6EDF5',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  remainingLabel: {
+    fontSize: 13,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  remainingValue: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  remainingDanger: {
+    color: '#DC2626',
+  },
+  remainingNormal: {
+    color: '#1D4ED8',
   },
   debtDetails: {
     marginBottom: 12,
@@ -1020,6 +1181,8 @@ const styles = StyleSheet.create({
   debtActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    flexWrap: 'wrap',
+    gap: 8,
     borderTopWidth: 1,
     borderTopColor: '#E5E5EA',
     paddingTop: 12,
@@ -1031,7 +1194,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 8,
-    marginRight: 10,
+    minWidth: 100,
+    justifyContent: 'center',
   },
   settleButtonText: {
     color: '#FFF',
@@ -1046,7 +1210,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: '#EAF4FF',
-    marginRight: 10,
+    minWidth: 84,
+    justifyContent: 'center',
   },
   labelButtonText: {
     color: '#007AFF',
@@ -1061,6 +1226,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     backgroundColor: '#FFE5E5',
+    minWidth: 72,
+    justifyContent: 'center',
   },
   deleteButtonText: {
     color: '#FF3B30',

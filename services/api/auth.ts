@@ -2,7 +2,7 @@ import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
 import { extractId, extractIds } from './utils';
 
-export type UserRole = 'superadmin' | 'admin' | 'business' | 'manager' | 'receptionist' | 'staff' | 'hotel_manager';
+export type UserRole = 'superadmin' | 'admin' | 'business' | 'manager' | 'receptionist' | 'staff' | 'hotel_manager' | 'guest';
 
 export interface User {
   id: string;
@@ -97,6 +97,14 @@ const mapApiUserToUser = (apiUser: ApiUser): User => ({
   preferences: apiUser.preferences,
 });
 
+const isApiUser = (value: unknown): value is ApiUser => {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<ApiUser>;
+  return typeof candidate._id === 'string'
+    && typeof candidate.email === 'string'
+    && typeof candidate.role === 'string';
+};
+
 export const authApi = {
   login: async (data: LoginRequest): Promise<{ user: User; token: string }> => {
     console.log('[authApi.login] Attempting login for:', data.email);
@@ -147,8 +155,9 @@ export const authApi = {
         API_ENDPOINTS.AUTH.PROFILE,
         data
       );
-      const userData = 'user' in response ? response.user : response;
-      if (!userData) {
+      const responseWithUser = response as { user?: ApiUser };
+      const userData = responseWithUser.user ?? response;
+      if (!isApiUser(userData)) {
         throw new Error('Invalid profile response');
       }
       return mapApiUserToUser(userData);

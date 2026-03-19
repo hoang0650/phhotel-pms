@@ -69,12 +69,18 @@ export interface ApiRoomEvent {
   roomId?: string | { _id?: string; roomNumber?: string };
   roomNumber?: string;
   guestInfo?: ApiRoomGuestInfo;
+  rateType?: RateType;
   payment?: number;
   totalAmount?: number;
   advancePayment?: number;
+  additionalCharges?: number;
+  discount?: number;
+  selectedServices?: ApiRoomSelectedService[];
+  servicesTotal?: number;
   paymentMethod?: string;
   checkinTime?: string;
   checkoutTime?: string;
+  notes?: string;
   createdAt?: string;
 }
 
@@ -131,6 +137,9 @@ export interface ApiRoom {
     checkOutDate?: string;
   };
   currentBooking?: string | ApiRoomBooking;
+  priceSettings?: Record<string, any>;
+  priceConfig?: Record<string, any> | null;
+  events?: ApiRoomEvent[];
   isAvailable: boolean;
   createdAt: string;
   updatedAt: string;
@@ -345,25 +354,39 @@ const mapApiRoomToRoom = (apiRoom: ApiRoom): Room => {
   const resolvedRoomType = apiRoom.roomType || apiRoom.type || 'standard';
   const mappedPrice = apiRoom.pricing?.daily || apiRoom.pricing?.nightly || apiRoom.pricing?.hourly || 0;
   const booking = apiRoom.currentBooking && typeof apiRoom.currentBooking === 'object' ? apiRoom.currentBooking : null;
+  const events = Array.isArray(apiRoom.events) ? apiRoom.events : [];
+  const latestCheckinEvent = [...events]
+    .filter((event) => event?.type === 'checkin' && event?.checkinTime)
+    .sort((a, b) => {
+      const aTime = new Date(a.checkinTime || 0).getTime();
+      const bTime = new Date(b.checkinTime || 0).getTime();
+      return bTime - aTime;
+    })[0];
   const guestName = booking?.guestInfo?.name
     || booking?.guestDetails?.name
     || booking?.guestName
+    || latestCheckinEvent?.guestInfo?.name
     || apiRoom.currentGuest?.name
     || '';
   const checkInTime = booking?.actualCheckInDate
     || booking?.checkInDate
-    || booking?.checkinTime;
+    || booking?.checkinTime
+    || latestCheckinEvent?.checkinTime;
   const checkOutDate = booking?.actualCheckOutDate
     || booking?.checkOutDate
     || apiRoom.currentGuest?.checkOutDate;
-  const rateType = (booking?.rateType || booking?.bookingType || 'hourly') as RateType;
+  const rateType = (booking?.rateType || booking?.bookingType || latestCheckinEvent?.rateType || 'hourly') as RateType;
   const guestPhone = booking?.guestInfo?.phone
     || booking?.guestDetails?.phone
+    || latestCheckinEvent?.guestInfo?.phone
     || '';
   const guestIdNumber = booking?.guestInfo?.idNumber
     || booking?.guestDetails?.idNumber
+    || latestCheckinEvent?.guestInfo?.idNumber
     || '';
-  const selectedServices = Array.isArray(booking?.selectedServices) ? booking?.selectedServices : [];
+  const selectedServices = Array.isArray(booking?.selectedServices)
+    ? booking?.selectedServices
+    : (Array.isArray(latestCheckinEvent?.selectedServices) ? latestCheckinEvent.selectedServices : []);
   const fallbackServices = Array.isArray(booking?.services) ? booking?.services : [];
   const normalizeServiceItem = (service: ApiRoomSelectedService) => {
     const resolvedServiceId = (typeof service.serviceId === 'string' ? service.serviceId : (service.serviceId as any)?._id)
@@ -395,12 +418,12 @@ const mapApiRoomToRoom = (apiRoom: ApiRoom): Room => {
   );
   const additionalCharges = Array.isArray(booking?.additionalCharges)
     ? booking?.additionalCharges.reduce((sum, charge) => sum + (Number(charge?.amount) || 0), 0)
-    : Number(booking?.additionalCharges) || 0;
+    : Number(booking?.additionalCharges ?? latestCheckinEvent?.additionalCharges) || 0;
   const discount = Array.isArray(booking?.discounts)
     ? booking?.discounts.reduce((sum, item) => sum + (Number(item?.amount) || 0), 0)
-    : Number(booking?.discount ?? booking?.discounts) || 0;
-  const advancePayment = Number(booking?.advancePayment ?? booking?.deposit) || 0;
-  const paymentMethod = booking?.paymentMethod || undefined;
+    : Number(booking?.discount ?? booking?.discounts ?? latestCheckinEvent?.discount) || 0;
+  const advancePayment = Number(booking?.advancePayment ?? booking?.deposit ?? latestCheckinEvent?.advancePayment) || 0;
+  const paymentMethod = booking?.paymentMethod || latestCheckinEvent?.paymentMethod || undefined;
   const baseRoom: Room = {
     id: apiRoom._id,
     number: apiRoom.roomNumber,
@@ -427,8 +450,12 @@ const mapApiRoomToRoom = (apiRoom: ApiRoom): Room => {
     discount: discount || 0,
     selectedServices: normalizedServices,
     servicesTotal: servicesTotalFromBooking || computedServicesTotal,
-    totalAmount: Number(booking?.totalAmount) || 0,
+    totalAmount: Number(booking?.totalAmount ?? latestCheckinEvent?.totalAmount) || 0,
   };
+  const baseRoomAny = baseRoom as any;
+  baseRoomAny.priceConfig = apiRoom.priceConfig || null;
+  baseRoomAny.priceSettings = apiRoom.priceSettings || null;
+  baseRoomAny.events = events;
   if (baseRoom.status === 'occupied' && checkInTime) {
     const parsedCheckIn = new Date(checkInTime);
     if (!isNaN(parsedCheckIn.getTime())) {
