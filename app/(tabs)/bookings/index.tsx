@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   RefreshControl,
+  useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -40,24 +41,48 @@ const statusConfig: Record<BookingStatus, { label: string; color: string; icon: 
 
 export default function BookingsScreen() {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isSmallScreen = width < 380;
   const { selectedHotelId, selectedHotel } = useHotel();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<BookingStatus | 'all'>('all');
 
-  const { data: bookings = [], isLoading, refetch } = useQuery({
+  const { data: bookings = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['bookings', selectedHotelId],
     queryFn: () => selectedHotelId ? bookingsApi.getByHotel(selectedHotelId) : bookingsApi.getAll(),
   });
 
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const filteredBookings = useMemo(() => {
     return bookings.filter((booking) => {
+      const roomNumber = String(booking.roomNumber || '');
       const matchesSearch =
-        booking.guestName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        booking.roomNumber.includes(searchQuery);
+        booking.guestName.toLowerCase().includes(normalizedSearchQuery) ||
+        roomNumber.toLowerCase().includes(normalizedSearchQuery);
       const matchesFilter = selectedFilter === 'all' || booking.status === selectedFilter;
       return matchesSearch && matchesFilter;
     });
-  }, [bookings, searchQuery, selectedFilter]);
+  }, [bookings, normalizedSearchQuery, selectedFilter]);
+
+  const bookingStats = useMemo(() => {
+    return filteredBookings.reduce(
+      (acc, booking) => {
+        const totalAmount = Number(booking.totalAmount) || 0;
+        const paidAmount = Number(booking.paidAmount) || 0;
+        acc.totalRevenue += totalAmount;
+        if (paidAmount >= totalAmount && totalAmount > 0) {
+          acc.paidCount += 1;
+        } else {
+          acc.unpaidCount += 1;
+        }
+        if (booking.status === 'checked_in') {
+          acc.checkedInCount += 1;
+        }
+        return acc;
+      },
+      { totalRevenue: 0, paidCount: 0, unpaidCount: 0, checkedInCount: 0 }
+    );
+  }, [filteredBookings]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -74,11 +99,20 @@ export default function BookingsScreen() {
     return nights > 0 ? nights : 1;
   };
 
+  const formatDate = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleDateString('vi-VN');
+  };
+
   const renderBookingCard = (booking: Booking) => {
     const status = statusConfig[booking.status];
     const StatusIcon = status.icon;
     const nights = calculateNights(booking.checkIn, booking.checkOut);
     const isPaid = Number(booking.paidAmount) >= Number(booking.totalAmount);
+    const remainingAmount = Math.max((Number(booking.totalAmount) || 0) - (Number(booking.paidAmount) || 0), 0);
 
     return (
       <TouchableOpacity key={booking.id} style={styles.bookingCard} activeOpacity={0.7}>
@@ -121,25 +155,30 @@ export default function BookingsScreen() {
         <View style={styles.dateRow}>
           <View style={styles.dateItem}>
             <Text style={styles.dateLabel}>Nhận phòng</Text>
-            <Text style={styles.dateValue}>{booking.checkIn}</Text>
+            <Text style={styles.dateValue}>{formatDate(booking.checkIn)}</Text>
           </View>
           <View style={styles.dateArrow}>
             <ChevronRight size={16} color={Colors.light.textSecondary} />
           </View>
           <View style={[styles.dateItem, { alignItems: 'flex-end' }]}>
             <Text style={styles.dateLabel}>Trả phòng</Text>
-            <Text style={styles.dateValue}>{booking.checkOut}</Text>
+            <Text style={styles.dateValue}>{formatDate(booking.checkOut)}</Text>
           </View>
         </View>
 
         <View style={styles.paymentRow}>
           <View style={styles.paymentInfo}>
             <CreditCard size={16} color={Colors.light.textSecondary} />
-            <Text style={styles.totalAmount}>{formatCurrency(booking.totalAmount)}</Text>
+            <View>
+              <Text style={styles.totalAmount}>{formatCurrency(booking.totalAmount)}</Text>
+              {!isPaid && (
+                <Text style={styles.remainingText}>Còn thiếu {formatCurrency(remainingAmount)}</Text>
+              )}
+            </View>
           </View>
           <View style={[styles.paymentBadge, { backgroundColor: isPaid ? '#dcfce7' : '#fef3c7' }]}>
             <Text style={[styles.paymentStatus, { color: isPaid ? Colors.status.available : Colors.status.cleaning }]}>
-              Đã thanh toán
+              {isPaid ? 'Đã thanh toán' : 'Chưa thanh toán'}
             </Text>
           </View>
         </View>
@@ -166,9 +205,12 @@ export default function BookingsScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerLeft}>
           <Text style={styles.title}>Đặt phòng</Text>
-          <Text style={styles.subtitle}>{selectedHotel?.name || 'Tất cả'} • {bookings.length} booking</Text>
+          <Text style={styles.subtitle}>{filteredBookings.length}/{bookings.length} booking</Text>
+          <View style={styles.hotelBadge}>
+            <Text style={styles.hotelBadgeText}>{selectedHotel?.name || 'Tất cả khách sạn'}</Text>
+          </View>
         </View>
         <TouchableOpacity style={styles.addButton}>
           <Plus size={20} color="#fff" />
@@ -187,6 +229,30 @@ export default function BookingsScreen() {
           />
         </View>
       </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.statsScroll}
+        contentContainerStyle={styles.statsContent}
+      >
+        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact]}>
+          <Text style={styles.statLabel}>Doanh thu</Text>
+          <Text style={styles.statValue}>{formatCurrency(bookingStats.totalRevenue)}</Text>
+        </View>
+        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact]}>
+          <Text style={styles.statLabel}>Đang ở</Text>
+          <Text style={styles.statValue}>{bookingStats.checkedInCount}</Text>
+        </View>
+        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact]}>
+          <Text style={styles.statLabel}>Đã thanh toán</Text>
+          <Text style={[styles.statValue, { color: Colors.status.available }]}>{bookingStats.paidCount}</Text>
+        </View>
+        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact]}>
+          <Text style={styles.statLabel}>Chưa thanh toán</Text>
+          <Text style={[styles.statValue, { color: Colors.status.cleaning }]}>{bookingStats.unpaidCount}</Text>
+        </View>
+      </ScrollView>
 
       <ScrollView
         horizontal
@@ -229,12 +295,13 @@ export default function BookingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.bookingsListContent}
         refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={refetch} />
+          <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.light.tint} />
         }
       >
         {filteredBookings.map(renderBookingCard)}
         {filteredBookings.length === 0 && (
-          <View style={styles.emptyState}>
+          <View style={styles.emptyStateCard}>
+            <View style={styles.emptyState}>
             {bookings.length === 0 ? (
               <>
                 <AlertCircle size={48} color={Colors.light.textSecondary} />
@@ -245,8 +312,10 @@ export default function BookingsScreen() {
               <>
                 <Calendar size={48} color={Colors.light.textSecondary} />
                 <Text style={styles.emptyText}>Không tìm thấy booking</Text>
+                <Text style={styles.emptySubtext}>Thử đổi bộ lọc hoặc từ khóa tìm kiếm</Text>
               </>
             )}
+          </View>
           </View>
         )}
       </ScrollView>
@@ -271,9 +340,13 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: 20,
     paddingVertical: 16,
+  },
+  headerLeft: {
+    flex: 1,
+    paddingRight: 12,
   },
   title: {
     fontSize: 28,
@@ -284,6 +357,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.light.textSecondary,
     marginTop: 4,
+  },
+  hotelBadge: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    backgroundColor: Colors.light.cardBackground,
+    borderWidth: 1,
+    borderColor: Colors.light.border,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  hotelBadgeText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    fontWeight: '500' as const,
   },
   addButton: {
     backgroundColor: Colors.light.tint,
@@ -321,9 +409,42 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: Colors.light.text,
   },
+  statsScroll: {
+    maxHeight: 92,
+    marginBottom: 10,
+  },
+  statsContent: {
+    paddingHorizontal: 20,
+    gap: 10,
+  },
+  statCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minWidth: 140,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  statCardCompact: {
+    minWidth: 120,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+  },
+  statValue: {
+    marginTop: 4,
+    fontSize: 18,
+    color: Colors.light.text,
+    fontWeight: '700' as const,
+  },
   filterContainer: {
     maxHeight: 50,
-    marginBottom: 12,
+    marginBottom: 10,
   },
   filterContent: {
     paddingHorizontal: 20,
@@ -488,6 +609,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600' as const,
   },
+  remainingText: {
+    marginTop: 2,
+    fontSize: 12,
+    color: Colors.status.cleaning,
+    fontWeight: '500' as const,
+  },
   specialRequest: {
     marginTop: 12,
     paddingTop: 12,
@@ -507,8 +634,19 @@ const styles = StyleSheet.create({
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 60,
+    paddingVertical: 40,
     gap: 12,
+  },
+  emptyStateCard: {
+    marginTop: 8,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
   emptyText: {
     fontSize: 16,
