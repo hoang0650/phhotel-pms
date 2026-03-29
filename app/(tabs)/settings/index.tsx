@@ -69,7 +69,7 @@ const SettingItem = ({ icon, title, subtitle, onPress, rightElement, showChevron
       <Text style={[styles.settingTitle, textColor ? { color: textColor } : undefined]}>{title}</Text>
       {subtitle && <Text style={[styles.settingSubtitle, subtitleColor ? { color: subtitleColor } : undefined]}>{subtitle}</Text>}
     </View>
-    {rightElement || (showChevron && onPress && <ChevronRight size={20} color={chevronColor || '#9ca3af'} />)}
+    {rightElement || (showChevron && onPress && <ChevronRight size={20} color={chevronColor || '#6b7280'} />)}
   </TouchableOpacity>
 );
 
@@ -539,8 +539,8 @@ export default function SettingsScreen() {
                 <Switch
                   value={notificationsEnabled}
                   onValueChange={setNotificationsEnabled}
-                  trackColor={{ false: colors.switchTrack, true: '#86efac' }}
-                  thumbColor={notificationsEnabled ? '#10b981' : '#9ca3af'}
+                  trackColor={{ false: colors.switchTrack, true: isDark ? '#065f46' : '#86efac' }}
+                  thumbColor={notificationsEnabled ? colors.tint : colors.textSecondary}
                 />
               }
             />
@@ -571,8 +571,8 @@ export default function SettingsScreen() {
                 <Switch
                   value={isDark}
                   onValueChange={toggleTheme}
-                  trackColor={{ false: colors.switchTrack, true: '#818cf8' }}
-                  thumbColor={isDark ? '#6366f1' : '#9ca3af'}
+                  trackColor={{ false: colors.switchTrack, true: isDark ? '#4338ca' : '#818cf8' }}
+                  thumbColor={isDark ? '#6366f1' : colors.textSecondary}
                 />
               }
             />
@@ -613,8 +613,8 @@ export default function SettingsScreen() {
                     <Switch
                       value={biometricEnabled}
                       onValueChange={handleToggleBiometric}
-                      trackColor={{ false: colors.switchTrack, true: '#86efac' }}
-                      thumbColor={biometricEnabled ? '#10b981' : '#9ca3af'}
+                      trackColor={{ false: colors.switchTrack, true: isDark ? '#065f46' : '#86efac' }}
+                      thumbColor={biometricEnabled ? colors.tint : colors.textSecondary}
                     />
                   }
                 />
@@ -662,7 +662,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        <TouchableOpacity style={[styles.logoutButton, isDark && { backgroundColor: '#3b1818' }]} onPress={handleLogout} disabled={logoutLoading}>
+        <TouchableOpacity style={[styles.logoutButton, { backgroundColor: isDark ? '#3b1818' : '#fef2f2', borderWidth: 1, borderColor: isDark ? '#7f1d1d' : '#fecaca' }]} onPress={handleLogout} disabled={logoutLoading}>
           {logoutLoading ? (
             <ActivityIndicator size="small" color="#ef4444" />
           ) : (
@@ -700,7 +700,7 @@ export default function SettingsScreen() {
                   <User size={40} color={colors.textSecondary} />
                 </View>
               )}
-              {avatarUploading && <ActivityIndicator size="small" color="#0f766e" style={{ marginTop: 10 }} />}
+              {avatarUploading && <ActivityIndicator size="small" color={colors.tint} style={{ marginTop: 10 }} />}
             </TouchableOpacity>
 
             <View style={styles.editForm}>
@@ -748,7 +748,7 @@ export default function SettingsScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.saveButton, updateProfileLoading && styles.saveButtonDisabled]}
+              style={[styles.saveButton, { backgroundColor: colors.tint }, updateProfileLoading && styles.saveButtonDisabled]}
               onPress={handleSaveProfile}
               disabled={updateProfileLoading}
             >
@@ -835,7 +835,7 @@ export default function SettingsScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.changePasswordButton, changePasswordLoading && styles.changePasswordButtonDisabled]}
+              style={[styles.changePasswordButton, { backgroundColor: colors.tint }, changePasswordLoading && styles.changePasswordButtonDisabled]}
               onPress={handleSubmitChangePassword}
               disabled={changePasswordLoading}
             >
@@ -894,14 +894,14 @@ export default function SettingsScreen() {
 
             <View style={styles.biometricActions}>
               <TouchableOpacity
-                style={styles.biometricActionSecondary}
+                style={[styles.biometricActionSecondary, { borderColor: colors.border }]}
                 onPress={() => setBiometricModalVisible(false)}
                 disabled={biometricSaving}
               >
-                <Text style={styles.biometricActionSecondaryText}>{t('cancel')}</Text>
+                <Text style={[styles.biometricActionSecondaryText, { color: colors.text }]}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.biometricActionPrimary, biometricSaving && styles.biometricActionPrimaryDisabled]}
+                style={[styles.biometricActionPrimary, { backgroundColor: colors.tint }, biometricSaving && styles.biometricActionPrimaryDisabled]}
                 onPress={handleConfirmBiometric}
                 disabled={biometricSaving}
               >
@@ -930,25 +930,25 @@ export default function SettingsScreen() {
             <Text style={[styles.languageModalTitle, { color: colors.text }]}>{t('selectLanguage')}</Text>
 
             <TouchableOpacity
-              style={[styles.languageOption, language === 'vi' && styles.languageOptionSelected]}
+              style={[styles.languageOption, language === 'vi' && [styles.languageOptionSelected, { backgroundColor: isDark ? 'rgba(15,118,110,0.15)' : '#ecfdf5', borderColor: colors.tint }]]}
               onPress={() => handleSelectLanguage('vi')}
             >
               <Text style={styles.languageFlag}>🇻🇳</Text>
-              <Text style={[styles.languageOptionText, { color: colors.text }, language === 'vi' && styles.languageOptionTextSelected]}>
+              <Text style={[styles.languageOptionText, { color: colors.text }, language === 'vi' && { fontWeight: '600' as const, color: colors.tint }]}>
                 Tiếng Việt
               </Text>
-              {language === 'vi' && <Check size={20} color="#0f766e" />}
+              {language === 'vi' && <Check size={20} color={colors.tint} />}
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.languageOption, language === 'en' && styles.languageOptionSelected]}
+              style={[styles.languageOption, language === 'en' && [styles.languageOptionSelected, { backgroundColor: isDark ? 'rgba(15,118,110,0.15)' : '#ecfdf5', borderColor: colors.tint }]]}
               onPress={() => handleSelectLanguage('en')}
             >
               <Text style={styles.languageFlag}>🇺🇸</Text>
-              <Text style={[styles.languageOptionText, { color: colors.text }, language === 'en' && styles.languageOptionTextSelected]}>
+              <Text style={[styles.languageOptionText, { color: colors.text }, language === 'en' && { fontWeight: '600' as const, color: colors.tint }]}>
                 English
               </Text>
-              {language === 'en' && <Check size={20} color="#0f766e" />}
+              {language === 'en' && <Check size={20} color={colors.tint} />}
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -1102,7 +1102,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fef2f2',
     borderRadius: 12,
     padding: 16,
     gap: 10,
@@ -1187,7 +1186,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   saveButton: {
-    backgroundColor: '#0f766e',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -1234,7 +1232,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   changePasswordButton: {
-    backgroundColor: '#0f766e',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -1283,21 +1280,18 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#d1d5db',
     padding: 14,
     alignItems: 'center',
   },
   biometricActionSecondaryText: {
     fontSize: 15,
     fontWeight: '600' as const,
-    color: '#374151',
   },
   biometricActionPrimary: {
     flex: 1,
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',
-    backgroundColor: '#0f766e',
   },
   biometricActionPrimaryDisabled: {
     opacity: 0.6,
@@ -1328,9 +1322,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   languageOptionSelected: {
-    backgroundColor: '#ecfdf5',
     borderWidth: 1,
-    borderColor: '#0f766e',
   },
   languageFlag: {
     fontSize: 24,
@@ -1341,6 +1333,5 @@ const styles = StyleSheet.create({
   },
   languageOptionTextSelected: {
     fontWeight: '600' as const,
-    color: '#0f766e',
   },
 });

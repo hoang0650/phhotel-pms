@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   Search,
   Calendar,
@@ -31,6 +32,7 @@ import Colors from '@/constants/colors';
 import { bookingsApi } from '@/services/api';
 import { Booking, BookingStatus } from '@/types/hotel';
 import { useHotel } from '@/contexts/HotelContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const statusConfig: Record<BookingStatus, { label: string; color: string; icon: typeof CheckCircle }> = {
   confirmed: { label: 'Đã xác nhận', color: Colors.booking.confirmed, icon: CheckCircle },
@@ -44,6 +46,7 @@ export default function BookingsScreen() {
   const { width } = useWindowDimensions();
   const isSmallScreen = width < 380;
   const { selectedHotelId, selectedHotel } = useHotel();
+  const { isDark, colors } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<BookingStatus | 'all'>('all');
 
@@ -115,25 +118,25 @@ export default function BookingsScreen() {
     const remainingAmount = Math.max((Number(booking.totalAmount) || 0) - (Number(booking.paidAmount) || 0), 0);
 
     return (
-      <TouchableOpacity key={booking.id} style={styles.bookingCard} activeOpacity={0.7}>
+      <TouchableOpacity key={booking.id} style={[styles.bookingCard, { backgroundColor: isDark ? colors.cardBackground : '#fff' }]} activeOpacity={0.7}>
         <View style={styles.cardHeader}>
           <View style={styles.bookingIdContainer}>
-            <Text style={styles.bookingId}>#{booking.id.slice(-6).toUpperCase()}</Text>
+            <Text style={[styles.bookingId, { color: colors.textSecondary }]}>#{booking.id.slice(-6).toUpperCase()}</Text>
             <View style={[styles.statusBadge, { backgroundColor: status.color + '15' }]}>
               <StatusIcon size={12} color={status.color} />
               <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
             </View>
           </View>
-          <ChevronRight size={20} color={Colors.light.textSecondary} />
+          <ChevronRight size={20} color={colors.textSecondary} />
         </View>
 
         <View style={styles.guestRow}>
-          <View style={styles.guestAvatar}>
+          <View style={[styles.guestAvatar, { backgroundColor: colors.tint }]}>
             <User size={18} color="#fff" />
           </View>
           <View style={styles.guestInfo}>
-            <Text style={styles.guestName}>{booking.guestName}</Text>
-            <Text style={styles.guestMeta}>
+            <Text style={[styles.guestName, { color: colors.text }]}>{booking.guestName}</Text>
+            <Text style={[styles.guestMeta, { color: colors.textSecondary }]}>
               {Number(booking.adults) || 1} người lớn{Number(booking.children) > 0 ? ` • ${Number(booking.children)} trẻ em` : ''}
             </Text>
           </View>
@@ -142,41 +145,41 @@ export default function BookingsScreen() {
         <View style={styles.detailsRow}>
           {booking.roomNumber && (
             <View style={styles.detailItem}>
-              <BedDouble size={16} color={Colors.light.tint} />
-              <Text style={styles.detailText}>Phòng {booking.roomNumber}</Text>
+              <BedDouble size={16} color={colors.tint} />
+              <Text style={[styles.detailText, { color: colors.text }]}>Phòng {booking.roomNumber}</Text>
             </View>
           )}
           <View style={styles.detailItem}>
-            <Clock size={16} color={Colors.light.textSecondary} />
-            <Text style={styles.detailText}>{nights} đêm</Text>
+            <Clock size={16} color={colors.textSecondary} />
+            <Text style={[styles.detailText, { color: colors.text }]}>{nights} đêm</Text>
           </View>
         </View>
 
-        <View style={styles.dateRow}>
+        <View style={[styles.dateRow, { backgroundColor: isDark ? colors.background : Colors.light.background }]}>
           <View style={styles.dateItem}>
-            <Text style={styles.dateLabel}>Nhận phòng</Text>
-            <Text style={styles.dateValue}>{formatDate(booking.checkIn)}</Text>
+            <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>Nhận phòng</Text>
+            <Text style={[styles.dateValue, { color: colors.text }]}>{formatDate(booking.checkIn)}</Text>
           </View>
           <View style={styles.dateArrow}>
-            <ChevronRight size={16} color={Colors.light.textSecondary} />
+            <ChevronRight size={16} color={colors.textSecondary} />
           </View>
           <View style={[styles.dateItem, { alignItems: 'flex-end' }]}>
-            <Text style={styles.dateLabel}>Trả phòng</Text>
-            <Text style={styles.dateValue}>{formatDate(booking.checkOut)}</Text>
+            <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>Trả phòng</Text>
+            <Text style={[styles.dateValue, { color: colors.text }]}>{formatDate(booking.checkOut)}</Text>
           </View>
         </View>
 
         <View style={styles.paymentRow}>
           <View style={styles.paymentInfo}>
-            <CreditCard size={16} color={Colors.light.textSecondary} />
+            <CreditCard size={16} color={colors.textSecondary} />
             <View>
-              <Text style={styles.totalAmount}>{formatCurrency(booking.totalAmount)}</Text>
+              <Text style={[styles.totalAmount, { color: colors.text }]}>{formatCurrency(booking.totalAmount)}</Text>
               {!isPaid && (
                 <Text style={styles.remainingText}>Còn thiếu {formatCurrency(remainingAmount)}</Text>
               )}
             </View>
           </View>
-          <View style={[styles.paymentBadge, { backgroundColor: isPaid ? '#dcfce7' : '#fef3c7' }]}>
+          <View style={[styles.paymentBadge, { backgroundColor: isPaid ? (isDark ? '#052e16' : '#dcfce7') : (isDark ? '#451a03' : '#fef3c7') }]}>
             <Text style={[styles.paymentStatus, { color: isPaid ? Colors.status.available : Colors.status.cleaning }]}>
               {isPaid ? 'Đã thanh toán' : 'Chưa thanh toán'}
             </Text>
@@ -184,9 +187,9 @@ export default function BookingsScreen() {
         </View>
 
         {booking.specialRequests && (
-          <View style={styles.specialRequest}>
-            <Text style={styles.specialRequestLabel}>Yêu cầu đặc biệt:</Text>
-            <Text style={styles.specialRequestText}>{booking.specialRequests}</Text>
+          <View style={[styles.specialRequest, { borderTopColor: colors.border }]}>
+            <Text style={[styles.specialRequestLabel, { color: colors.textSecondary }]}>Yêu cầu đặc biệt:</Text>
+            <Text style={[styles.specialRequestText, { color: colors.text }]}>{booking.specialRequests}</Text>
           </View>
         )}
       </TouchableOpacity>
@@ -195,40 +198,45 @@ export default function BookingsScreen() {
 
   if (isLoading && bookings.length === 0) {
     return (
-      <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color={Colors.light.tint} />
-        <Text style={styles.loadingText}>Đang tải danh sách đặt phòng...</Text>
+      <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.tint} />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Đang tải danh sách đặt phòng...</Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.title}>Đặt phòng</Text>
-          <Text style={styles.subtitle}>{filteredBookings.length}/{bookings.length} booking</Text>
-          <View style={styles.hotelBadge}>
-            <Text style={styles.hotelBadgeText}>{selectedHotel?.name || 'Tất cả khách sạn'}</Text>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <LinearGradient
+        colors={['#0f766e', '#14b8a6']}
+        style={[styles.header, { paddingTop: insets.top + 12 }]}
+      >
+        <View style={styles.headerTop}>
+          <View style={styles.headerLeft}>
+            <Text style={[styles.title, { color: '#fff' }]}>Đặt phòng</Text>
+            <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.8)' }]}>{filteredBookings.length}/{bookings.length} booking</Text>
+            <View style={[styles.hotelBadge, { backgroundColor: 'rgba(255,255,255,0.2)', borderColor: 'rgba(255,255,255,0.3)' }]}>
+              <Text style={[styles.hotelBadgeText, { color: '#fff' }]}>{selectedHotel?.name || 'Tất cả khách sạn'}</Text>
+            </View>
+          </View>
+          <TouchableOpacity style={[styles.addButton, { backgroundColor: 'rgba(255,255,255,0.2)', shadowColor: 'transparent' }]}>
+            <Plus size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.searchContainer}>
+          <View style={[styles.searchBox, { backgroundColor: 'rgba(255,255,255,0.15)', shadowOpacity: 0 }]}>
+            <Search size={18} color="rgba(255,255,255,0.7)" />
+            <TextInput
+              style={[styles.searchInput, { color: '#fff' }]}
+              placeholder="Tìm khách hoặc phòng..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor="rgba(255,255,255,0.5)"
+            />
           </View>
         </View>
-        <TouchableOpacity style={styles.addButton}>
-          <Plus size={20} color="#fff" />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBox}>
-          <Search size={18} color={Colors.light.textSecondary} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Tìm khách hoặc phòng..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            placeholderTextColor={Colors.light.textSecondary}
-          />
-        </View>
-      </View>
+      </LinearGradient>
 
       <ScrollView
         horizontal
@@ -236,20 +244,20 @@ export default function BookingsScreen() {
         style={styles.statsScroll}
         contentContainerStyle={styles.statsContent}
       >
-        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact]}>
-          <Text style={styles.statLabel}>Doanh thu</Text>
-          <Text style={styles.statValue}>{formatCurrency(bookingStats.totalRevenue)}</Text>
+        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact, { backgroundColor: colors.cardBackground }]}>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Doanh thu</Text>
+          <Text style={[styles.statValue, { color: colors.text }]}>{formatCurrency(bookingStats.totalRevenue)}</Text>
         </View>
-        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact]}>
-          <Text style={styles.statLabel}>Đang ở</Text>
-          <Text style={styles.statValue}>{bookingStats.checkedInCount}</Text>
+        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact, { backgroundColor: colors.cardBackground }]}>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Đang ở</Text>
+          <Text style={[styles.statValue, { color: colors.text }]}>{bookingStats.checkedInCount}</Text>
         </View>
-        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact]}>
-          <Text style={styles.statLabel}>Đã thanh toán</Text>
+        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact, { backgroundColor: colors.cardBackground }]}>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Đã thanh toán</Text>
           <Text style={[styles.statValue, { color: Colors.status.available }]}>{bookingStats.paidCount}</Text>
         </View>
-        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact]}>
-          <Text style={styles.statLabel}>Chưa thanh toán</Text>
+        <View style={[styles.statCard, isSmallScreen && styles.statCardCompact, { backgroundColor: colors.cardBackground }]}>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Chưa thanh toán</Text>
           <Text style={[styles.statValue, { color: Colors.status.cleaning }]}>{bookingStats.unpaidCount}</Text>
         </View>
       </ScrollView>
@@ -261,10 +269,10 @@ export default function BookingsScreen() {
         contentContainerStyle={styles.filterContent}
       >
         <TouchableOpacity
-          style={[styles.filterChip, selectedFilter === 'all' && styles.filterChipActive]}
+          style={[styles.filterChip, { backgroundColor: selectedFilter === 'all' ? colors.tint : colors.cardBackground }, selectedFilter === 'all' && styles.filterChipActive]}
           onPress={() => setSelectedFilter('all')}
         >
-          <Text style={[styles.filterChipText, selectedFilter === 'all' && styles.filterChipTextActive]}>
+          <Text style={[styles.filterChipText, { color: selectedFilter === 'all' ? '#fff' : colors.textSecondary }]}>
             Tất cả
           </Text>
         </TouchableOpacity>
@@ -273,15 +281,14 @@ export default function BookingsScreen() {
             key={status}
             style={[
               styles.filterChip,
-              selectedFilter === status && styles.filterChipActive,
-              selectedFilter === status && { backgroundColor: statusConfig[status].color },
+              { backgroundColor: selectedFilter === status ? statusConfig[status].color : colors.cardBackground },
             ]}
             onPress={() => setSelectedFilter(status)}
           >
             <Text
               style={[
                 styles.filterChipText,
-                selectedFilter === status && styles.filterChipTextActive,
+                { color: selectedFilter === status ? '#fff' : colors.textSecondary },
               ]}
             >
               {statusConfig[status].label}
@@ -295,24 +302,24 @@ export default function BookingsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.bookingsListContent}
         refreshControl={
-          <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.light.tint} />
+          <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.tint} />
         }
       >
         {filteredBookings.map(renderBookingCard)}
         {filteredBookings.length === 0 && (
-          <View style={styles.emptyStateCard}>
+          <View style={[styles.emptyStateCard, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.emptyState}>
             {bookings.length === 0 ? (
               <>
-                <AlertCircle size={48} color={Colors.light.textSecondary} />
-                <Text style={styles.emptyText}>Chưa có dữ liệu đặt phòng</Text>
-                <Text style={styles.emptySubtext}>Kiểm tra kết nối API</Text>
+                <AlertCircle size={48} color={colors.textSecondary} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Chưa có dữ liệu đặt phòng</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Kiểm tra kết nối API</Text>
               </>
             ) : (
               <>
-                <Calendar size={48} color={Colors.light.textSecondary} />
-                <Text style={styles.emptyText}>Không tìm thấy booking</Text>
-                <Text style={styles.emptySubtext}>Thử đổi bộ lọc hoặc từ khóa tìm kiếm</Text>
+                <Calendar size={48} color={colors.textSecondary} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Không tìm thấy booking</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Thử đổi bộ lọc hoặc từ khóa tìm kiếm</Text>
               </>
             )}
           </View>
@@ -326,7 +333,6 @@ export default function BookingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.light.background,
   },
   loadingContainer: {
     justifyContent: 'center',
@@ -335,14 +341,16 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 14,
-    color: Colors.light.textSecondary,
   },
   header: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+  },
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    marginBottom: 14,
   },
   headerLeft: {
     flex: 1,
@@ -351,66 +359,48 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 28,
     fontWeight: '700' as const,
-    color: Colors.light.text,
   },
   subtitle: {
     fontSize: 14,
-    color: Colors.light.textSecondary,
     marginTop: 4,
   },
   hotelBadge: {
     alignSelf: 'flex-start',
     marginTop: 8,
-    backgroundColor: Colors.light.cardBackground,
     borderWidth: 1,
-    borderColor: Colors.light.border,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
   hotelBadgeText: {
     fontSize: 12,
-    color: Colors.light.textSecondary,
     fontWeight: '500' as const,
   },
   addButton: {
-    backgroundColor: Colors.light.tint,
     width: 44,
     height: 44,
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: Colors.light.tint,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
   },
   searchContainer: {
-    paddingHorizontal: 20,
-    marginBottom: 12,
+    marginBottom: 0,
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
   },
   searchInput: {
     flex: 1,
     fontSize: 15,
-    color: Colors.light.text,
   },
   statsScroll: {
     maxHeight: 92,
+    marginTop: 12,
     marginBottom: 10,
   },
   statsContent: {
@@ -418,7 +408,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   statCard: {
-    backgroundColor: '#fff',
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -434,12 +423,10 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: Colors.light.textSecondary,
   },
   statValue: {
     marginTop: 4,
     fontSize: 18,
-    color: Colors.light.text,
     fontWeight: '700' as const,
   },
   filterContainer: {
@@ -454,7 +441,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#fff',
     marginRight: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -462,12 +448,9 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
-  filterChipActive: {
-    backgroundColor: Colors.light.tint,
-  },
+  filterChipActive: {},
   filterChipText: {
     fontSize: 13,
-    color: Colors.light.textSecondary,
     fontWeight: '500' as const,
   },
   filterChipTextActive: {
@@ -481,7 +464,6 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   bookingCard: {
-    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
@@ -505,7 +487,6 @@ const styles = StyleSheet.create({
   bookingId: {
     fontSize: 14,
     fontWeight: '600' as const,
-    color: Colors.light.textSecondary,
   },
   statusBadge: {
     flexDirection: 'row',
@@ -529,7 +510,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: Colors.light.tint,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -539,11 +519,9 @@ const styles = StyleSheet.create({
   guestName: {
     fontSize: 16,
     fontWeight: '600' as const,
-    color: Colors.light.text,
   },
   guestMeta: {
     fontSize: 13,
-    color: Colors.light.textSecondary,
     marginTop: 2,
   },
   detailsRow: {
@@ -558,13 +536,11 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontSize: 13,
-    color: Colors.light.text,
     fontWeight: '500' as const,
   },
   dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.light.background,
     padding: 12,
     borderRadius: 10,
     marginBottom: 14,
@@ -574,13 +550,11 @@ const styles = StyleSheet.create({
   },
   dateLabel: {
     fontSize: 11,
-    color: Colors.light.textSecondary,
     marginBottom: 2,
   },
   dateValue: {
     fontSize: 14,
     fontWeight: '600' as const,
-    color: Colors.light.text,
   },
   dateArrow: {
     paddingHorizontal: 12,
@@ -598,7 +572,6 @@ const styles = StyleSheet.create({
   totalAmount: {
     fontSize: 16,
     fontWeight: '700' as const,
-    color: Colors.light.text,
   },
   paymentBadge: {
     paddingHorizontal: 10,
@@ -619,16 +592,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: Colors.light.border,
   },
   specialRequestLabel: {
     fontSize: 11,
-    color: Colors.light.textSecondary,
     marginBottom: 4,
   },
   specialRequestText: {
     fontSize: 13,
-    color: Colors.light.text,
     fontStyle: 'italic' as const,
   },
   emptyState: {
@@ -639,7 +609,6 @@ const styles = StyleSheet.create({
   },
   emptyStateCard: {
     marginTop: 8,
-    backgroundColor: '#fff',
     borderRadius: 16,
     paddingHorizontal: 16,
     shadowColor: '#000',
@@ -650,10 +619,8 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 16,
-    color: Colors.light.textSecondary,
   },
   emptySubtext: {
     fontSize: 13,
-    color: Colors.light.textSecondary,
   },
 });

@@ -33,6 +33,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { useHotel } from '@/contexts/HotelContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { servicesApi } from '@/services/api';
 import { Service, ServiceOrder } from '@/types/hotel';
 
@@ -75,6 +76,7 @@ export default function ServicesScreen() {
   const queryClient = useQueryClient();
   const { selectedHotelId, hotels, selectHotel, canSelectMultipleHotels, isLoading: hotelsLoading } = useHotel();
   const { user } = useAuth();
+  const { isDark, colors } = useTheme();
   const [activeTab, setActiveTab] = useState<'services' | 'orders'>('services');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
@@ -373,9 +375,9 @@ export default function ServicesScreen() {
   const processingOrders = orders.filter(o => o.status === 'processing').length;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient
-        colors={['#0f766e', '#14b8a6']}
+        colors={isDark ? ['#0f172a', '#1e293b'] : ['#0f766e', '#14b8a6']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[styles.header, { paddingTop: insets.top + 12 }]}
@@ -408,18 +410,18 @@ export default function ServicesScreen() {
 
         <View style={styles.tabContainer}>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'services' && styles.tabActive]}
+            style={[styles.tab, activeTab === 'services' && [styles.tabActive, { backgroundColor: colors.cardBackground }]]}
             onPress={() => setActiveTab('services')}
           >
-            <Text style={[styles.tabText, activeTab === 'services' && styles.tabTextActive]}>
+            <Text style={[styles.tabText, activeTab === 'services' && [styles.tabTextActive, { color: colors.tint }]]}>
               Danh sách
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.tab, activeTab === 'orders' && styles.tabActive]}
+            style={[styles.tab, activeTab === 'orders' && [styles.tabActive, { backgroundColor: colors.cardBackground }]]}
             onPress={() => setActiveTab('orders')}
           >
-            <Text style={[styles.tabText, activeTab === 'orders' && styles.tabTextActive]}>
+            <Text style={[styles.tabText, activeTab === 'orders' && [styles.tabTextActive, { color: colors.tint }]]}>
               Đơn hàng
             </Text>
             {pendingOrders > 0 && (
@@ -444,7 +446,7 @@ export default function ServicesScreen() {
             {canSelectMultipleHotels && (
               <View style={styles.hotelSelectorRow}>
                 <TouchableOpacity
-                  style={styles.hotelSelector}
+                  style={[styles.hotelSelector, { backgroundColor: colors.tint }]}
                   onPress={() => {
                     setHotelPickerMode('filter');
                     setHotelModalVisible(true);
@@ -463,12 +465,12 @@ export default function ServicesScreen() {
             )}
 
             <View style={styles.searchContainer}>
-              <View style={styles.searchBox}>
-                <Search size={18} color={Colors.light.textSecondary} />
+              <View style={[styles.searchBox, { backgroundColor: colors.inputBackground }]}>
+                <Search size={18} color={colors.textSecondary} />
                 <TextInput
-                  style={styles.searchInput}
+                  style={[styles.searchInput, { color: colors.text }]}
                   placeholder="Tìm kiếm dịch vụ..."
-                  placeholderTextColor={Colors.light.textSecondary}
+                  placeholderTextColor={colors.textSecondary}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                 />
@@ -486,13 +488,15 @@ export default function ServicesScreen() {
                   key={category.id}
                   style={[
                     styles.categoryChip,
-                    selectedCategory === category.id && styles.categoryChipActive,
+                    { backgroundColor: colors.cardBackground, borderColor: colors.border },
+                    selectedCategory === category.id && [styles.categoryChipActive, { backgroundColor: colors.tint, borderColor: colors.tint }],
                   ]}
                   onPress={() => setSelectedCategory(category.id)}
                 >
                   <Text
                     style={[
                       styles.categoryChipText,
+                      { color: colors.textSecondary },
                       selectedCategory === category.id && styles.categoryChipTextActive,
                     ]}
                   >
@@ -512,14 +516,16 @@ export default function ServicesScreen() {
                   key={status.id}
                   style={[
                     styles.statusChip,
-                    statusFilter === status.id && styles.statusChipActive,
+                    { backgroundColor: colors.cardBackground, borderColor: colors.border },
+                    statusFilter === status.id && [styles.statusChipActive, { backgroundColor: isDark ? '#1a3a36' : '#ede9fe', borderColor: colors.tint }],
                   ]}
                   onPress={() => setStatusFilter(status.id as 'all' | 'active' | 'inactive')}
                 >
                   <Text
                     style={[
                       styles.statusChipText,
-                      statusFilter === status.id && styles.statusChipTextActive,
+                      { color: colors.textSecondary },
+                      statusFilter === status.id && [styles.statusChipTextActive, { color: colors.tint }],
                     ]}
                   >
                     {status.name}
@@ -534,19 +540,19 @@ export default function ServicesScreen() {
                 return (
                   <TouchableOpacity
                     key={service.id}
-                    style={styles.serviceCard}
+                    style={[styles.serviceCard, { backgroundColor: colors.cardBackground }]}
                     onPress={() => openServiceModal(service)}
                   >
-                    <View style={[styles.serviceIconContainer, { backgroundColor: '#f3e8ff' }]}>
-                      <IconComponent size={24} color="#7c3aed" />
+                    <View style={[styles.serviceIconContainer, { backgroundColor: isDark ? '#2d1b69' : '#f3e8ff' }]}>
+                      <IconComponent size={24} color={isDark ? '#a78bfa' : '#7c3aed'} />
                     </View>
-                    <Text style={styles.serviceName} numberOfLines={2}>
+                    <Text style={[styles.serviceName, { color: colors.text }]} numberOfLines={2}>
                       {service.name}
                     </Text>
-                    <Text style={styles.serviceCategory}>
+                    <Text style={[styles.serviceCategory, { color: colors.textSecondary }]}>
                       {categoryLabelMap[service.category] || 'Khác'}
                     </Text>
-                    <Text style={styles.servicePrice}>
+                    <Text style={[styles.servicePrice, { color: colors.tint }]}>
                       {formatCurrency(service.price, service.currency)}
                     </Text>
                     {!service.isActive && (
@@ -561,17 +567,17 @@ export default function ServicesScreen() {
 
             {filteredServices.length === 0 && !isLoading && (
               <View style={styles.emptyState}>
-                <Package size={48} color={Colors.light.textSecondary} />
-                <Text style={styles.emptyText}>Không có dịch vụ nào</Text>
+                <Package size={48} color={colors.textSecondary} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Không có dịch vụ nào</Text>
               </View>
             )}
           </>
         ) : (
           <View style={styles.ordersContainer}>
             {orders.map(order => (
-              <View key={order.id} style={styles.orderCard}>
+              <View key={order.id} style={[styles.orderCard, { backgroundColor: colors.cardBackground }]}>
                 <View style={styles.orderHeader}>
-                  <View style={styles.orderRoomBadge}>
+                  <View style={[styles.orderRoomBadge, { backgroundColor: colors.tint }]}>
                     <Text style={styles.orderRoomText}>P.{order.roomNumber}</Text>
                   </View>
                   <View
@@ -594,19 +600,19 @@ export default function ServicesScreen() {
                   </View>
                 </View>
 
-                <View style={styles.orderBody}>
-                  <Text style={styles.orderServiceName}>{order.serviceName}</Text>
-                  <Text style={styles.orderGuestName}>{order.guestName}</Text>
+                <View style={[styles.orderBody, { borderBottomColor: colors.border }]}>
+                  <Text style={[styles.orderServiceName, { color: colors.text }]}>{order.serviceName}</Text>
+                  <Text style={[styles.orderGuestName, { color: colors.textSecondary }]}>{order.guestName}</Text>
                   <View style={styles.orderDetails}>
-                    <Text style={styles.orderQuantity}>SL: {order.quantity}</Text>
-                    <Text style={styles.orderPrice}>{formatCurrency(order.totalPrice)}</Text>
+                    <Text style={[styles.orderQuantity, { color: colors.textSecondary }]}>SL: {order.quantity}</Text>
+                    <Text style={[styles.orderPrice, { color: colors.tint }]}>{formatCurrency(order.totalPrice)}</Text>
                   </View>
                 </View>
 
                 <View style={styles.orderFooter}>
                   <View style={styles.orderTime}>
-                    <Clock size={14} color={Colors.light.textSecondary} />
-                    <Text style={styles.orderTimeText}>
+                    <Clock size={14} color={colors.textSecondary} />
+                    <Text style={[styles.orderTimeText, { color: colors.textSecondary }]}>
                       {new Date(order.createdAt).toLocaleTimeString('vi-VN', {
                         hour: '2-digit',
                         minute: '2-digit',
@@ -645,8 +651,8 @@ export default function ServicesScreen() {
 
             {orders.length === 0 && !isLoading && (
               <View style={styles.emptyState}>
-                <AlertCircle size={48} color={Colors.light.textSecondary} />
-                <Text style={styles.emptyText}>Chưa có đơn hàng nào</Text>
+                <AlertCircle size={48} color={colors.textSecondary} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Chưa có đơn hàng nào</Text>
               </View>
             )}
           </View>
@@ -659,10 +665,10 @@ export default function ServicesScreen() {
         animationType="slide"
         onRequestClose={() => setServiceModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.serviceModalContent}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.serviceModalContent, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
                 {serviceModalMode === 'create'
                   ? 'Thêm dịch vụ'
                   : serviceModalMode === 'edit'
@@ -670,16 +676,16 @@ export default function ServicesScreen() {
                     : 'Chi tiết dịch vụ'}
               </Text>
               <TouchableOpacity onPress={() => setServiceModalVisible(false)}>
-                <X size={24} color={Colors.light.text} />
+                <X size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
 
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               <View style={styles.formField}>
-                <Text style={styles.formLabel}>Khách sạn</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Khách sạn</Text>
                 {canSelectMultipleHotels ? (
                   <TouchableOpacity
-                    style={styles.selectInput}
+                    style={[styles.selectInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}
                     onPress={() => {
                       if (serviceModalMode === 'view' || isHotelManager) return;
                       setHotelPickerMode('form');
@@ -687,15 +693,15 @@ export default function ServicesScreen() {
                     }}
                     disabled={serviceModalMode === 'view' || isHotelManager}
                   >
-                    <Text style={styles.selectInputText}>
+                    <Text style={[styles.selectInputText, { color: colors.text }]}>
                       {serviceForm.hotelId
                         ? hotels.find(hotel => hotel.id === serviceForm.hotelId)?.name || 'Chọn khách sạn'
                         : 'Chọn khách sạn'}
                     </Text>
                   </TouchableOpacity>
                 ) : (
-                  <View style={styles.readonlyInput}>
-                    <Text style={styles.readonlyText}>
+                  <View style={[styles.readonlyInput, { backgroundColor: isDark ? '#334155' : '#f3f4f6', borderColor: colors.inputBorder }]}>
+                    <Text style={[styles.readonlyText, { color: colors.textSecondary }]}>
                       {hotels.find(hotel => hotel.id === (serviceForm.hotelId || selectedHotelId))?.name || 'Chọn khách sạn'}
                     </Text>
                   </View>
@@ -703,9 +709,9 @@ export default function ServicesScreen() {
               </View>
 
               <View style={styles.formField}>
-                <Text style={styles.formLabel}>Tên dịch vụ</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Tên dịch vụ</Text>
                 <TextInput
-                  style={styles.textInput}
+                  style={[styles.textInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={serviceForm.name}
                   onChangeText={value => setServiceForm(prev => ({ ...prev, name: value }))}
                   placeholder="Nhập tên dịch vụ"
@@ -715,9 +721,9 @@ export default function ServicesScreen() {
 
               <View style={styles.formRow}>
                 <View style={[styles.formField, styles.formHalf]}>
-                  <Text style={styles.formLabel}>Giá bán</Text>
+                  <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Giá bán</Text>
                   <TextInput
-                    style={styles.textInput}
+                    style={[styles.textInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                     value={serviceForm.price}
                     onChangeText={value => setServiceForm(prev => ({ ...prev, price: value }))}
                     keyboardType="numeric"
@@ -726,9 +732,9 @@ export default function ServicesScreen() {
                   />
                 </View>
                 <View style={[styles.formField, styles.formHalf]}>
-                  <Text style={styles.formLabel}>Đơn vị tiền</Text>
+                  <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Đơn vị tiền</Text>
                   <TextInput
-                    style={styles.textInput}
+                    style={[styles.textInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                     value={serviceForm.currency}
                     onChangeText={value => setServiceForm(prev => ({ ...prev, currency: value }))}
                     placeholder="VND"
@@ -738,14 +744,15 @@ export default function ServicesScreen() {
               </View>
 
               <View style={styles.formField}>
-                <Text style={styles.formLabel}>Danh mục</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Danh mục</Text>
                 <View style={styles.categoryOptions}>
                   {SERVICE_CATEGORY_OPTIONS.map(option => (
                     <TouchableOpacity
                       key={option.id}
                       style={[
                         styles.categoryOption,
-                        serviceForm.category === option.id && styles.categoryOptionActive,
+                        { backgroundColor: colors.cardBackground, borderColor: colors.border },
+                        serviceForm.category === option.id && [styles.categoryOptionActive, { backgroundColor: colors.tint, borderColor: colors.tint }],
                       ]}
                       onPress={() => {
                         if (serviceModalMode === 'view') return;
@@ -755,6 +762,7 @@ export default function ServicesScreen() {
                       <Text
                         style={[
                           styles.categoryOptionText,
+                          { color: colors.textSecondary },
                           serviceForm.category === option.id && styles.categoryOptionTextActive,
                         ]}
                       >
@@ -766,9 +774,9 @@ export default function ServicesScreen() {
               </View>
 
               <View style={styles.formField}>
-                <Text style={styles.formLabel}>Mô tả</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Mô tả</Text>
                 <TextInput
-                  style={[styles.textInput, styles.textArea]}
+                  style={[styles.textInput, styles.textArea, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={serviceForm.description}
                   onChangeText={value => setServiceForm(prev => ({ ...prev, description: value }))}
                   placeholder="Mô tả chi tiết"
@@ -779,9 +787,9 @@ export default function ServicesScreen() {
               </View>
 
               <View style={styles.formField}>
-                <Text style={styles.formLabel}>Hình ảnh (URL)</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Hình ảnh (URL)</Text>
                 <TextInput
-                  style={styles.textInput}
+                  style={[styles.textInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={serviceForm.image}
                   onChangeText={value => setServiceForm(prev => ({ ...prev, image: value }))}
                   placeholder="https://"
@@ -791,9 +799,9 @@ export default function ServicesScreen() {
 
               <View style={styles.formRow}>
                 <View style={[styles.formField, styles.formHalf]}>
-                  <Text style={styles.formLabel}>Giá vốn</Text>
+                  <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Giá vốn</Text>
                   <TextInput
-                    style={styles.textInput}
+                    style={[styles.textInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                     value={serviceForm.costPrice}
                     onChangeText={value => setServiceForm(prev => ({ ...prev, costPrice: value }))}
                     keyboardType="numeric"
@@ -802,9 +810,9 @@ export default function ServicesScreen() {
                   />
                 </View>
                 <View style={[styles.formField, styles.formHalf]}>
-                  <Text style={styles.formLabel}>Nhập kho</Text>
+                  <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Nhập kho</Text>
                   <TextInput
-                    style={styles.textInput}
+                    style={[styles.textInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                     value={serviceForm.importQuantity}
                     onChangeText={value => setServiceForm(prev => ({ ...prev, importQuantity: value }))}
                     keyboardType="numeric"
@@ -816,9 +824,9 @@ export default function ServicesScreen() {
 
               <View style={styles.formRow}>
                 <View style={[styles.formField, styles.formHalf]}>
-                  <Text style={styles.formLabel}>Bán ra</Text>
+                  <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Bán ra</Text>
                   <TextInput
-                    style={styles.textInput}
+                    style={[styles.textInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                     value={serviceForm.salesQuantity}
                     onChangeText={value => setServiceForm(prev => ({ ...prev, salesQuantity: value }))}
                     keyboardType="numeric"
@@ -827,27 +835,31 @@ export default function ServicesScreen() {
                   />
                 </View>
                 <View style={[styles.formField, styles.formHalf]}>
-                  <Text style={styles.formLabel}>Tùy chỉnh</Text>
+                  <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Tùy chỉnh</Text>
                   <View style={styles.switchRow}>
                     <Switch
                       value={serviceForm.isCustom}
                       onValueChange={value => setServiceForm(prev => ({ ...prev, isCustom: value }))}
                       disabled={serviceModalMode === 'view'}
+                      trackColor={{ false: colors.switchTrack, true: colors.tint }}
+                      thumbColor="#fff"
                     />
-                    <Text style={styles.switchLabel}>{serviceForm.isCustom ? 'Có' : 'Không'}</Text>
+                    <Text style={[styles.switchLabel, { color: colors.textSecondary }]}>{serviceForm.isCustom ? 'Có' : 'Không'}</Text>
                   </View>
                 </View>
               </View>
 
               <View style={styles.formField}>
-                <Text style={styles.formLabel}>Trạng thái</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Trạng thái</Text>
                 <View style={styles.switchRow}>
                   <Switch
                     value={serviceForm.isActive}
                     onValueChange={value => setServiceForm(prev => ({ ...prev, isActive: value }))}
                     disabled={serviceModalMode === 'view'}
+                    trackColor={{ false: colors.switchTrack, true: colors.tint }}
+                    thumbColor="#fff"
                   />
-                  <Text style={styles.switchLabel}>{serviceForm.isActive ? 'Hoạt động' : 'Không hoạt động'}</Text>
+                  <Text style={[styles.switchLabel, { color: colors.textSecondary }]}>{serviceForm.isActive ? 'Hoạt động' : 'Không hoạt động'}</Text>
                 </View>
               </View>
             </ScrollView>
@@ -855,15 +867,15 @@ export default function ServicesScreen() {
             <View style={styles.modalFooter}>
               {serviceModalMode === 'view' && canManageServices && (
                 <TouchableOpacity
-                  style={styles.editButton}
+                  style={[styles.editButton, { backgroundColor: isDark ? '#1a3a36' : '#ede9fe' }]}
                   onPress={() => setServiceModalMode('edit')}
                 >
-                  <Text style={styles.editButtonText}>Chỉnh sửa</Text>
+                  <Text style={[styles.editButtonText, { color: colors.tint }]}>Chỉnh sửa</Text>
                 </TouchableOpacity>
               )}
               {serviceModalMode !== 'view' && (
                 <TouchableOpacity
-                  style={styles.saveButton}
+                  style={[styles.saveButton, { backgroundColor: colors.tint }]}
                   onPress={handleSaveService}
                   disabled={createServiceMutation.isPending || updateServiceMutation.isPending}
                 >
@@ -888,19 +900,19 @@ export default function ServicesScreen() {
         animationType="slide"
         onRequestClose={() => setHotelModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.hotelModalContent}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.hotelModalContent, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn khách sạn</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Chọn khách sạn</Text>
               <TouchableOpacity onPress={() => setHotelModalVisible(false)}>
-                <X size={24} color={Colors.light.text} />
+                <X size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
               {hotelsLoading ? (
                 <View style={styles.hotelLoadingRow}>
-                  <ActivityIndicator size="small" color="#7c3aed" />
-                  <Text style={styles.hotelLoadingText}>Đang tải khách sạn...</Text>
+                  <ActivityIndicator size="small" color={colors.tint} />
+                  <Text style={[styles.hotelLoadingText, { color: colors.textSecondary }]}>Đang tải khách sạn...</Text>
                 </View>
               ) : (
                 hotels.map(hotel => (
@@ -908,16 +920,18 @@ export default function ServicesScreen() {
                     key={hotel.id}
                     style={[
                       styles.hotelOption,
+                      { borderColor: colors.border },
                       (hotelPickerMode === 'filter' ? selectedHotelId : serviceForm.hotelId) === hotel.id &&
-                        styles.hotelOptionSelected,
+                        [styles.hotelOptionSelected, { backgroundColor: isDark ? '#1a3a36' : '#ede9fe', borderColor: colors.tint }],
                     ]}
                     onPress={() => handleSelectHotel(hotel.id)}
                   >
                     <Text
                       style={[
                         styles.hotelOptionText,
+                        { color: colors.text },
                         (hotelPickerMode === 'filter' ? selectedHotelId : serviceForm.hotelId) === hotel.id &&
-                          styles.hotelOptionTextSelected,
+                          [styles.hotelOptionTextSelected, { color: colors.tint }],
                       ]}
                     >
                       {hotel.name}

@@ -25,10 +25,12 @@ import {
   CheckCircle,
 } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
+import { LinearGradient } from 'expo-linear-gradient';
 import Colors from '@/constants/colors';
 import { bookingsApi, guestsApi, roomsApi } from '@/services/api';
 import { Booking, Guest, Room } from '@/types/hotel';
 import { useHotel } from '@/contexts/HotelContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Modal } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { aiApi } from '@/services/api/ai';
@@ -64,6 +66,7 @@ export default function GuestsScreen() {
   const guestDraft = useGuestDraftStore(s => s.draft);
   const clearGuestDraft = useGuestDraftStore(s => s.clear);
   const router = useRouter();
+  const { isDark, colors } = useTheme();
 
   const clearOcrImages = () => {
     setOcrImages([]);
@@ -237,7 +240,7 @@ export default function GuestsScreen() {
     return (
       <TouchableOpacity
         key={guest.id}
-        style={styles.guestCard}
+        style={[styles.guestCard, { backgroundColor: colors.cardBackground }]}
         activeOpacity={0.7}
         onPress={() => {
           setSelectedGuest(guest);
@@ -246,18 +249,18 @@ export default function GuestsScreen() {
       >
         <View style={styles.cardHeader}>
           <View style={styles.avatarContainer}>
-            <View style={[styles.avatar, guest.vipStatus && styles.avatarVip]}>
+            <View style={[styles.avatar, { backgroundColor: colors.tint }, guest.vipStatus && styles.avatarVip]}>
               <Text style={styles.avatarText}>{getInitials(guest.name)}</Text>
             </View>
             {guest.vipStatus && (
-              <View style={styles.vipBadge}>
+              <View style={[styles.vipBadge, { borderColor: colors.cardBackground }]}>
                 <Crown size={10} color="#fff" />
               </View>
             )}
           </View>
           <View style={styles.guestInfo}>
             <View style={styles.nameRow}>
-              <Text style={styles.guestName}>{guest.name}</Text>
+              <Text style={[styles.guestName, { color: colors.text }]}>{guest.name}</Text>
               {guest.vipStatus && (
                 <View style={styles.vipTag}>
                   <Text style={styles.vipTagText}>VIP</Text>
@@ -265,37 +268,37 @@ export default function GuestsScreen() {
               )}
             </View>
             <View style={styles.nationalityRow}>
-              <Globe size={12} color={Colors.light.textSecondary} />
-              <Text style={styles.nationalityText}>{guest.nationality || 'Việt Nam'}</Text>
+              <Globe size={12} color={colors.textSecondary} />
+              <Text style={[styles.nationalityText, { color: colors.textSecondary }]}>{guest.nationality || 'Việt Nam'}</Text>
             </View>
           </View>
-          <ChevronRight size={20} color={Colors.light.textSecondary} />
+          <ChevronRight size={20} color={colors.textSecondary} />
         </View>
 
         <View style={styles.contactRow}>
           {guest.phone && (
             <View style={styles.contactItem}>
-              <Phone size={14} color={Colors.light.tint} />
-              <Text style={styles.contactText}>{guest.phone}</Text>
+              <Phone size={14} color={colors.tint} />
+              <Text style={[styles.contactText, { color: colors.text }]}>{guest.phone}</Text>
             </View>
           )}
           {guest.email && (
             <View style={styles.contactItem}>
-              <Mail size={14} color={Colors.light.tint} />
-              <Text style={styles.contactText} numberOfLines={1}>{guest.email}</Text>
+              <Mail size={14} color={colors.tint} />
+              <Text style={[styles.contactText, { color: colors.text }]} numberOfLines={1}>{guest.email}</Text>
             </View>
           )}
         </View>
 
-        <View style={styles.statsRow}>
+        <View style={[styles.statsRow, { backgroundColor: colors.background }]}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{guest.totalStays}</Text>
-            <Text style={styles.statLabel}>Lượt ở</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>{guest.totalStays}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Lượt ở</Text>
           </View>
-          <View style={styles.statDivider} />
+          <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{formatCurrency(guest.totalSpent)}</Text>
-            <Text style={styles.statLabel}>Tổng chi tiêu</Text>
+            <Text style={[styles.statValue, { color: colors.text }]}>{formatCurrency(guest.totalSpent)}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Tổng chi tiêu</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -656,53 +659,53 @@ const handleScanTwoImages = async () => {
 
   if (isLoading && guests.length === 0) {
     return (
-      <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color={Colors.light.tint} />
-        <Text style={styles.loadingText}>Đang tải danh sách khách hàng...</Text>
+      <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.tint} />
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Đang tải danh sách khách hàng...</Text>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
+      <LinearGradient colors={['#0f766e', '#14b8a6']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.header}>
         <View>
-          <Text style={styles.title}>Khách hàng</Text>
-          <Text style={styles.subtitle}>{selectedHotel?.name || 'Tất cả'} • {computedGuests.length} khách</Text>
+          <Text style={[styles.title, { color: '#fff' }]}>Khách hàng</Text>
+          <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.8)' }]}>{selectedHotel?.name || 'Tất cả'} • {computedGuests.length} khách</Text>
         </View>
-        <TouchableOpacity style={styles.addButton} onPress={() => setCreateVisible(true)}>
+        <TouchableOpacity style={[styles.addButton, { backgroundColor: 'rgba(255,255,255,0.2)', shadowColor: 'transparent' }]} onPress={() => setCreateVisible(true)}>
           <Plus size={20} color="#fff" />
         </TouchableOpacity>
-      </View>
+      </LinearGradient>
 
       <View style={styles.searchContainer}>
-        <View style={styles.searchBox}>
-          <Search size={18} color={Colors.light.textSecondary} />
+        <View style={[styles.searchBox, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder }]}>
+          <Search size={18} color={colors.textSecondary} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: colors.text }]}
             placeholder="Tìm tên, SĐT hoặc email..."
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholderTextColor={Colors.light.textSecondary}
+            placeholderTextColor={colors.textSecondary}
           />
         </View>
       </View>
 
       <View style={styles.filterRow}>
         <TouchableOpacity
-          style={[styles.filterChip, !showVipOnly && styles.filterChipActive]}
+          style={[styles.filterChip, { backgroundColor: colors.cardBackground }, !showVipOnly && styles.filterChipActive]}
           onPress={() => setShowVipOnly(false)}
         >
-          <Text style={[styles.filterChipText, !showVipOnly && styles.filterChipTextActive]}>
+          <Text style={[styles.filterChipText, { color: colors.textSecondary }, !showVipOnly && styles.filterChipTextActive]}>
             Tất cả ({computedGuests.length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterChip, showVipOnly && styles.filterChipActiveVip]}
+          style={[styles.filterChip, { backgroundColor: colors.cardBackground }, showVipOnly && styles.filterChipActiveVip]}
           onPress={() => setShowVipOnly(true)}
         >
           <Crown size={14} color={showVipOnly ? '#fff' : '#f59e0b'} />
-          <Text style={[styles.filterChipText, showVipOnly && styles.filterChipTextActive]}>
+          <Text style={[styles.filterChipText, { color: colors.textSecondary }, showVipOnly && styles.filterChipTextActive]}>
             VIP ({vipCount})
           </Text>
         </TouchableOpacity>
@@ -721,73 +724,73 @@ const handleScanTwoImages = async () => {
           <View style={styles.emptyState}>
             {guests.length === 0 ? (
               <>
-                <AlertCircle size={48} color={Colors.light.textSecondary} />
-                <Text style={styles.emptyText}>Chưa có dữ liệu khách hàng</Text>
-                <Text style={styles.emptySubtext}>Kiểm tra kết nối API</Text>
+                <AlertCircle size={48} color={colors.textSecondary} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Chưa có dữ liệu khách hàng</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Kiểm tra kết nối API</Text>
               </>
             ) : (
               <>
-                <User size={48} color={Colors.light.textSecondary} />
-                <Text style={styles.emptyText}>Không tìm thấy khách hàng</Text>
+                <User size={48} color={colors.textSecondary} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Không tìm thấy khách hàng</Text>
               </>
             )}
           </View>
         )}
       </ScrollView>
       <Modal visible={detailVisible} transparent animationType="slide" onRequestClose={() => setDetailVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.modalCard, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Thông tin khách</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Thông tin khách</Text>
             </View>
             <View style={styles.detailList}>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Tên khách</Text>
-                <Text style={styles.detailValue}>{selectedGuest?.name || '-'}</Text>
+              <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Tên khách</Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGuest?.name || '-'}</Text>
               </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Giới tính</Text>
-                <Text style={styles.detailValue}>{getGenderLabel(selectedGuest?.gender)}</Text>
+              <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Giới tính</Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>{getGenderLabel(selectedGuest?.gender)}</Text>
               </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Ngày sinh</Text>
-                <Text style={styles.detailValue}>{formatDateDisplay(selectedGuest?.dateOfBirth)}</Text>
+              <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Ngày sinh</Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>{formatDateDisplay(selectedGuest?.dateOfBirth)}</Text>
               </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Loại khách</Text>
-                <Text style={styles.detailValue}>{getGuestTypeLabel(selectedGuest?.guestType)}</Text>
+              <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Loại khách</Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>{getGuestTypeLabel(selectedGuest?.guestType)}</Text>
               </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>CMND/CCCD</Text>
-                <Text style={styles.detailValue}>{selectedGuest?.idNumber || '-'}</Text>
+              <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>CMND/CCCD</Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGuest?.idNumber || '-'}</Text>
               </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Số điện thoại</Text>
-                <Text style={styles.detailValue}>{selectedGuest?.phone || '-'}</Text>
+              <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Số điện thoại</Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGuest?.phone || '-'}</Text>
               </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Email</Text>
-                <Text style={styles.detailValue}>{selectedGuest?.email || '-'}</Text>
+              <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Email</Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGuest?.email || '-'}</Text>
               </View>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Địa chỉ</Text>
-                <Text style={styles.detailValue}>{selectedGuest?.address || '-'}</Text>
+              <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Địa chỉ</Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGuest?.address || '-'}</Text>
               </View>
             </View>
             <View style={styles.modalFooter}>
-              <TouchableOpacity style={[styles.footerBtn, { borderColor: Colors.light.border }]} onPress={() => setDetailVisible(false)}>
-                <Text style={[styles.footerBtnText, { color: Colors.light.textSecondary }]}>Đóng</Text>
+              <TouchableOpacity style={[styles.footerBtn, { borderColor: colors.border }]} onPress={() => setDetailVisible(false)}>
+                <Text style={[styles.footerBtnText, { color: colors.textSecondary }]}>Đóng</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
       <Modal visible={createVisible} transparent animationType="slide" onRequestClose={closeCreateModal}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.modalCard, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Thêm khách hàng</Text>
-              {ocrLoading && <ActivityIndicator size="small" color={Colors.light.tint} />}
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Thêm khách hàng</Text>
+              {ocrLoading && <ActivityIndicator size="small" color={colors.tint} />}
             </View>
             <View style={styles.modalActions}>
               <TouchableOpacity style={[styles.scanBtn, { backgroundColor: '#0ea5e9' }]} onPress={handleScanOneImage}>
@@ -799,8 +802,8 @@ const handleScanTwoImages = async () => {
             </View>
             {!!ocrStatus && (
               <View style={styles.ocrStatusRow}>
-                <ActivityIndicator size="small" color={Colors.light.textSecondary} />
-                <Text style={styles.ocrStatusText}>
+                <ActivityIndicator size="small" color={colors.textSecondary} />
+                <Text style={[styles.ocrStatusText, { color: colors.textSecondary }]}>
                   {ocrPhase === 'upload' ? 'Upload: ' : ocrPhase === 'scan' ? 'Scan: ' : ocrPhase === 'process' ? 'Xử lý: ' : ''}
                   {ocrStatus}
                 </Text>
@@ -809,54 +812,54 @@ const handleScanTwoImages = async () => {
             {ocrImages.length > 0 && (
               <View style={styles.ocrPreviewRow}>
                 <TouchableOpacity style={styles.ocrClearButton} onPress={clearOcrImages}>
-                  <Text style={styles.ocrClearText}>Xóa ảnh đã chọn</Text>
+                  <Text style={[styles.ocrClearText, { color: colors.textSecondary }]}>Xóa ảnh đã chọn</Text>
                 </TouchableOpacity>
                 {ocrImages.map((uri, index) => (
                   <View key={`${uri}-${index}`} style={styles.ocrPreviewItem}>
-                    <Image source={{ uri }} style={styles.ocrPreviewImage} />
+                    <Image source={{ uri }} style={[styles.ocrPreviewImage, { backgroundColor: isDark ? colors.inputBackground : '#eef2f7' }]} />
                     {ocrImages.length > 1 && (
-                      <Text style={styles.ocrPreviewLabel}>{index === 0 ? 'Mặt trước' : 'Mặt sau'}</Text>
+                      <Text style={[styles.ocrPreviewLabel, { color: colors.textSecondary }]}>{index === 0 ? 'Mặt trước' : 'Mặt sau'}</Text>
                     )}
-                    <TouchableOpacity style={styles.ocrReplaceButton} onPress={() => replaceOcrImageAt(index)}>
-                      <Text style={styles.ocrReplaceText}>Chọn lại</Text>
+                    <TouchableOpacity style={[styles.ocrReplaceButton, { backgroundColor: isDark ? colors.inputBackground : '#eef2ff' }]} onPress={() => replaceOcrImageAt(index)}>
+                      <Text style={[styles.ocrReplaceText, { color: colors.tint }]}>Chọn lại</Text>
                     </TouchableOpacity>
                   </View>
                 ))}
               </View>
             )}
             <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>Họ và tên</Text>
-              <TextInput style={styles.input} value={form.fullName} onChangeText={(v) => setForm({ ...form, fullName: v })} />
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Họ và tên</Text>
+              <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.fullName} onChangeText={(v) => setForm({ ...form, fullName: v })} placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>SĐT</Text>
-              <TextInput style={styles.input} value={form.phone} onChangeText={(v) => setForm({ ...form, phone: v })} keyboardType="phone-pad" />
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>SĐT</Text>
+              <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.phone} onChangeText={(v) => setForm({ ...form, phone: v })} keyboardType="phone-pad" placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>CMND/CCCD</Text>
-              <TextInput style={styles.input} value={form.idNumber} onChangeText={(v) => setForm({ ...form, idNumber: v })} />
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>CMND/CCCD</Text>
+              <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.idNumber} onChangeText={(v) => setForm({ ...form, idNumber: v })} placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>Giới tính</Text>
-              <TextInput style={styles.input} value={form.gender} onChangeText={(v) => setForm({ ...form, gender: v })} placeholder="Nam/Nữ" />
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Giới tính</Text>
+              <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.gender} onChangeText={(v) => setForm({ ...form, gender: v })} placeholder="Nam/Nữ" placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>Ngày sinh</Text>
-      <TextInput style={styles.input} value={form.dateOfBirth} onChangeText={(v) => setForm({ ...form, dateOfBirth: v })} placeholder="dd/MM/yyyy" />
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Ngày sinh</Text>
+              <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.dateOfBirth} onChangeText={(v) => setForm({ ...form, dateOfBirth: v })} placeholder="dd/MM/yyyy" placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>Quốc tịch</Text>
-              <TextInput style={styles.input} value={form.nationality} onChangeText={(v) => setForm({ ...form, nationality: v })} />
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Quốc tịch</Text>
+              <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.nationality} onChangeText={(v) => setForm({ ...form, nationality: v })} placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={styles.inputLabel}>Địa chỉ</Text>
-              <TextInput style={styles.input} value={form.address} onChangeText={(v) => setForm({ ...form, address: v })} />
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Địa chỉ</Text>
+              <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.address} onChangeText={(v) => setForm({ ...form, address: v })} placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.modalFooter}>
-              <TouchableOpacity style={[styles.footerBtn, { borderColor: Colors.light.border }]} onPress={closeCreateModal}>
-                <Text style={[styles.footerBtnText, { color: Colors.light.textSecondary }]}>Đóng</Text>
+              <TouchableOpacity style={[styles.footerBtn, { borderColor: colors.border }]} onPress={closeCreateModal}>
+                <Text style={[styles.footerBtnText, { color: colors.textSecondary }]}>Đóng</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: Colors.light.tint }]} onPress={handleSave}>
+              <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: colors.tint }]} onPress={handleSave}>
                 <Text style={styles.footerPrimaryText}>Lưu</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: '#13c2c2' }]} onPress={handleAssignDraft}>
@@ -867,11 +870,11 @@ const handleScanTwoImages = async () => {
         </View>
       </Modal>
       <Modal visible={assignVisible} transparent animationType="slide" onRequestClose={closeAssignModal}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, styles.assignModalCard]}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.modalCard, styles.assignModalCard, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn phòng</Text>
-              {roomsLoading && <ActivityIndicator size="small" color={Colors.light.tint} />}
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Chọn phòng</Text>
+              {roomsLoading && <ActivityIndicator size="small" color={colors.tint} />}
             </View>
             <ScrollView style={styles.assignList} contentContainerStyle={styles.assignListContent}>
               {availableRooms.length > 0 ? (
@@ -880,31 +883,31 @@ const handleScanTwoImages = async () => {
                   return (
                     <TouchableOpacity
                       key={room.id}
-                      style={[styles.assignRoomItem, isSelected && styles.assignRoomItemSelected]}
+                      style={[styles.assignRoomItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }, isSelected && [styles.assignRoomItemSelected, { borderColor: colors.tint, backgroundColor: isDark ? 'rgba(20,184,166,0.1)' : '#eef9f9' }]]}
                       onPress={() => setAssignRoomId(room.id)}
                     >
                       <View>
-                        <Text style={styles.assignRoomNumber}>Phòng {room.number}</Text>
-                        <Text style={styles.assignRoomMeta}>
+                        <Text style={[styles.assignRoomNumber, { color: colors.text }]}>Phòng {room.number}</Text>
+                        <Text style={[styles.assignRoomMeta, { color: colors.textSecondary }]}>
                           {(room.roomType || room.type) ?? '-'} • Tầng {room.floor}
                         </Text>
                       </View>
-                      {isSelected && <CheckCircle size={20} color={Colors.light.tint} />}
+                      {isSelected && <CheckCircle size={20} color={colors.tint} />}
                     </TouchableOpacity>
                   );
                 })
               ) : (
                 <View style={styles.assignEmpty}>
-                  <AlertCircle size={22} color={Colors.light.textSecondary} />
-                  <Text style={styles.assignEmptyText}>Không có phòng trống</Text>
+                  <AlertCircle size={22} color={colors.textSecondary} />
+                  <Text style={[styles.assignEmptyText, { color: colors.textSecondary }]}>Không có phòng trống</Text>
                 </View>
               )}
             </ScrollView>
             <View style={styles.modalFooter}>
-              <TouchableOpacity style={[styles.footerBtn, { borderColor: Colors.light.border }]} onPress={closeAssignModal}>
-                <Text style={[styles.footerBtnText, { color: Colors.light.textSecondary }]}>Đóng</Text>
+              <TouchableOpacity style={[styles.footerBtn, { borderColor: colors.border }]} onPress={closeAssignModal}>
+                <Text style={[styles.footerBtnText, { color: colors.textSecondary }]}>Đóng</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: Colors.light.tint }]} onPress={handleConfirmAssign}>
+              <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: colors.tint }]} onPress={handleConfirmAssign}>
                 <Text style={styles.footerPrimaryText}>Xác nhận</Text>
               </TouchableOpacity>
             </View>
@@ -935,6 +938,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
   },
   title: {
     fontSize: 28,

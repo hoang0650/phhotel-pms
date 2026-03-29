@@ -28,7 +28,6 @@ import {
   MinusCircle,
   CheckCircle,
 } from 'lucide-react-native';
-import Colors from '@/constants/colors';
 import { useHotel } from '@/contexts/HotelContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { revenueApi, roomsApi, bookingsApi } from '@/services/api';
@@ -552,7 +551,7 @@ export default function ReportScreen() {
 
                       return (
                         <View key={index} style={styles.chartBar}>
-                          <View style={styles.chartBarContainer}>
+                          <View style={[styles.chartBarContainer, { backgroundColor: isDark ? colors.border : '#f0f9ff' }]}>
                             <View
                               style={[
                                 styles.chartBarFill,
@@ -609,7 +608,6 @@ export default function ReportScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.light.background,
   },
   header: {
     paddingHorizontal: 20,
@@ -633,7 +631,6 @@ const styles = StyleSheet.create({
   growthBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
@@ -690,7 +687,6 @@ const styles = StyleSheet.create({
   },
   secondaryCard: {
     flex: 1,
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 12,
     justifyContent: 'center',
@@ -702,13 +698,11 @@ const styles = StyleSheet.create({
   },
   secondaryLabel: {
     fontSize: 11,
-    color: Colors.light.textSecondary,
     marginTop: 6,
   },
   secondaryValue: {
     fontSize: 15,
     fontWeight: '700' as const,
-    color: Colors.light.text,
     marginTop: 2,
   },
   breakdownSection: {
@@ -717,7 +711,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600' as const,
-    color: Colors.light.text,
     marginBottom: 12,
   },
   breakdownCards: {
@@ -726,7 +719,6 @@ const styles = StyleSheet.create({
   breakdownCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 14,
     gap: 12,
@@ -748,17 +740,14 @@ const styles = StyleSheet.create({
   },
   breakdownLabel: {
     fontSize: 13,
-    color: Colors.light.textSecondary,
   },
   breakdownValue: {
     fontSize: 17,
     fontWeight: '600' as const,
-    color: Colors.light.text,
     marginTop: 2,
   },
   periodSelector: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 4,
     marginBottom: 20,
@@ -770,12 +759,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   periodOptionActive: {
-    backgroundColor: Colors.light.tint,
   },
   periodOptionText: {
     fontSize: 13,
     fontWeight: '500' as const,
-    color: Colors.light.textSecondary,
   },
   periodOptionTextActive: {
     color: '#fff',
@@ -784,7 +771,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   chartContainer: {
-    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 16,
     shadowColor: '#000',
@@ -806,29 +792,24 @@ const styles = StyleSheet.create({
   chartBarContainer: {
     width: '100%',
     height: 100,
-    backgroundColor: '#f0f9ff',
     borderRadius: 4,
     justifyContent: 'flex-end',
     overflow: 'hidden',
   },
   chartBarFill: {
     width: '100%',
-    backgroundColor: '#0d9488',
     borderRadius: 4,
   },
   chartLabel: {
     fontSize: 10,
-    color: Colors.light.textSecondary,
     marginTop: 6,
   },
   chartValue: {
     fontSize: 11,
     fontWeight: '600' as const,
-    color: Colors.light.text,
     marginTop: 6,
   },
   emptyChart: {
-    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 40,
     alignItems: 'center',
@@ -836,7 +817,6 @@ const styles = StyleSheet.create({
   },
   emptyChartText: {
     fontSize: 14,
-    color: Colors.light.textSecondary,
   },
   statsSection: {
     marginBottom: 20,
@@ -848,7 +828,6 @@ const styles = StyleSheet.create({
   },
   statItem: {
     width: '48%',
-    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -861,11 +840,9 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 20,
     fontWeight: '700' as const,
-    color: Colors.light.text,
   },
   statLabel: {
     fontSize: 12,
-    color: Colors.light.textSecondary,
     marginTop: 4,
   },
 });
