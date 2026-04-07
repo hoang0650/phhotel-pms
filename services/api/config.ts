@@ -1,8 +1,8 @@
 export const API_CONFIG = {
-  BASE_URL: 'https://nest-production-8106.up.railway.app',
+  BASE_URL: 'https://api.phgrouptechs.com',
   TIMEOUT: 30000,
   AI_TIMEOUT: 120000,
-  AI_BASE_URL: 'https://phgroup-ai-production.up.railway.app',
+  AI_BASE_URL: 'https://ai.phgrouptechs.com',
 };
 
 export const API_ENDPOINTS = {
