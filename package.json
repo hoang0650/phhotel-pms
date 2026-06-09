@@ -3,10 +3,13 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "bunx rork start -p rcmgljhz0n5okje2wjh3n --tunnel",
-    "start-web": "bunx rork start -p rcmgljhz0n5okje2wjh3n --web --tunnel",
-    "start-web-dev": "DEBUG=expo* bunx rork start -p rcmgljhz0n5okje2wjh3n --web --tunnel",
-    "lint": "expo lint"
+    "start": "npx.cmd expo start --tunnel",
+    "start-web": "npx.cmd expo start --web --clear",
+    "start-web-dev": "cross-env DEBUG=expo* npx.cmd expo start --web --clear",
+    "build:web": "npx.cmd expo export -p web",
+    "build:zalo": "npx.cmd expo export -p web",
+    "serve:web": "npx.cmd expo serve",
+    "lint": "npx.cmd expo lint"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

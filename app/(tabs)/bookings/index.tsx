@@ -56,6 +56,40 @@ export default function BookingsScreen() {
   });
 
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+  const getPaymentState = (booking: Booking) => {
+    const totalAmount = Number(booking.totalAmount) || 0;
+    const paidAmount = Number(booking.paidAmount) || 0;
+    const paymentStatus = String(booking.paymentStatus || '').toLowerCase();
+
+    // Sau khi trả phòng, booking mặc định xem là đã thanh toán.
+    if (booking.status === 'checked_out') {
+      return {
+        isPaid: true,
+        totalAmount,
+        paidAmount,
+        remainingAmount: 0,
+      };
+    }
+
+    if (paymentStatus === 'paid') {
+      return {
+        isPaid: true,
+        totalAmount,
+        paidAmount,
+        remainingAmount: Math.max(totalAmount - paidAmount, 0),
+      };
+    }
+
+    const isPaid = totalAmount > 0 && paidAmount >= totalAmount;
+
+    return {
+      isPaid,
+      totalAmount,
+      paidAmount,
+      remainingAmount: Math.max(totalAmount - paidAmount, 0),
+    };
+  };
+
   const filteredBookings = useMemo(() => {
     return bookings.filter((booking) => {
       const roomNumber = String(booking.roomNumber || '');
@@ -70,10 +104,9 @@ export default function BookingsScreen() {
   const bookingStats = useMemo(() => {
     return filteredBookings.reduce(
       (acc, booking) => {
-        const totalAmount = Number(booking.totalAmount) || 0;
-        const paidAmount = Number(booking.paidAmount) || 0;
+        const { totalAmount, isPaid } = getPaymentState(booking);
         acc.totalRevenue += totalAmount;
-        if (paidAmount >= totalAmount && totalAmount > 0) {
+        if (isPaid) {
           acc.paidCount += 1;
         } else {
           acc.unpaidCount += 1;
@@ -114,8 +147,7 @@ export default function BookingsScreen() {
     const status = statusConfig[booking.status];
     const StatusIcon = status.icon;
     const nights = calculateNights(booking.checkIn, booking.checkOut);
-    const isPaid = Number(booking.paidAmount) >= Number(booking.totalAmount);
-    const remainingAmount = Math.max((Number(booking.totalAmount) || 0) - (Number(booking.paidAmount) || 0), 0);
+    const { isPaid, totalAmount, remainingAmount } = getPaymentState(booking);
 
     return (
       <TouchableOpacity key={booking.id} style={[styles.bookingCard, { backgroundColor: isDark ? colors.cardBackground : '#fff' }]} activeOpacity={0.7}>

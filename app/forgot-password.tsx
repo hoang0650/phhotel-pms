@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -23,20 +23,26 @@ export default function ForgotPasswordScreen() {
   const router = useRouter();
   const { forgotPassword, forgotPasswordLoading } = useAuth();
 
-  const [email, setEmail] = useState('');
-  const [emailError, setEmailError] = useState('');
+  const [emailOrUsername, setEmailOrUsername] = useState('');
+  const [inputError, setInputError] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
 
+  useEffect(() => {
+    if (!isSuccess) return;
+
+    const timeout = setTimeout(() => {
+      router.replace('/login');
+    }, 2000);
+
+    return () => clearTimeout(timeout);
+  }, [isSuccess, router]);
+
   const validate = () => {
-    if (!email.trim()) {
-      setEmailError('Vui lòng nhập email');
+    if (!emailOrUsername.trim()) {
+      setInputError('Vui lòng nhập email hoặc tên đăng nhập');
       return false;
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setEmailError('Email không hợp lệ');
-      return false;
-    }
-    setEmailError('');
+    setInputError('');
     return true;
   };
 
@@ -44,7 +50,12 @@ export default function ForgotPasswordScreen() {
     if (!validate()) return;
 
     try {
-      await forgotPassword({ email: email.trim() });
+      const identifier = emailOrUsername.trim();
+      const requestData = identifier.includes('@')
+        ? { email: identifier }
+        : { username: identifier };
+
+      await forgotPassword(requestData);
       setIsSuccess(true);
     } catch (error) {
       Alert.alert(
@@ -67,8 +78,8 @@ export default function ForgotPasswordScreen() {
           </View>
           <Text style={styles.successTitle}>Email đã được gửi!</Text>
           <Text style={styles.successText}>
-            Chúng tôi đã gửi hướng dẫn đặt lại mật khẩu đến email {email}. 
-            Vui lòng kiểm tra hộp thư của bạn.
+            Chúng tôi đã gửi link đặt lại mật khẩu đến email của bạn.
+            Vui lòng kiểm tra hộp thư.
           </Text>
           <TouchableOpacity
             style={styles.backToLoginButton}
@@ -110,30 +121,30 @@ export default function ForgotPasswordScreen() {
           <View style={styles.headerContainer}>
             <Text style={styles.headerTitle}>Quên mật khẩu?</Text>
             <Text style={styles.headerSubtitle}>
-              Nhập email của bạn và chúng tôi sẽ gửi hướng dẫn đặt lại mật khẩu
+              Nhập email hoặc tên đăng nhập của bạn để nhận link đặt lại mật khẩu
             </Text>
           </View>
 
           <View style={styles.formContainer}>
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
-              <View style={[styles.inputWrapper, emailError && styles.inputError]}>
+              <Text style={styles.label}>Email hoặc tên đăng nhập</Text>
+              <View style={[styles.inputWrapper, inputError && styles.inputError]}>
                 <Mail size={20} color={Colors.light.textSecondary} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Nhập email của bạn"
+                  placeholder="Email hoặc Tên đăng nhập"
                   placeholderTextColor={Colors.light.textSecondary}
-                  value={email}
+                  value={emailOrUsername}
                   onChangeText={(text) => {
-                    setEmail(text);
-                    if (emailError) setEmailError('');
+                    setEmailOrUsername(text);
+                    if (inputError) setInputError('');
                   }}
-                  keyboardType="email-address"
+                  keyboardType="default"
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
               </View>
-              {emailError && <Text style={styles.errorText}>{emailError}</Text>}
+              {inputError && <Text style={styles.errorText}>{inputError}</Text>}
             </View>
 
             <TouchableOpacity

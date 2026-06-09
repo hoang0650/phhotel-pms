@@ -62,7 +62,8 @@ export interface RegisterRequest {
 }
 
 export interface ForgotPasswordRequest {
-  email: string;
+  email?: string;
+  username?: string;
 }
 
 export interface ResetPasswordRequest {
@@ -137,7 +138,7 @@ export const authApi = {
   },
 
   forgotPassword: async (data: ForgotPasswordRequest): Promise<{ message: string }> => {
-    console.log('[authApi.forgotPassword] Requesting password reset for:', data.email);
+    console.log('[authApi.forgotPassword] Requesting password reset for:', data.email || data.username);
     const response = await apiClient.post<{ message: string }>(API_ENDPOINTS.AUTH.FORGOT_PASSWORD, data);
     return response;
   },

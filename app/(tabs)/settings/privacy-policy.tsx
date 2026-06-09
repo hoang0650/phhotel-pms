@@ -258,7 +258,7 @@ export default function PrivacyPolicyScreen() {
           <Text style={styles.text}>
             Nếu bạn có bất kỳ khiếu nại liên quan đến cách Chúng Tôi đang xử lý dữ liệu cá nhân của bạn hoặc về cách thức Chúng Tôi đang thực thi luật, Chúng Tôi hoan nghênh bạn liên hệ với Chúng Tôi qua email{' '}
             <Text style={styles.link} onPress={() => Linking.openURL('mailto:support@phhotel.vn')}>support@phhotel.vn</Text> hoặc hotline{' '}
-            <Text style={styles.link} onPress={() => Linking.openURL('tel:19006159')}>1900 6159</Text>
+            <Text style={styles.link} onPress={() => Linking.openURL('tel:0931881584')}>0931881584</Text>
           </Text>
           <Text style={styles.subsectionTitle}>15.3</Text>
           <Text style={styles.text}>

@@ -1,8 +1,8 @@
 export const API_CONFIG = {
-  BASE_URL: 'https://api.phgrouptechs.com',
+  BASE_URL: 'https://api.phhotel.vn',
   TIMEOUT: 30000,
   AI_TIMEOUT: 120000,
-  AI_BASE_URL: 'https://ai.phgrouptechs.com',
+  AI_BASE_URL: 'https://ai.phhotel.vn',
 };
 
 export const API_ENDPOINTS = {
