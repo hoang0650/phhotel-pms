@@ -8,6 +8,9 @@
     "start-web-dev": "cross-env DEBUG=expo* npx.cmd expo start --web --clear",
     "build:web": "npx.cmd expo export -p web",
     "build:zalo": "npx.cmd expo export -p web",
+    "build:ios": "npx.cmd eas-cli build --platform ios --profile production",
+    "build:ios:preview": "npx.cmd eas-cli build --platform ios --profile preview",
+    "submit:ios": "npx.cmd eas-cli submit --platform ios --profile production",
     "serve:web": "npx.cmd expo serve",
     "lint": "npx.cmd expo lint"
   },
