@@ -121,8 +121,8 @@ class ApiClient {
     return this.request<T>(endpoint, { method: 'PATCH', body });
   }
 
-  async delete<T>(endpoint: string): Promise<T> {
-    return this.request<T>(endpoint, { method: 'DELETE' });
+  async delete<T>(endpoint: string, body?: unknown): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE', body });
   }
 
   async getWithAuth<T>(endpoint: string, token: string): Promise<T> {

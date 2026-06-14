@@ -194,4 +194,11 @@ export const authApi = {
       console.log('[authApi.logout] Logout request failed, continuing with local logout');
     }
   },
+
+  // Thêm vào auth.ts, bên trong authApi
+  deleteAccount: async (password: string): Promise<{ success: boolean; message: string }> => {
+    console.log('[authApi.deleteAccount] Requesting account deletion');
+    // Với axios, body của request DELETE phải được bọc trong object { data: ... }
+    return apiClient.delete<{ success: boolean; message: string }>(`${API_ENDPOINTS.USERS.BASE}/me`, { data: { password } });
+  },
 };

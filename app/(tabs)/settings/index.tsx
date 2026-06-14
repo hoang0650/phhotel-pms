@@ -39,6 +39,7 @@ import {
   Camera,
   Check,
   Sun,
+  UserX,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -112,6 +113,9 @@ export default function SettingsScreen() {
   const [editAvatarValue, setEditAvatarValue] = useState<string | undefined>(user?.avatar);
   const [editAvatarId, setEditAvatarId] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [deleteAccountVisible, setDeleteAccountVisible] = useState(false);
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState('');
+  const [deleteAccountLoading, setDeleteAccountLoading] = useState(false);
   const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
   const supportEmail = 'support@phhotel.vn';
   const BIOMETRIC_PASSWORD_KEY = 'biometric_password';
@@ -306,6 +310,51 @@ export default function SettingsScreen() {
     setBiometricPassword('');
     setChangePasswordVisible(true);
   }, []);
+
+  const handleConfirmDeleteAccount = useCallback(async () => {
+    if (!deleteAccountPassword) {
+      Alert.alert(t('notice'), language === 'vi' ? 'Vui lòng nhập mật khẩu để xác nhận' : 'Please enter password to confirm');
+      return;
+    }
+
+    Alert.alert(
+      language === 'vi' ? 'Xác nhận xóa vĩnh viễn' : 'Confirm Deletion',
+      language === 'vi' 
+        ? 'Bạn có chắc chắn muốn xóa tài khoản này? Hành động này không thể hoàn tác.' 
+        : 'Are you sure you want to delete your account? This action cannot be undone.',
+      [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: language === 'vi' ? 'Xóa' : 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleteAccountLoading(true);
+            try {
+              await authApi.deleteAccount(deleteAccountPassword);
+              setDeleteAccountVisible(false);
+              setDeleteAccountPassword('');
+              
+              Alert.alert(
+                t('success') || 'Thành công',
+                language === 'vi' ? 'Tài khoản của bạn đã được xóa thành công.' : 'Your account has been deleted successfully.',
+                [
+                  { 
+                    text: 'OK', 
+                    onPress: () => logout() // Đăng xuất để xóa token & cache local
+                  }
+                ]
+              );
+            } catch (error: any) {
+              const msg = error?.response?.data?.message || (language === 'vi' ? 'Không thể xóa tài khoản. Mật khẩu có thể không đúng.' : 'Failed to delete account. Incorrect password.');
+              Alert.alert(t('notice') || 'Lỗi', msg);
+            } finally {
+              setDeleteAccountLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  }, [deleteAccountPassword, language, logout, t]);
 
   const handleSubmitChangePassword = useCallback(async () => {
     if (!user?.id) {
@@ -600,6 +649,16 @@ export default function SettingsScreen() {
               onPress={handleOpenChangePassword}
             />
             <View style={[styles.divider, { backgroundColor: colors.divider }]} />
+            <SettingItem
+              icon={<UserX size={20} color="#ef4444" />}
+              title={language === 'vi' ? 'Xóa tài khoản' : 'Delete Account'}
+              textColor="#ef4444"
+              chevronColor={colors.textSecondary}
+              onPress={() => {
+                setDeleteAccountPassword('');
+                setDeleteAccountVisible(true);
+              }}
+            />
             {isMobile && (
               <>
                 <SettingItem
@@ -953,6 +1012,63 @@ export default function SettingsScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={deleteAccountVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDeleteAccountVisible(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
+          <View style={[styles.changePasswordModal, { backgroundColor: colors.cardBackground }]}>
+            <View style={styles.changePasswordHeader}>
+              <Text style={[styles.changePasswordTitle, { color: '#ef4444' }]}>
+                {language === 'vi' ? 'Xóa tài khoản' : 'Delete Account'}
+              </Text>
+              <TouchableOpacity onPress={() => setDeleteAccountVisible(false)} disabled={deleteAccountLoading}>
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ color: colors.textSecondary, marginBottom: 16, fontSize: 14 }}>
+              {language === 'vi' 
+                ? 'Vui lòng nhập mật khẩu hiện tại để xác nhận hành động này. Dữ liệu sẽ không thể khôi phục.' 
+                : 'Please enter your current password to confirm. This action cannot be undone.'}
+            </Text>
+
+            <View style={styles.changePasswordFields}>
+              <View style={styles.changePasswordField}>
+                <Text style={[styles.changePasswordLabel, { color: colors.textSecondary }]}>
+                  {language === 'vi' ? 'Mật khẩu hiện tại' : 'Current password'}
+                </Text>
+                <TextInput
+                  style={[styles.changePasswordInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
+                  value={deleteAccountPassword}
+                  onChangeText={setDeleteAccountPassword}
+                  placeholder={language === 'vi' ? 'Nhập mật khẩu để xác nhận' : 'Enter password to confirm'}
+                  placeholderTextColor={colors.textSecondary}
+                  secureTextEntry
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.changePasswordButton, { backgroundColor: '#ef4444' }, deleteAccountLoading && styles.changePasswordButtonDisabled]}
+              onPress={handleConfirmDeleteAccount}
+              disabled={deleteAccountLoading}
+            >
+              {deleteAccountLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.changePasswordButtonText}>
+                  {language === 'vi' ? 'Xác nhận xóa' : 'Confirm Delete'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 }

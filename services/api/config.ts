@@ -37,6 +37,7 @@ export const API_ENDPOINTS = {
     BASE: '/users',
     BY_ID: (id: string) => `/users/${id}`,
     BY_HOTEL: (hotelId: string) => `/users/hotel/${hotelId}`,
+    ME: '/users/me',
   },
   BOOKINGS: {
     BASE: '/bookings',
