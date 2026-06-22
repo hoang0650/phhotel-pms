@@ -247,13 +247,13 @@ export default function LoginScreen() {
                 )}
               </TouchableOpacity>
             )}
-
+{/* 
             <View style={styles.registerContainer}>
               <Text style={styles.registerText}>Chưa có tài khoản? </Text>
               <TouchableOpacity onPress={() => router.push('/register')}>
                 <Text style={styles.registerLink}>Đăng ký ngay</Text>
               </TouchableOpacity>
-            </View>
+            </View> */}
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

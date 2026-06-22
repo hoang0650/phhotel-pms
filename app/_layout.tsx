@@ -21,7 +21,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isInitialized) return;
 
-    const inAuthGroup = segments[0] === 'login' || segments[0] === 'register' || segments[0] === 'forgot-password';
+    const inAuthGroup = segments[0] === 'login' || segments[0] === 'forgot-password';
 
     if (!isAuthenticated && !inAuthGroup) {
       router.replace('/login');
@@ -43,7 +43,6 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerBackTitle: "Quay lại" }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
-      <Stack.Screen name="register" options={{ headerShown: false }} />
       <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
