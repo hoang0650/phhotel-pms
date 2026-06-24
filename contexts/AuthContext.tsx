@@ -38,11 +38,9 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     try {
       const freshUser = await authApi.getProfile();
       if (freshUser) {
-        // Keep existing token, just update user
         if (token) {
            await saveAuthState(token, freshUser);
         } else {
-           // Should not happen if we are refreshing, but safety check
            setUser(freshUser);
            await AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(freshUser));
         }
@@ -66,14 +64,9 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
           setUser(JSON.parse(storedUser));
           console.log('[AuthContext] Restored auth state');
           
-          // Refresh profile in background to get latest data (like businessId)
-          // We call this immediately after restoring state
           authApi.getProfile()
             .then(freshUser => {
                console.log('[AuthContext] Background refresh success');
-               // Update state and storage without triggering full reload if possible, 
-               // but saveAuthState does both.
-               // We need to access the current token, which is storedToken here.
                return Promise.all([
                  AsyncStorage.setItem(AUTH_USER_KEY, JSON.stringify(freshUser)),
                ]).then(() => setUser(freshUser));
@@ -123,7 +116,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
       await saveAuthState(response.token, response.user);
     },
     onError: (error) => {
-      // Avoid red screen for expected login failures
       console.warn('[AuthContext] Login failed:', error);
     },
   });
@@ -163,7 +155,6 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
-      // Avoid calling server if token already missing/cleared
       const currentToken = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
       if (!currentToken) {
         return;
@@ -177,8 +168,12 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
 
   const isAuthenticated = !!token && !!user;
   
+  // Đồng bộ hóa định nghĩa các Role chính xác theo Backend
   const isAdmin = user?.role === 'superadmin' || user?.role === 'admin';
   const isBusiness = user?.role === 'business';
+  const isHotel = user?.role === 'hotel';
+  const isStaff = user?.role === 'staff';
+  
   const canAccessAllHotels = isAdmin;
   const canAccessMultipleHotels = isAdmin || isBusiness;
 
@@ -190,6 +185,8 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     isLoading,
     isAdmin,
     isBusiness,
+    isHotel,
+    isStaff,
     canAccessAllHotels,
     canAccessMultipleHotels,
     login: loginMutation.mutateAsync,

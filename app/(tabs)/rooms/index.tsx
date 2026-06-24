@@ -90,6 +90,21 @@ type ModalMode = 'checkin' | 'checkout' | 'cleaning' | 'details' | 'transfer';
 type RateType = 'hourly' | 'daily' | 'nightly' | 'weekly' | 'monthly';
 type PaymentMethod = 'cash' | 'transfer' | 'card';
 
+interface RoomSession {
+  roomId: string;
+  roomNumber: number;
+  roomType: string;
+  hotelId: string;
+  guestInfo?: any;
+  paymentMethod?: string;
+  rateType?: string;
+  advancePayment?: number;
+  additionalCharges?: number;
+  discount?: number;
+  notes?: string;
+  selectedServices: SelectedServiceItem[];
+}
+
 interface CheckInFormData {
   guestName: string;
   guestPhone: string;
@@ -189,10 +204,122 @@ export default function RoomsScreen() {
   const [guestOutModalVisible, setGuestOutModalVisible] = useState(false);
   const [guestReturnModalVisible, setGuestReturnModalVisible] = useState(false);
 
-  const { data: rooms = [], isLoading, refetch } = useQuery({
-    queryKey: ['rooms', selectedHotelId],
-    queryFn: () => roomsApi.getAll(selectedHotelId || undefined),
+  const { 
+  data: rooms = [], 
+  isLoading: isRoomsLoading, 
+  refetch: refetchRooms,
+  isFetching: isRoomsFetching 
+} = useQuery({
+  queryKey: ['rooms', selectedHotelId], 
+  queryFn: () => {
+    // CHẶN ĐẦU: Nếu lỡ lọt lưới vào đây mà hotelId vẫn rỗng, trả về mảng rỗng ngay lập tức, không gọi lên server
+    if (!selectedHotelId || selectedHotelId.trim() === '') {
+      return [];
+    }
+    return roomsApi.getRoomsWithLiveSessions(selectedHotelId);
+  },
+  // ĐIỀU KIỆN QUAN TRỌNG: Chỉ bật query khi selectedHotelId không null, không undefined và không phải chuỗi rỗng
+  enabled: !!selectedHotelId && selectedHotelId.trim() !== '',
+  
+  refetchInterval: 10000, 
+  refetchIntervalInBackground: false,
+});
+
+// 1. QUERY: Lấy danh sách các phiên bản nháp (Sessions) từ Redis backend công khai an toàn
+  const { data: roomSessions, refetch: refetchSessions } = useQuery({
+    queryKey: ['roomSessions', selectedHotelId],
+    // Giải pháp: Sử dụng toán tử rút gọn || '' để loại bỏ hoàn toàn lỗi Type 'null' is not assignable to type 'string'
+    queryFn: () => roomsApi.getRoomSessions(selectedHotelId || ''), 
+    enabled: !!selectedHotelId && selectedHotelId !== 'null' && selectedHotelId.trim() !== '', 
+    refetchInterval: 15000, // Tần suất đồng bộ giãn cách tránh timeout
+    retry: 1,
+    refetchOnWindowFocus: false,
   });
+
+  // 2. MUTATION: Khai báo hàm đẩy trạng thái đồng bộ lên Redis của Backend đúng chuẩn cấu trúc
+  const syncSessionMutation = useMutation({
+    mutationFn: (payload: { hotelId: string; roomId: string; sessionData: any }) => 
+      roomsApi.updateRoomSession(payload),
+  });
+
+  // 3. EFFECT: Khôi phục tự động dữ liệu từ Web/Thiết bị khác đồng bộ sang Mobile khi mở Modal (Web -> Mobile)
+  useEffect(() => {
+    if (modalVisible && selectedRoom && modalMode === 'checkin' && roomSessions) {
+      // Bọc an toàn để tương thích cả id hoặc _id tùy cấu trúc trả về từ backend
+      const roomId = selectedRoom.id || (selectedRoom as any)._id || '';
+      const currentSession = roomSessions[roomId];
+      
+      if (currentSession) {
+        setCheckInForm(prev => ({
+          ...prev,
+          guestName: currentSession.guestInfo?.name || '',
+          guestPhone: currentSession.guestInfo?.phone || '',
+          guestId: currentSession.guestInfo?.idNumber || '',
+          rateType: (currentSession.rateType as RateType) || 'hourly', // Khớp kiểu enum nghiêm ngặt
+          paymentMethod: (currentSession.paymentMethod as PaymentMethod) || 'cash',
+          advancePayment: currentSession.advancePayment?.toString() || '',
+          additionalCharges: currentSession.additionalCharges?.toString() || '',
+          discount: currentSession.discount?.toString() || '',
+          notes: currentSession.notes || '',
+        }));
+
+        if (currentSession.selectedServices) {
+          setSelectedServices(currentSession.selectedServices.map((s: any) => ({
+            serviceId: s.serviceId || s.id || '',
+            serviceName: s.serviceName || s.name || '',
+            price: Number(s.price) || Number(s.unitPrice) || 0,
+            quantity: Number(s.quantity) || 1,
+            totalPrice: Number(s.totalPrice) || 0,
+          })));
+        }
+      }
+    }
+  }, [modalVisible, selectedRoom, modalMode, roomSessions]);
+
+  // 4. EFFECT: Lắng nghe thay đổi trên Form Mobile để tự động sync lên Cloud Redis qua Debounce (Mobile -> Web)
+  useEffect(() => {
+    if (modalVisible && selectedRoom && modalMode === 'checkin' && selectedHotelId) {
+      const roomId = selectedRoom.id || (selectedRoom as any)._id || '';
+      if (!roomId) return;
+
+      const syncDebounceTimer = setTimeout(() => {
+        const sessionPayload = {
+          roomId: roomId,
+          roomNumber: Number(selectedRoom.number) || 0,
+          roomType: selectedRoom.roomType || '',
+          hotelId: selectedHotelId,
+          guestInfo: {
+            name: checkInForm.guestName,
+            phone: checkInForm.guestPhone,
+            idNumber: checkInForm.guestId,
+          },
+          rateType: checkInForm.rateType,
+          paymentMethod: checkInForm.paymentMethod,
+          advancePayment: Number(checkInForm.advancePayment) || 0,
+          additionalCharges: Number(checkInForm.additionalCharges) || 0,
+          discount: Number(checkInForm.discount) || 0,
+          notes: checkInForm.notes,
+          selectedServices: selectedServices.map(s => ({
+            serviceId: s.serviceId,
+            serviceName: s.serviceName,
+            price: s.price,
+            quantity: s.quantity,
+            totalPrice: s.totalPrice,
+          })),
+        };
+
+        // Gọi Mutation cập nhật lên Redis
+        syncSessionMutation.mutate({
+          hotelId: selectedHotelId, // Chắc chắn là string nhờ vào điều kiện if ở trên
+          roomId: roomId,
+          sessionData: sessionPayload as any, // Ép kiểu an toàn 'as any' để tránh xung đột cấu trúc cục bộ và ApiRoomSession
+        });
+      }, 800); // Debounce delay 800ms giúp giảm tải số lượng request liên tục khi gõ chữ
+
+      return () => clearTimeout(syncDebounceTimer);
+    }
+  }, [checkInForm, selectedServices, modalVisible, selectedRoom, modalMode, selectedHotelId]);
+  
 
   const { data: availableServices = [], isLoading: isLoadingServiceList } = useQuery({
     queryKey: ['services', selectedHotelId],
@@ -341,11 +468,15 @@ export default function RoomsScreen() {
 
   const filteredRooms = useMemo(() => {
     return rooms.filter((room) => {
-      const matchesSearch = room.number.toLowerCase().includes(searchQuery.toLowerCase());
+      // Bọc an toàn: Nếu room.number bị undefined, sẽ tự động dùng chuỗi rỗng '' thay thế
+      const roomNumberSafe = room.number || '';
+      const matchesSearch = roomNumberSafe.toLowerCase().includes(searchQuery.toLowerCase());
+      
       const matchesFilter =
         selectedFilter === 'all'
           || room.status === selectedFilter
           || (selectedFilter === 'guest_out' && room.status === 'occupied' && room.guestStatus === 'out');
+          
       return matchesSearch && matchesFilter;
     });
   }, [rooms, searchQuery, selectedFilter]);
@@ -2429,7 +2560,7 @@ export default function RoomsScreen() {
     }
   }, [draft, modalMode, selectedRoom]);
 
-  if (isLoading && rooms.length === 0) {
+  if (isRoomsLoading && rooms.length === 0) {
     return (
       <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top, backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.tint} />
@@ -2555,7 +2686,7 @@ export default function RoomsScreen() {
           viewMode === 'grid' && styles.gridContainer,
         ]}
         refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={refetch} />
+          <RefreshControl refreshing={isRoomsLoading || isRoomsFetching} onRefresh={() =>{ refetchRooms(); }} />
         }
       >
         {viewMode === 'list'

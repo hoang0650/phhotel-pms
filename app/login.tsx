@@ -36,22 +36,33 @@ export default function LoginScreen() {
   const [biometricLoading, setBiometricLoading] = useState(false);
 
   useEffect(() => {
-    const checkBiometric = async () => {
-      if (!isMobile) {
-        setBiometricReady(false);
-        return;
-      }
-      const stored = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
-      if (!stored) {
-        setBiometricReady(false);
-        return;
-      }
+    async function checkBiometrics() {
+    if (!isMobile) return;
+    try {
+      // 1. Kiểm tra phần cứng có hỗ trợ không với Timeout bảo vệ
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
       const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      setBiometricReady(hasHardware && isEnrolled);
-    };
-    checkBiometric();
-  }, [isMobile]);
+      
+      if (hasHardware && isEnrolled) {
+        setBiometricReady(true);
+        
+        // 2. Thử đọc thông tin đã lưu từ SecureStore một cách an toàn
+        const savedCredentials = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
+        if (savedCredentials) {
+          const { email: savedEmail } = JSON.parse(savedCredentials);
+          if (savedEmail && !email) {
+            setEmail(savedEmail); // Điền sẵn email cho tiện, nhưng KHÔNG tự động kích hoạt đăng nhập gây loop
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('[Login] Lỗi khởi tạo sinh trắc học:', error);
+      setBiometricReady(false);
+    }
+  }
+
+  checkBiometrics();
+}, []);
 
   const validate = () => {
     const newErrors: { email?: string; password?: string } = {};

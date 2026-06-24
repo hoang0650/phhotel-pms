@@ -99,6 +99,58 @@ export interface RoomEvent {
   createdAt: string;
 }
 
+export interface ApiRoomSession {
+  roomId: string;
+  roomNumber: number;
+  roomType: string;
+  hotelId: string;
+  checkinTime?: string;
+  guestInfo?: ApiRoomGuestInfo;
+  paymentMethod?: string;
+  rateType?: RateType;
+  advancePayment?: number;
+  additionalCharges?: number;
+  totalPrice?: number;
+  discount?: number;
+  notes?: string;
+  selectedServices: ApiRoomSelectedService[];
+}
+
+export interface RoomSessionData {
+  bookingId?: string;
+  checkInDate?: string;
+  expectedCheckoutTime?: string;
+  rateType?: RateType;
+  bookingType?: RateType;
+  guestInfo?: ApiRoomGuestInfo;
+  totalAmount?: number;
+  payment?: number;
+  roomStatus?: RoomStatus;
+  userId?: string;
+  staffId?: string;
+  additionalCharges?: number;
+  discount?: number;
+  advancePayment?: number;
+  [key: string]: any; 
+}
+export interface HotelRoomSessions {
+  [roomId: string]: string | RoomSessionData; // Redis hash có thể trả về chuỗi JSON string hoặc object đã parse
+}
+
+export const mergeRoomWithSession = (room: Room, sessionData: any): Room => {
+  if (!sessionData) return room;
+
+  const mergedRoom = {
+    ...room,
+    status: sessionData.roomStatus || sessionData.status || room.status,
+  } as any;
+
+  // Gán động thuộc tính mở rộng
+  mergedRoom.currentBooking = sessionData;
+
+  return mergedRoom as Room;
+};
+
 const mapApiRoomEventToRoomEvent = (e: ApiRoomEvent): RoomEvent => {
   const roomId = typeof e.roomId === 'object' ? (e.roomId?._id || '') : (e.roomId || '');
   const roomNumber = e.roomNumber || (typeof e.roomId === 'object' ? (e.roomId?.roomNumber || '') : '');
@@ -480,6 +532,96 @@ export const roomsApi = {
     } catch (error) {
       console.warn('[roomsApi.getAll] Error:', error);
       return [];
+    }
+  },
+
+  getRoomSessions: async (hotelId: string): Promise<Record<string, RoomSessionData>> => {
+    try {
+      // 1. Chặn an toàn các chuỗi không hợp lệ từ Mobile gửi lên trước khi gọi API
+      if (!hotelId || hotelId === 'undefined' || hotelId === 'null' || String(hotelId).trim() === '') {
+        return {};
+      }
+
+      // 2. CHỈ TRUYỀN 1 THAM SỐ: Khớp chuẩn cấu trúc signature của apiClient.get(url)
+      const endpoint = `/sessions/rooms?hotelId=${hotelId}`;
+      const response = await apiClient.get<HotelRoomSessions>(endpoint);
+      
+      const normalizedSessions: Record<string, RoomSessionData> = {};
+      
+      // 3. Chuẩn hóa và ép kiểu dữ liệu trả về an toàn từ Redis hash
+      if (response && typeof response === 'object') {
+        Object.entries(response).forEach(([roomId, value]) => {
+          try {
+            // Nếu dữ liệu Redis lưu dạng JSON string thô, tiến hành giải mã an toàn
+            if (typeof value === 'string') {
+              normalizedSessions[roomId] = JSON.parse(value);
+            } else {
+              normalizedSessions[roomId] = value as RoomSessionData;
+            }
+          } catch (e) {
+            console.error(`[roomsApi] Lỗi parse JSON session cho phòng ${roomId}:`, e);
+          }
+        });
+      }
+      
+      return normalizedSessions;
+    } catch (error: any) {
+      // Bọc catch nhẹ nhàng để nếu xảy ra lỗi timeout mạng, App Mobile không bị văng/crash màn hình chính
+      console.warn('[roomsApi.getRoomSessions] Lỗi kết nối hoặc Timeout:', error?.message || error);
+      return {};
+    }
+  },
+
+  updateRoomSession: async (payload: {
+    hotelId: string;
+    roomId: string;
+    sessionData: Partial<ApiRoomSession>;
+  }): Promise<any> => {
+    try {
+      // Backend nhận dữ liệu từ req.body gồm: hotelId, roomId, sessionData
+      // Tuỳ thuộc vào cấu hình route của bạn, endpoint có thể là '/sessions/update'
+      const endpoint = `/sessions/update`;
+      
+      const response = await apiClient.post<any>(endpoint, payload);
+      return response;
+    } catch (error) {
+      console.warn('[roomsApi.updateRoomSession] Error:', error);
+      throw error;
+    }
+  },
+
+  getRoomsWithLiveSessions: async (hotelId: string): Promise<Room[]> => {
+    if (!hotelId || hotelId.trim() === '') {
+      console.warn('[roomsApi] hotelId bị rỗng, hủy gọi API.');
+      return [];
+    }
+    try {
+      // 1. Chạy lấy dữ liệu
+      const [roomsResponse, sessionsMap] = await Promise.all([
+        apiClient.get<Room[] | { data: Room[] }>(`${API_ENDPOINTS.ROOMS.BASE}?hotelId=${hotelId}`),
+        roomsApi.getRoomSessions(hotelId)
+      ]);
+
+      const rooms = Array.isArray(roomsResponse) ? roomsResponse : (roomsResponse as any)?.data || [];
+
+      // 2. Map dữ liệu
+      return rooms.map((room: Room) => {
+        const roomIdStr = String(room.id || (room as any)._id || '');
+        const liveSession = sessionsMap[roomIdStr] || null;
+        return mergeRoomWithSession(room, liveSession);
+      });
+    } catch (error) {
+      console.error('[roomsApi.getRoomsWithLiveSessions] Lỗi kết hợp dữ liệu:', error);
+      
+      // FALLBACK: Trả về danh sách phòng cơ bản nếu bị timeout
+      try {
+        console.log('Đang thử lấy danh sách phòng cơ bản...');
+        const fallbackResponse = await apiClient.get<Room[] | { data: Room[] }>(`${API_ENDPOINTS.ROOMS.BASE}?hotelId=${hotelId}`);
+        return Array.isArray(fallbackResponse) ? fallbackResponse : (fallbackResponse as any)?.data || [];
+      } catch (fallbackError) {
+        console.error('Lỗi Fallback (Có thể đứt mạng hoàn toàn):', fallbackError);
+        return []; // Trả về mảng rỗng để không crash App
+      }
     }
   },
 

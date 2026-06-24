@@ -95,8 +95,8 @@ export interface Booking {
   deposit?: number;
   advancePayment?: number;
   basePrice?: number;
-  additionalCharges?: Array<{ description?: string; amount: number }>;
-  discounts?: Array<{ description?: string; amount: number }>;
+  additionalCharges?: number;
+  discounts?: number;
   source?: string;
   otaSource?: string;
   otaBookingId?: string;

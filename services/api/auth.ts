@@ -2,7 +2,7 @@ import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
 import { extractId, extractIds } from './utils';
 
-export type UserRole = 'superadmin' | 'admin' | 'business' | 'manager' | 'receptionist' | 'staff' | 'hotel_manager' | 'guest';
+export type UserRole = 'superadmin' | 'admin' | 'business' | 'manager' | 'receptionist' | 'staff' | 'hotel' | 'hotel_manager' | 'guest';
 
 export interface User {
   id: string;

@@ -22,14 +22,12 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
   const hotels = useMemo(() => {
     if (!user || !isAuthenticated) return [];
     
-    // Implement role-based filtering matching Angular room.component.ts
-    
-    // 1. Admin/Superadmin see all hotels
+    // 1. Admin/Superadmin xem được tất cả các khách sạn hệ thống
     if (user.role === 'admin' || user.role === 'superadmin') {
       return allHotels;
     }
     
-    // 2. Business see hotels matching businessId
+    // 2. Business xem các khách sạn trùng với businessId của mình
     if (user.role === 'business') {
       const userBusinessId = extractId(user.businessId);
       if (userBusinessId) {
@@ -41,8 +39,14 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
       return [];
     }
 
-    // 3. Manager/Receptionist/Staff/HotelManager see hotels matching hotelId
-    if (user.role === 'manager' || user.role === 'receptionist' || user.role === 'staff' || (user as any).role === 'hotel_manager') {
+    // 3. Hotel Manager (role: 'hotel') và Staff (role: 'staff') xem khách sạn theo hotelId hoặc hotelIds
+    if (
+      user.role === 'hotel' || 
+      user.role === 'staff' || 
+      user.role === 'manager' || 
+      user.role === 'receptionist' || 
+      (user as any).role === 'hotel_manager'
+    ) {
       const userHotelId = extractId(user.hotelId);
       if (userHotelId) {
         return allHotels.filter(hotel => {
@@ -50,14 +54,15 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
           return hId === userHotelId;
         });
       }
-      // Fallback: if no single hotelId, try array hotelIds
+      
+      // Fallback: Nếu tài khoản liên kết quản lý danh sách nhiều khách sạn qua mảng hotelIds
       const userHotelIds = (user as any).hotelIds as string[] | undefined;
       if (userHotelIds && userHotelIds.length > 0) {
         const idSet = new Set(userHotelIds);
         return allHotels.filter(hotel => idSet.has(extractId(hotel.id) || extractId((hotel as any)._id) || ''));
       }
-      // Fallback: if no hotel reference on user, maybe return empty or handle error
-      console.warn('[HotelContext] Staff/Manager user missing hotelId');
+      
+      console.warn('[HotelContext] Staff/Hotel user missing hotelId');
       return [];
     }
     
@@ -82,9 +87,7 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
 
   useEffect(() => {
     if (isInitialized && hotels.length > 0) {
-      // Logic auto-select giống room.component.ts:
-      // Nếu chưa chọn hotel nào, hoặc hotel đang chọn không còn trong danh sách (mất quyền),
-      // thì chọn hotel đầu tiên.
+      // Tự động chọn khách sạn đầu tiên khả dụng nếu chưa chọn hoặc mất quyền chọn cũ
       const currentSelection = hotels.find(h => h.id === selectedHotelId);
       
       if (!currentSelection) {
@@ -94,7 +97,7 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
         AsyncStorage.setItem(SELECTED_HOTEL_KEY, firstHotel.id).catch((e) => console.warn('[HotelContext] Error auto-saving first hotel:', e));
       }
     } else if (isInitialized && hotels.length === 0) {
-      // Nếu không có hotel nào
+      // Nếu không có hotel nào thuộc quyền quản lý, reset thông tin chọn về null
       if (selectedHotelId) {
         setSelectedHotelId(null);
         AsyncStorage.removeItem(SELECTED_HOTEL_KEY).catch((e) => console.warn('[HotelContext] Error clearing selected hotel:', e));

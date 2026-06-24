@@ -1,6 +1,6 @@
 export const API_CONFIG = {
   BASE_URL: 'https://api.phhotel.vn',
-  TIMEOUT: 30000,
+  TIMEOUT: 120000,
   AI_TIMEOUT: 120000,
   AI_BASE_URL: 'https://ai.phhotel.vn',
 };
