@@ -2698,11 +2698,13 @@ export default function RoomsScreen() {
           <RefreshControl refreshing={isRoomsLoading || isRoomsFetching} onRefresh={() =>{ refetchRooms(); }} />
         }
       >
-        {viewMode === 'list'
-          ? filteredRooms.map((room) => <View key={room.id}>{renderListItem(room)}</View>)
-          : filteredRooms.map((room) => <View key={room.id}>{renderGridItem(room)}</View>)}
+        <View key="rooms-list">
+          {viewMode === 'list'
+            ? filteredRooms.map((room) => <View key={room.id}>{renderListItem(room)}</View>)
+            : filteredRooms.map((room) => <View key={room.id}>{renderGridItem(room)}</View>)}
+        </View>
         {filteredRooms.length === 0 && (
-          <View style={styles.emptyState}>
+          <View key="empty-state" style={styles.emptyState}>
             {rooms.length === 0 ? (
               <>
                 <AlertCircle size={48} color={colors.textSecondary} />
