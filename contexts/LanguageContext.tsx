@@ -157,6 +157,11 @@ const translations = {
     guests2: 'Khách hàng',
     services2: 'Dịch vụ',
     staffs2: 'Nhân viên',
+    paymentHistory: 'Lịch Sử Thanh Toán',
+    debt: 'Công Nợ',
+    guestOut: 'Khách Ra Ngoài',
+    checkOut: 'Trả Phòng',
+    noServices: 'Không có dữ liệu',
   },
   en: {
     settings: 'Settings',
@@ -308,6 +313,11 @@ const translations = {
     guests2: 'Guests',
     services2: 'Services',
     staffs2: 'Staff',
+    paymentHistory: 'Payment History',
+    debt: 'Debt',
+    guestOut: 'Guest Out',
+    checkOut: 'Check Out',
+    noServices: 'No data',
   },
 };
 
