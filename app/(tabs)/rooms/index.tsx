@@ -1279,7 +1279,6 @@ export default function RoomsScreen() {
 
     return (
       <TouchableOpacity
-        key={room.id}
         style={[styles.gridItem, { backgroundColor: colors.cardBackground }]}
         activeOpacity={0.7}
         onPress={() => handleRoomPress(room)}
@@ -1325,7 +1324,6 @@ export default function RoomsScreen() {
 
     return (
       <TouchableOpacity
-        key={room.id}
         style={[styles.roomCard, { backgroundColor: colors.cardBackground }]}
         activeOpacity={0.7}
         onPress={() => handleRoomPress(room)}
@@ -2701,8 +2699,8 @@ export default function RoomsScreen() {
         }
       >
         {viewMode === 'list'
-          ? filteredRooms.map(renderListItem)
-          : filteredRooms.map(renderGridItem)}
+          ? filteredRooms.map((room) => <View key={room.id}>{renderListItem(room)}</View>)
+          : filteredRooms.map((room) => <View key={room.id}>{renderGridItem(room)}</View>)}
         {filteredRooms.length === 0 && (
           <View style={styles.emptyState}>
             {rooms.length === 0 ? (
