@@ -45,6 +45,7 @@ import Colors from '@/constants/colors';
 import { useHotel } from '@/contexts/HotelContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { roomsApi, bookingsApi, revenueApi, notificationsApi, shiftHandoverApi } from '@/services/api';
 import { TextInput } from 'react-native';
 import { ShiftHandover } from '@/types/shift-handover';
@@ -74,6 +75,7 @@ export default function DashboardScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { isDark, colors } = useTheme();
+  const { t, language } = useLanguage();
   const [hotelModalVisible, setHotelModalVisible] = useState(false);
   const [notificationModalVisible, setNotificationModalVisible] = useState(false);
   const [notifTab, setNotifTab] = useState<'all' | 'system' | 'hotel'>('all');
@@ -285,7 +287,7 @@ export default function DashboardScreen() {
     return (
       <View style={[styles.container, styles.loadingContainer, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.tint} />
-        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Đang tải dữ liệu...</Text>
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>{t('loadingData')}</Text>
       </View>
     );
   }
@@ -298,7 +300,7 @@ export default function DashboardScreen() {
       >
         <View style={styles.headerContent}>
           <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>Xin chào, {user?.name || 'Quản lý'}!</Text>
+            <Text style={styles.greeting}>{t('hello')}, {user?.name || t('admin')}!</Text>
             {hotels.length > 1 ? (
               <TouchableOpacity 
                 style={styles.hotelSelector}
@@ -342,7 +344,7 @@ export default function DashboardScreen() {
 
         <View style={styles.occupancyCard}>
           <View style={styles.occupancyHeader}>
-            <Text style={styles.occupancyLabel}>Tỷ lệ lấp đầy</Text>
+            <Text style={styles.occupancyLabel}>{t('occupancyRate')}</Text>
             <Text style={styles.occupancyValue}>{stats.occupancyRate}%</Text>
           </View>
           <View style={styles.progressBar}>
@@ -382,7 +384,7 @@ export default function DashboardScreen() {
         }
       >
         <View style={styles.quickAccessSection}>
-          <Text style={[styles.quickAccessTitle, { color: colors.text }]}>Truy cập nhanh</Text>
+          <Text style={[styles.quickAccessTitle, { color: colors.text }]}>{t('quickAccess')}</Text>
           <View style={styles.quickAccessGrid}>
             {quickAccessItems.map((item) => (
               <TouchableOpacity
@@ -403,14 +405,14 @@ export default function DashboardScreen() {
               <CalendarCheck size={20} color={Colors.status.vacant} />
             </View>
             <Text style={[styles.statValue, { color: colors.text }]}>{stats.vacantRooms}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Phòng trống</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('vacantRooms')}</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: isDark ? '#083344' : '#ecfeff' }]}>
             <View style={[styles.statIcon, { backgroundColor: isDark ? '#164e63' : '#cffafe' }]}>
               <Users size={20} color={Colors.status.guestOut} />
             </View>
             <Text style={[styles.statValue, { color: colors.text }]}>{stats.guestOutRooms}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Khách ra ngoài</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('guestOutRooms')}</Text>
           </View>
         </View>
 
@@ -420,14 +422,14 @@ export default function DashboardScreen() {
               <Sparkles size={20} color={Colors.status.cleaning} />
             </View>
             <Text style={[styles.statValue, { color: colors.text }]}>{stats.cleaningRooms}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Đang dọn dẹp</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('cleaningRooms')}</Text>
           </View>
           <View style={[styles.statCard, { backgroundColor: isDark ? '#450a0a' : '#fef2f2' }]}>
             <View style={[styles.statIcon, { backgroundColor: isDark ? '#7f1d1d' : '#fee2e2' }]}>
               <Wrench size={20} color={Colors.status.maintenance} />
             </View>
             <Text style={[styles.statValue, { color: colors.text }]}>{stats.maintenanceRooms}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Bảo trì</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('maintenanceRooms')}</Text>
           </View>
         </View>
 
@@ -437,20 +439,20 @@ export default function DashboardScreen() {
               <BedDouble size={20} color={Colors.status.booked} />
             </View>
             <Text style={[styles.statValue, { color: colors.text }]}>{stats.bookedRooms}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Đã đặt</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('bookedRooms')}</Text>
           </View>
            <View style={[styles.statCard, { backgroundColor: isDark ? '#431407' : '#fff7ed' }]}>
             <View style={[styles.statIcon, { backgroundColor: isDark ? '#7c2d12' : '#ffedd5' }]}>
               <AlertCircle size={20} color={Colors.status.dirty} />
             </View>
             <Text style={[styles.statValue, { color: colors.text }]}>{stats.dirtyRooms}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Phòng bẩn</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{t('dirtyRooms')}</Text>
           </View>
         </View>
 
         <View style={styles.revenueSection}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Doanh thu</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('revenue')}</Text>
             <View style={[styles.growthBadge, { backgroundColor: isPositiveGrowth ? '#10b98120' : '#ef444420'}]}>
               {isPositiveGrowth ? (
                 <TrendingUp size={14} color="#10b981" />
@@ -473,7 +475,7 @@ export default function DashboardScreen() {
               <View style={styles.revenueMainIcon}>
                 <DollarSign size={24} color="#fff" />
               </View>
-              <Text style={styles.revenueMainLabel}>Hôm nay</Text>
+              <Text style={styles.revenueMainLabel}>{t('todayRevenue')}</Text>
               <Text style={styles.revenueMainValue}>
                 {formatCurrency(stats.todayRevenue)}
               </Text>
@@ -487,14 +489,14 @@ export default function DashboardScreen() {
             <View style={styles.revenueSecondaryCards}>
               <View style={[styles.revenueSecondaryCard, { backgroundColor: colors.cardBackground }]}>
                 <BarChart3 size={18} color="#6366f1" />
-                <Text style={[styles.revenueSecondaryLabel, { color: colors.textSecondary }]}>Tổng thanh toán</Text>
+                <Text style={[styles.revenueSecondaryLabel, { color: colors.textSecondary }]}>{t('totalPayment')}</Text>
                 <Text style={[styles.revenueSecondaryValue, { color: colors.text }]}>
                   {formatCurrency(revenueData?.totalPayment || 0)}
                 </Text>
               </View>
               <View style={[styles.revenueSecondaryCard, { backgroundColor: colors.cardBackground }]}>
                 <PieChart size={18} color="#f59e0b" />
-                <Text style={[styles.revenueSecondaryLabel, { color: colors.textSecondary }]}>Tổng chi phí</Text>
+                <Text style={[styles.revenueSecondaryLabel, { color: colors.textSecondary }]}>{t('totalExpense')}</Text>
                 <Text style={[styles.revenueSecondaryValue, { color: colors.text }]}>
                   {formatCurrency(revenueData?.totalExpense || 0)}
                 </Text>
@@ -505,14 +507,14 @@ export default function DashboardScreen() {
           <View style={[styles.revenueBreakdown, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.breakdownItem}>
               <View style={[styles.breakdownDot, { backgroundColor: '#0d9488' }]} />
-              <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Doanh thu phòng</Text>
+              <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>{t('roomRevenue')}</Text>
               <Text style={[styles.breakdownValue, { color: colors.text }]}>
                 {formatCurrency((breakdownRange?.roomRevenue ?? revenueSummary?.roomRevenue) || 0)}
               </Text>
             </View>
             <View style={styles.breakdownItem}>
               <View style={[styles.breakdownDot, { backgroundColor: '#f59e0b' }]} />
-              <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Doanh thu dịch vụ</Text>
+              <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>{t('serviceRevenue')}</Text>
               <Text style={[styles.breakdownValue, { color: colors.text }]}>
                 {formatCurrency((breakdownRange?.serviceRevenue ?? revenueSummary?.serviceRevenue) || 0)}
               </Text>
@@ -523,12 +525,12 @@ export default function DashboardScreen() {
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Check-in hôm nay</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('checkInToday')}</Text>
             <TouchableOpacity 
               style={styles.seeAllBtn}
               onPress={() => router.push('/(tabs)/bookings' as any)}
             >
-              <Text style={[styles.seeAllText, { color: colors.tint }]}>Xem tất cả</Text>
+              <Text style={[styles.seeAllText, { color: colors.tint }]}>{t('seeAll')}</Text>
               <ChevronRight size={16} color={colors.tint} />
             </TouchableOpacity>
           </View>
@@ -541,7 +543,7 @@ export default function DashboardScreen() {
                     <Text style={styles.roomBadgeText}>{ev.roomNumber}</Text>
                   </View>
                   <View style={styles.bookingDetails}>
-                    <Text style={[styles.guestName, { color: colors.text }]}>{ev.guestName || 'Khách lẻ'}</Text>
+                    <Text style={[styles.guestName, { color: colors.text }]}>{ev.guestName || t('walkInGuest2')}</Text>
                     <Text style={[styles.bookingMeta, { color: colors.textSecondary }]}>
                       {(() => {
                         const dt = ev.checkinTime ? new Date(ev.checkinTime) : new Date(ev.createdAt);
@@ -562,19 +564,19 @@ export default function DashboardScreen() {
           ) : (
             <View style={[styles.emptyState, { backgroundColor: colors.cardBackground }]}>
               <AlertCircle size={20} color={colors.textSecondary} />
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Không có check-in hôm nay</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{t('noCheckInToday')}</Text>
             </View>
           )}
         </View>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Check-out hôm nay</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('checkOutToday')}</Text>
             <TouchableOpacity 
               style={styles.seeAllBtn}
               onPress={() => router.push('/(tabs)/bookings' as any)}
             >
-              <Text style={[styles.seeAllText, { color: colors.tint }]}>Xem tất cả</Text>
+              <Text style={[styles.seeAllText, { color: colors.tint }]}>{t('seeAll')}</Text>
               <ChevronRight size={16} color={colors.tint} />
             </TouchableOpacity>
           </View>
@@ -587,7 +589,7 @@ export default function DashboardScreen() {
                     <Text style={styles.roomBadgeText}>{ev.roomNumber}</Text>
                   </View>
                   <View style={styles.bookingDetails}>
-                    <Text style={[styles.guestName, { color: colors.text }]}>{ev.guestName || 'Khách lẻ'}</Text>
+                    <Text style={[styles.guestName, { color: colors.text }]}>{ev.guestName || t('walkInGuest2')}</Text>
                   </View>
                 </View>
                 <TouchableOpacity style={[styles.checkInBtn, { backgroundColor: Colors.status.cleaning }]}>
@@ -598,7 +600,7 @@ export default function DashboardScreen() {
           ) : (
             <View style={[styles.emptyState, { backgroundColor: colors.cardBackground }]}>
               <AlertCircle size={20} color={colors.textSecondary} />
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Không có check-out hôm nay</Text>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{t('noCheckOutToday')}</Text>
             </View>
           )}
         </View>
@@ -615,7 +617,7 @@ export default function DashboardScreen() {
           onPress={() => setHotelModalVisible(false)}
         >
           <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Chọn khách sạn</Text>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>{t('selectHotel2')}</Text>
             
             <View style={[styles.searchContainer, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
               <Search size={20} color={colors.textSecondary} />
@@ -664,7 +666,7 @@ export default function DashboardScreen() {
                 <View style={styles.emptyHotels}>
                   <AlertCircle size={24} color={colors.textSecondary} />
                   <Text style={[styles.emptyHotelsText, { color: colors.textSecondary }]}>
-                    {hotels.length === 0 ? 'Chưa có khách sạn nào' : 'Không tìm thấy khách sạn phù hợp'}
+                    {t('noHotels')}
                   </Text>
                 </View>
               )}
@@ -685,7 +687,7 @@ export default function DashboardScreen() {
         >
           <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeaderRow}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Thông báo</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{t('notifications')}</Text>
               <TouchableOpacity
                 style={[styles.markAllBtn, { borderColor: colors.tint }]}
                 onPress={handleMarkAllRead}
@@ -694,7 +696,7 @@ export default function DashboardScreen() {
                 {markingAll ? (
                   <ActivityIndicator size="small" color={colors.tint} />
                 ) : (
-                  <Text style={[styles.markAllBtnText, { color: colors.tint }]}>Mark all as read</Text>
+                  <Text style={[styles.markAllBtnText, { color: colors.tint }]}>{t('markAllAsRead')}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -703,7 +705,7 @@ export default function DashboardScreen() {
                 style={[styles.tabItem, notifTab === 'all' && styles.tabItemActive]}
                 onPress={() => setNotifTab('all')}
               >
-                <Text style={[styles.tabText, notifTab === 'all' && styles.tabTextActive]}>All</Text>
+                <Text style={[styles.tabText, notifTab === 'all' && styles.tabTextActive]}>{t('allTab')}</Text>
                 <View style={[styles.tabUnderline, notifTab === 'all' && styles.tabUnderlineActive]} />
               </TouchableOpacity>
               <TouchableOpacity
@@ -711,7 +713,7 @@ export default function DashboardScreen() {
                 onPress={() => setNotifTab('system')}
               >
                 <Text style={[styles.tabText, notifTab === 'system' && styles.tabTextActive]}>
-                  System {unreadSummary?.system ? `(${unreadSummary.system})` : ''}
+                  {t('systemTab')} {unreadSummary?.system ? `(${unreadSummary.system})` : ''}
                 </Text>
                 <View style={[styles.tabUnderline, notifTab === 'system' && styles.tabUnderlineActive]} />
               </TouchableOpacity>
@@ -720,7 +722,7 @@ export default function DashboardScreen() {
                 onPress={() => setNotifTab('hotel')}
               >
                 <Text style={[styles.tabText, notifTab === 'hotel' && styles.tabTextActive]}>
-                  Hotel {unreadSummary?.hotel ? `(${unreadSummary.hotel})` : ''}
+                  {t('hotelTab')} {unreadSummary?.hotel ? `(${unreadSummary.hotel})` : ''}
                 </Text>
                 <View style={[styles.tabUnderline, notifTab === 'hotel' && styles.tabUnderlineActive]} />
               </TouchableOpacity>
@@ -752,7 +754,7 @@ export default function DashboardScreen() {
               ) : (
                 <View style={styles.emptyNotifications}>
                   <Bell size={32} color={colors.textSecondary} />
-                  <Text style={[styles.emptyNotificationsText, { color: colors.textSecondary }]}>Không có thông báo</Text>
+                  <Text style={[styles.emptyNotificationsText, { color: colors.textSecondary }]}>{t('noNotifications')}</Text>
                 </View>
               )}
             </ScrollView>
