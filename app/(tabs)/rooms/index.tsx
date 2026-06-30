@@ -142,12 +142,19 @@ interface SelectedServiceItem {
 export default function RoomsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { selectedHotelId } = useHotel();
+  const { selectedHotelId, isLoading: hotelContextLoading } = useHotel();
   const { isDark, colors } = useTheme();
   const { t, language } = useLanguage();
   const router = useRouter();
   const { assignRoomId } = useLocalSearchParams<{ assignRoomId?: string }>();
   const isCompactHeader = SCREEN_WIDTH < 380;
+
+  // Thêm useEffect để đảm bảo hotelId được khôi phục từ AsyncStorage khi reload
+  useEffect(() => {
+    if (selectedHotelId) {
+      console.log('[v0] RoomsScreen hotelId loaded:', selectedHotelId);
+    }
+  }, [selectedHotelId]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<RoomStatus | 'all' | 'guest_out'>('all');
@@ -219,7 +226,8 @@ export default function RoomsScreen() {
     return roomsApi.getRoomsWithLiveSessions(selectedHotelId);
   },
   // ĐIỀU KIỆN QUAN TRỌNG: Chỉ bật query khi selectedHotelId không null, không undefined và không phải chuỗi rỗng
-  enabled: !!selectedHotelId && selectedHotelId.trim() !== '',
+  // Thêm điều kiện !hotelContextLoading để đảm bảo chờ HotelContext khôi phục hotelId từ AsyncStorage xong
+  enabled: !!selectedHotelId && selectedHotelId.trim() !== '' && !hotelContextLoading,
   
   refetchInterval: 10000, 
   refetchIntervalInBackground: false,
@@ -230,7 +238,8 @@ export default function RoomsScreen() {
     queryKey: ['roomSessions', selectedHotelId],
     // Giải pháp: Sử dụng toán tử rút gọn || '' để loại bỏ hoàn toàn lỗi Type 'null' is not assignable to type 'string'
     queryFn: () => roomsApi.getRoomSessions(selectedHotelId || ''), 
-    enabled: !!selectedHotelId && selectedHotelId !== 'null' && selectedHotelId.trim() !== '', 
+    // Thêm điều kiện !hotelContextLoading để đảm bảo chờ HotelContext khôi phục hotelId từ AsyncStorage xong
+    enabled: !!selectedHotelId && selectedHotelId !== 'null' && selectedHotelId.trim() !== '' && !hotelContextLoading, 
     refetchInterval: 15000, // Tần suất đồng bộ giãn cách tránh timeout
     retry: 1,
     refetchOnWindowFocus: false,
@@ -324,6 +333,8 @@ export default function RoomsScreen() {
   const { data: availableServices = [], isLoading: isLoadingServiceList } = useQuery({
     queryKey: ['services', selectedHotelId],
     queryFn: () => servicesApi.getAll(selectedHotelId || undefined),
+    // Thêm điều kiện !hotelContextLoading để đảm bảo chờ HotelContext khôi phục hotelId từ AsyncStorage xong
+    enabled: !!selectedHotelId && !hotelContextLoading,
   });
 
   const { data: serviceOrders = [] } = useQuery({
