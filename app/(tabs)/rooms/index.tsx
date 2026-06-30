@@ -1175,13 +1175,15 @@ export default function RoomsScreen() {
         },
         advancePayment: advancePayment || 0,
         rateType: checkOutForm.rateType,
+        paymentMethod: checkOutForm.paymentMethod,
         additionalCharges,
         discount,
         selectedServices: servicePayload,
-        advancePaymentMethod: checkOutForm.paymentMethod,
+        notes: checkOutForm.notes.trim(),
+        servicesTotal: serviceTotal,
       },
     });
-  }, [selectedRoom, checkOutForm, checkoutTotals, doSaveCheckinInfo, servicePayload]);
+  }, [selectedRoom, checkOutForm, checkoutTotals, doSaveCheckinInfo, servicePayload, serviceTotal]);
 
   const handleCheckOut = useCallback(() => {
     if (!selectedRoom) return;
