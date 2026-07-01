@@ -591,19 +591,35 @@ const InvoiceDetailModal = ({ visible, invoice, onClose }: {
 export default function InvoiceManagementScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { selectedHotelId, isLoading: hotelContextLoading } = useHotel();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
   const { data: invoices = [], isLoading, isError, refetch } = useQuery({
-    queryKey: ['invoices'],
-    queryFn: () => invoiceApi.getInvoices().then(res => res.data),
+    queryKey: ['invoices', selectedHotelId],
+    queryFn: () => {
+      // Chặn lại nếu hotelId rỗng để tránh gọi API lên server mà không có hotelId
+      if (!selectedHotelId || selectedHotelId.trim() === '') {
+        return [];
+      }
+      // Truyền hotelId dưới dạng query parameter
+      return invoiceApi.getInvoices({ hotelId: selectedHotelId }).then(res => res.data || []);
+    },
+    // Chỉ bật query khi hotelId đã được khôi phục từ AsyncStorage
+    enabled: !!selectedHotelId && selectedHotelId.trim() !== '' && !hotelContextLoading,
+    retry: 1,
   });
 
   const handleCreateInvoice = () => {
     // Navigate to a new screen for creating invoices
     router.push('/management/invoice-editor');
   };
+
+  // Debug log khi dữ liệu thay đổi
+  useEffect(() => {
+    console.log('[v0] Invoice screen loaded. selectedHotelId:', selectedHotelId, 'hotelContextLoading:', hotelContextLoading, 'invoices count:', invoices.length);
+  }, [selectedHotelId, hotelContextLoading, invoices]);
 
   const handleViewInvoice = (invoice: Invoice) => {
     setSelectedInvoice(invoice);
@@ -663,7 +679,7 @@ export default function InvoiceManagementScreen() {
         <FlatList
             data={filteredInvoices}
             renderItem={({ item }) => <InvoiceCard item={item} onPress={() => handleViewInvoice(item)} />}
-            keyExtractor={(item) => item._id}
+            keyExtractor={(item, index) => item._id ? String(item._id) : `invoice-${index}`}
             contentContainerStyle={styles.invoiceList}
             ListEmptyComponent={renderEmpty}
             refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}

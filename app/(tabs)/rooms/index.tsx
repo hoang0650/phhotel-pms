@@ -204,6 +204,8 @@ export default function RoomsScreen() {
   const [guestOutModalVisible, setGuestOutModalVisible] = useState(false);
   const [guestReturnModalVisible, setGuestReturnModalVisible] = useState(false);
 
+  
+
   const { 
   data: rooms = [], 
   isLoading: isRoomsLoading, 
@@ -1164,13 +1166,15 @@ export default function RoomsScreen() {
         },
         advancePayment: advancePayment || 0,
         rateType: checkOutForm.rateType,
+        paymentMethod: checkOutForm.paymentMethod,
         additionalCharges,
         discount,
         selectedServices: servicePayload,
-        advancePaymentMethod: checkOutForm.paymentMethod,
+        notes: checkOutForm.notes.trim(),
+        servicesTotal: serviceTotal,
       },
     });
-  }, [selectedRoom, checkOutForm, checkoutTotals, doSaveCheckinInfo, servicePayload]);
+  }, [selectedRoom, checkOutForm, checkoutTotals, doSaveCheckinInfo, servicePayload, serviceTotal]);
 
   const handleCheckOut = useCallback(() => {
     if (!selectedRoom) return;
@@ -1268,7 +1272,6 @@ export default function RoomsScreen() {
 
     return (
       <TouchableOpacity
-        key={room.id}
         style={[styles.gridItem, { backgroundColor: colors.cardBackground }]}
         activeOpacity={0.7}
         onPress={() => handleRoomPress(room)}
@@ -1314,7 +1317,6 @@ export default function RoomsScreen() {
 
     return (
       <TouchableOpacity
-        key={room.id}
         style={[styles.roomCard, { backgroundColor: colors.cardBackground }]}
         activeOpacity={0.7}
         onPress={() => handleRoomPress(room)}
@@ -2690,8 +2692,8 @@ export default function RoomsScreen() {
         }
       >
         {viewMode === 'list'
-          ? filteredRooms.map(renderListItem)
-          : filteredRooms.map(renderGridItem)}
+          ? filteredRooms.map((room) => <View key={room.id}>{renderListItem(room)}</View>)
+          : filteredRooms.map((room) => <View key={room.id}>{renderGridItem(room)}</View>)}
         {filteredRooms.length === 0 && (
           <View style={styles.emptyState}>
             {rooms.length === 0 ? (

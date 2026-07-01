@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { roomsApi } from '@/services/api';
 import { useHotel } from '@/contexts/HotelContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface PaymentRecord {
   id: string;
@@ -40,6 +41,7 @@ interface PaymentRecord {
 
 export default function PaymentHistoryScreen() {
   const { selectedHotelId } = useHotel();
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending' | 'unpaid'>('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -174,7 +176,7 @@ export default function PaymentHistoryScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Đang tải dữ liệu...</Text>
+        <Text style={styles.loadingText}>{t('loadingData')}</Text>
       </View>
     );
   }
@@ -183,7 +185,7 @@ export default function PaymentHistoryScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Lịch Sử Thanh Toán</Text>
+        <Text style={styles.headerTitle}>{t('paymentHistory')}</Text>
         <View style={styles.headerStats}>
           <Text style={styles.statText}>Tổng: {filteredData.length} giao dịch</Text>
         </View>
@@ -230,7 +232,7 @@ export default function PaymentHistoryScreen() {
         {paginatedData.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="time-outline" size={64} color="#C7C7CC" />
-            <Text style={styles.emptyText}>Không có giao dịch nào</Text>
+            <Text style={styles.emptyText}>{t('noServices')}</Text>
           </View>
         ) : (
           paginatedData.map((item) => (
