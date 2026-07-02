@@ -12,6 +12,7 @@ class ApiClient {
   private baseUrl: string;
   private timeout: number;
   private static lastForbiddenAlert = 0;
+  private static lastNetworkWarning = 0;
 
   constructor() {
     this.baseUrl = API_CONFIG.BASE_URL;
@@ -97,9 +98,16 @@ class ApiClient {
       if (error instanceof Error && error.name === 'AbortError') {
         throw new Error('Request timeout');
       }
-      if (error instanceof TypeError && error.message === 'Failed to fetch') {
-        console.warn('[API] CORS or network error - server may not allow requests from this origin');
-        throw new Error('Network error: Unable to connect to server. This may be due to CORS restrictions.');
+      const isReactNativeNetworkError =
+        (error instanceof TypeError && (error.message === 'Failed to fetch' || error.message === 'Network request failed'))
+        || (error instanceof Error && error.message === 'Network request failed');
+      if (isReactNativeNetworkError) {
+        const now = Date.now();
+        if (now - ApiClient.lastNetworkWarning > 3000) {
+          ApiClient.lastNetworkWarning = now;
+          console.warn('[API] Network request failed - unable to reach server');
+        }
+        throw new Error('NETWORK_ERROR');
       }
       throw error;
     }

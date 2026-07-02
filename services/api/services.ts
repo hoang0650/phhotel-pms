@@ -2,6 +2,9 @@ import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
 import { Service, ServiceOrder } from '@/types/hotel';
 
+const isNetworkError = (error: unknown): boolean =>
+  error instanceof Error && (error.message === 'NETWORK_ERROR' || error.message === 'Request timeout');
+
 export interface ApiService {
   _id: string;
   name: string;
@@ -99,6 +102,9 @@ export const servicesApi = {
         console.warn('[servicesApi.getAll] Unauthorized - returning empty list');
         return [];
       }
+      if (isNetworkError(error)) {
+        return [];
+      }
       console.warn('[servicesApi.getAll] Error:', error);
       return [];
     }
@@ -164,6 +170,9 @@ export const servicesApi = {
       const orders = Array.isArray(response) ? response : [];
       return orders.map(mapApiServiceOrderToServiceOrder);
     } catch (error) {
+      if (isNetworkError(error)) {
+        return [];
+      }
       console.warn('[servicesApi.getOrdersByRoom] Error:', error);
       return [];
     }

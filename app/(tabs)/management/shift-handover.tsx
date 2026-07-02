@@ -46,6 +46,66 @@ const formatDateTime = (value?: string | Date) => {
   });
 };
 
+type FilterPreset = 'today' | '7days' | '30days' | 'month' | 'custom';
+
+const formatDateInput = (value: Date) => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseDateInput = (value: string, endOfDay = false) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const parsed = new Date(`${value}T${endOfDay ? '23:59:59.999' : '00:00:00.000'}`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+};
+
+const getRangeFromPreset = (preset: Exclude<FilterPreset, 'custom'>) => {
+  const endDate = new Date();
+  let startDate = new Date();
+
+  switch (preset) {
+    case '7days':
+      startDate.setDate(endDate.getDate() - 6);
+      break;
+    case '30days':
+      startDate.setDate(endDate.getDate() - 29);
+      break;
+    case 'month':
+      startDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+      break;
+    case 'today':
+    default:
+      startDate = new Date(endDate);
+      break;
+  }
+
+  return {
+    startDate: formatDateInput(startDate),
+    endDate: formatDateInput(endDate),
+  };
+};
+
+const formatFilterDateLabel = (value: string) => {
+  const parsed = parseDateInput(value);
+  if (!parsed) return value;
+  return parsed.toLocaleDateString('vi-VN');
+};
+
+const isSameDay = (left?: string | Date, right?: string | Date) => {
+  if (!left || !right) return false;
+  const leftDate = new Date(left);
+  const rightDate = new Date(right);
+  if (Number.isNaN(leftDate.getTime()) || Number.isNaN(rightDate.getTime())) return false;
+  return (
+    leftDate.getFullYear() === rightDate.getFullYear() &&
+    leftDate.getMonth() === rightDate.getMonth() &&
+    leftDate.getDate() === rightDate.getDate()
+  );
+};
+
 const getStatusLabel = (status?: string) => {
   switch (status) {
     case 'confirmed':
@@ -157,6 +217,35 @@ export default function ShiftHandoverScreen() {
 
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<ShiftHandover | null>(null);
+  const [currentShiftQueryTime, setCurrentShiftQueryTime] = useState(() => new Date().toISOString());
+  const defaultFilterRange = getRangeFromPreset('today');
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [filterPreset, setFilterPreset] = useState<FilterPreset>('today');
+  const [draftStartDate, setDraftStartDate] = useState(defaultFilterRange.startDate);
+  const [draftEndDate, setDraftEndDate] = useState(defaultFilterRange.endDate);
+  const [appliedStartDate, setAppliedStartDate] = useState(defaultFilterRange.startDate);
+  const [appliedEndDate, setAppliedEndDate] = useState(defaultFilterRange.endDate);
+
+  const appliedStartDateIso = useMemo(
+    () => parseDateInput(appliedStartDate)?.toISOString(),
+    [appliedStartDate]
+  );
+  const appliedEndDateIso = useMemo(
+    () => parseDateInput(appliedEndDate, true)?.toISOString(),
+    [appliedEndDate]
+  );
+  const currentShiftStartIso = useMemo(() => {
+    if (previousShiftData?.lastShiftHandover?.handoverTime) {
+      const lastHandoverDate = new Date(previousShiftData.lastShiftHandover.handoverTime);
+      if (!Number.isNaN(lastHandoverDate.getTime())) {
+        return lastHandoverDate.toISOString();
+      }
+    }
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    return startOfDay.toISOString();
+  }, [previousShiftData?.lastShiftHandover?.handoverTime]);
+  const currentShiftEndIso = currentShiftQueryTime;
 
   const { data: staffs = [], isLoading: staffsLoading, refetch: refetchStaffs } = useQuery({
     queryKey: ['staffs', selectedHotelId],
@@ -171,29 +260,31 @@ export default function ShiftHandoverScreen() {
   });
 
   const { data: revenueData, isLoading: revenueLoading, refetch: refetchRevenue } = useQuery({
-    queryKey: ['shiftHandover', 'revenue', selectedHotelId],
-    queryFn: () => shiftHandoverApi.getRevenue(selectedHotelId || ''),
+    queryKey: ['shiftHandover', 'revenue', selectedHotelId, appliedStartDateIso, appliedEndDateIso],
+    queryFn: () => shiftHandoverApi.getRevenue(selectedHotelId || '', appliedStartDateIso, appliedEndDateIso),
     enabled: !!selectedHotelId,
   });
 
   // Lấy payment history để tính tiền mặt, chuyển khoản, cà thẻ trong ca
   const { data: paymentHistoryData, isLoading: paymentHistoryLoading, refetch: refetchPaymentHistory } = useQuery({
-    queryKey: ['paymentHistory', selectedHotelId],
+    queryKey: ['paymentHistory', selectedHotelId, currentShiftStartIso, currentShiftEndIso],
     queryFn: () => selectedHotelId ? roomsApi.getEventsByHotel(selectedHotelId, { 
       types: ['checkout', 'checkin'], 
       limit: 1000,
-      skip: 0
+      skip: 0,
+      startDate: currentShiftStartIso,
+      endDate: currentShiftEndIso,
     }) : Promise.resolve([]),
     enabled: !!selectedHotelId,
   });
 
   // Lấy danh sách phiếu chi trong ca
   const { data: expensesData, isLoading: expensesLoading, refetch: refetchExpenses } = useQuery({
-    queryKey: ['expenses', selectedHotelId],
+    queryKey: ['expenses', selectedHotelId, currentShiftStartIso, currentShiftEndIso],
     queryFn: () => selectedHotelId ? transactionsApi.getExpenses({
       hotelId: selectedHotelId,
-      startDate: new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
-      endDate: new Date().toISOString(),
+      startDate: currentShiftStartIso,
+      endDate: currentShiftEndIso,
       page: 1,
       limit: 1000
     }) : Promise.resolve({ data: [], total: 0, page: 1, limit: 1000, totalPages: 0 }),
@@ -202,11 +293,11 @@ export default function ShiftHandoverScreen() {
 
   // Lấy danh sách phiếu thu trong ca
   const { data: incomesData, isLoading: incomesLoading, refetch: refetchIncomes } = useQuery({
-    queryKey: ['incomes', selectedHotelId],
+    queryKey: ['incomes', selectedHotelId, currentShiftStartIso, currentShiftEndIso],
     queryFn: () => selectedHotelId ? transactionsApi.getIncomes({
       hotelId: selectedHotelId,
-      startDate: new Date(new Date().setHours(0, 0, 0, 0)).toISOString(),
-      endDate: new Date().toISOString(),
+      startDate: currentShiftStartIso,
+      endDate: currentShiftEndIso,
       page: 1,
       limit: 1000
     }) : Promise.resolve({ data: [], total: 0, page: 1, limit: 1000, totalPages: 0 }),
@@ -214,10 +305,24 @@ export default function ShiftHandoverScreen() {
   });
 
   const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery<ShiftHandoverHistoryResponse>({
-    queryKey: ['shiftHandover', 'history', selectedHotelId, historyPage],
-    queryFn: () => shiftHandoverApi.getHistory(selectedHotelId || '', historyPage, pageSize),
+    queryKey: ['shiftHandover', 'history', selectedHotelId, historyPage, appliedStartDateIso, appliedEndDateIso],
+    queryFn: () =>
+      shiftHandoverApi.getHistory(selectedHotelId || '', historyPage, pageSize, {
+        startDate: appliedStartDateIso,
+        endDate: appliedEndDateIso,
+      }),
     enabled: !!selectedHotelId,
   });
+
+  useEffect(() => {
+    if (filterPreset === 'custom') return;
+    const nextRange = getRangeFromPreset(filterPreset);
+    setDraftStartDate(nextRange.startDate);
+    setDraftEndDate(nextRange.endDate);
+    setAppliedStartDate(nextRange.startDate);
+    setAppliedEndDate(nextRange.endDate);
+    setHistoryPage(1);
+  }, [filterPreset]);
 
   const fromStaff = useMemo(() => {
     if (!user?.id) return null;
@@ -235,12 +340,9 @@ export default function ShiftHandoverScreen() {
     }
   }, [previousShiftData, hasTouchedPrevious]);
 
-  // Tính toán tiền mặt, chuyển khoản, cà thẻ trong ca theo logic hotelapp
+  // Tính toán tiền mặt và tổng doanh thu theo đúng khoảng thời gian của ca hiện tại
   useEffect(() => {
-    if (revenueData && paymentHistoryData && expensesData && incomesData) {
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const currentTime = new Date();
+    if (paymentHistoryData && expensesData && incomesData) {
       const enrichedPayments = (paymentHistoryData || []).map((e: any) => {
         const roomAmount = Number(e.roomAmount) || Number(e.roomTotal) || 0;
         const serviceAmount = Number(e.serviceAmount) || Number(e.serviceTotal) || Number(e.servicesTotal) || 0;
@@ -260,14 +362,10 @@ export default function ShiftHandoverScreen() {
         const eventType = String(e.type || e.event || '').toLowerCase();
         return { totalAmount, methodGroup, checkoutTime, status, eventType, advancePayment, advanceMethodGroup };
       });
-      const lastManagerHandoverTime = previousShiftData?.lastShiftHandover?.handoverTime 
-        ? new Date(previousShiftData.lastShiftHandover.handoverTime) 
-        : null;
-      const baselineTime = lastManagerHandoverTime || startOfDay;
+
       const paymentsInShift = enrichedPayments.filter(p => {
         const isCheckout = p.eventType === 'checkout' || p.eventType === 'check-out';
-        const t = p.checkoutTime ? new Date(p.checkoutTime) : null;
-        return isCheckout && p.status === 'paid' && t && t > baselineTime && t <= currentTime;
+        return isCheckout && p.status === 'paid';
       });
       let cashPayments = paymentsInShift
         .filter(p => p.methodGroup === 'cash')
@@ -282,8 +380,7 @@ export default function ShiftHandoverScreen() {
       // Cộng thêm tiền đặt trước (advancePayment) từ sự kiện check-in theo phương thức thanh toán
       const advanceCheckins = enrichedPayments.filter(p => {
         const isCheckin = p.eventType === 'checkin' || p.eventType === 'check-in' || p.eventType === 'checkin_event';
-        const t = p.checkoutTime ? new Date(p.checkoutTime) : null;
-        return isCheckin && t && t > baselineTime && t <= currentTime;
+        return isCheckin;
       });
       advanceCheckins.forEach(p => {
         const adv = Number(p.advancePayment) || 0;
@@ -296,20 +393,8 @@ export default function ShiftHandoverScreen() {
 
       const expenses = expensesData.data || [];
       const incomes = incomesData.data || [];
-      const filteredExpenses = lastManagerHandoverTime 
-        ? expenses.filter(expense => {
-            const expenseTime = expense.createdAt ? new Date(expense.createdAt) : 
-                              expense.updatedAt ? new Date(expense.updatedAt) : new Date();
-            return expenseTime > lastManagerHandoverTime && expense.status === 'completed';
-          })
-        : expenses.filter(expense => expense.status === 'completed');
-      const filteredIncomes = lastManagerHandoverTime 
-        ? incomes.filter(income => {
-            const incomeTime = income.createdAt ? new Date(income.createdAt) : 
-                              income.updatedAt ? new Date(income.updatedAt) : new Date();
-            return incomeTime > lastManagerHandoverTime && income.status === 'completed';
-          })
-        : incomes.filter(income => income.status === 'completed');
+      const filteredExpenses = expenses.filter(expense => expense.status === 'completed');
+      const filteredIncomes = incomes.filter(income => income.status === 'completed');
       let cashExpense = 0;
       let totalExpenseAmount = 0;
       filteredExpenses.forEach(expense => {
@@ -332,15 +417,15 @@ export default function ShiftHandoverScreen() {
           }
         }
       });
-      const actualCashInShift = Math.max(0, cashPayments - cashExpense + cashIncome);
-      setCashInShift(String(actualCashInShift));
+      const actualCashInShift = cashPayments + cashIncome - cashExpense;
+      setCashInShift(String(Math.max(0, actualCashInShift)));
       setBankTransferAmount(String(bankTransferPayments));
       setCashAmount(String(cashPayments));
       setCardPaymentAmount(String(cardPayments));
       setExpenseAmount(String(totalExpenseAmount));
       setIncomeAmount(String(totalIncomeAmount));
     }
-  }, [revenueData, paymentHistoryData, expensesData, incomesData, previousShiftData]);
+  }, [paymentHistoryData, expensesData, incomesData]);
 
   const filteredStaffs = useMemo(() => {
     const keyword = staffSearch.trim().toLowerCase();
@@ -361,6 +446,13 @@ export default function ShiftHandoverScreen() {
   const previousAmountValue = parseCurrency(previousShiftAmount);
   const cashInShiftValue = parseCurrency(cashInShift);
   const managerHandoverValue = parseCurrency(managerHandoverAmount);
+  const cashAmountValue = parseCurrency(cashAmount);
+  const bankTransferAmountValue = parseCurrency(bankTransferAmount);
+  const cardPaymentAmountValue = parseCurrency(cardPaymentAmount);
+  const expenseAmountValue = parseCurrency(expenseAmount);
+  const incomeAmountValue = parseCurrency(incomeAmount);
+  const currentShiftTotalRevenue =
+    cashAmountValue + bankTransferAmountValue + cardPaymentAmountValue + incomeAmountValue - expenseAmountValue;
   const handoverAmount = previousAmountValue + cashInShiftValue - managerHandoverValue;
 
   const createMutation = useMutation({
@@ -382,6 +474,7 @@ export default function ShiftHandoverScreen() {
       }),
     onSuccess: () => {
       Alert.alert('Thành công', 'Đã giao ca thành công');
+      setCurrentShiftQueryTime(new Date().toISOString());
       setToUserPassword('');
       setSelectedToStaffId(null);
       setNotes('');
@@ -410,6 +503,7 @@ export default function ShiftHandoverScreen() {
       }),
     onSuccess: () => {
       Alert.alert('Thành công', 'Đã giao tiền quản lý');
+      setCurrentShiftQueryTime(new Date().toISOString());
       setManagerUsername('');
       setManagerPassword('');
       setManagerAmount('');
@@ -467,6 +561,7 @@ export default function ShiftHandoverScreen() {
   };
 
   const handleRefresh = () => {
+    setCurrentShiftQueryTime(new Date().toISOString());
     refetchStaffs();
     refetchPrevious();
     refetchRevenue();
@@ -474,6 +569,35 @@ export default function ShiftHandoverScreen() {
     refetchPaymentHistory();
     refetchExpenses();
     refetchIncomes();
+  };
+
+  const handleApplyFilters = () => {
+    const start = parseDateInput(draftStartDate);
+    const end = parseDateInput(draftEndDate, true);
+
+    if (!start || !end) {
+      Alert.alert('Bộ lọc không hợp lệ', 'Vui lòng nhập ngày theo định dạng YYYY-MM-DD');
+      return;
+    }
+
+    if (start.getTime() > end.getTime()) {
+      Alert.alert('Bộ lọc không hợp lệ', 'Ngày bắt đầu không được lớn hơn ngày kết thúc');
+      return;
+    }
+
+    setAppliedStartDate(draftStartDate);
+    setAppliedEndDate(draftEndDate);
+    setHistoryPage(1);
+  };
+
+  const handleResetFilters = () => {
+    const nextRange = getRangeFromPreset('today');
+    setFilterPreset('today');
+    setDraftStartDate(nextRange.startDate);
+    setDraftEndDate(nextRange.endDate);
+    setAppliedStartDate(nextRange.startDate);
+    setAppliedEndDate(nextRange.endDate);
+    setHistoryPage(1);
   };
 
   const handleViewDetail = (record: ShiftHandover) => {
@@ -486,24 +610,62 @@ export default function ShiftHandoverScreen() {
     setSelectedRecord(null);
   };
 
+  const getRecordDate = (record: ShiftHandover) => record.handoverTime || record.createdAt;
+
+  const filterRecordItemsByShiftDate = (record: ShiftHandover, items: any[] = []) => {
+    const recordDate = getRecordDate(record);
+    if (!recordDate) return items;
+
+    return items.filter((item: any) => {
+      const timestamp =
+        item?.timestamp ||
+        item?.createdAt ||
+        item?.updatedAt ||
+        item?.checkOutTime ||
+        item?.checkoutTime;
+      return isSameDay(timestamp, recordDate);
+    });
+  };
+
   const getTotalRevenue = (record: ShiftHandover) => {
     return (record.cashAmount || 0) + (record.bankTransferAmount || 0) + (record.cardPaymentAmount || 0) + (record.incomeAmount || 0) - (record.expenseAmount || 0);
   };
 
   const getCustomerPayments = (record: ShiftHandover) => {
-    return record.roomHistory || [];
+    const roomHistory = filterRecordItemsByShiftDate(record, record.roomHistory || []);
+    return roomHistory.filter((item: any) => {
+      const action = String(item?.action || '').toLowerCase();
+      return action === 'check_out' || action === 'checkout' || action === 'check-out';
+    });
+  };
+
+  const getAdvancePayments = (record: ShiftHandover) => {
+    const roomHistory = filterRecordItemsByShiftDate(record, record.roomHistory || []);
+    return roomHistory.filter((item: any) => {
+      const action = String(item?.action || '').toLowerCase();
+      const advance = Number(item?.advancePayment || item?.amount || 0);
+      return (action === 'check_in' || action === 'checkin' || action === 'check-in') && advance > 0;
+    });
   };
 
   const getTotalAmount = (items: any[]) => {
-    return items.reduce((sum, item) => sum + (item.totalAmount || 0), 0);
+    return items.reduce((sum, item) => {
+      const amount =
+        Number(item?.amount) ||
+        Number(item?.totalAmount) ||
+        Number(item?.adjustedTotal) ||
+        Number(item?.roomTotal) ||
+        0;
+      return sum + amount;
+    }, 0);
   };
   
   const getExpenseDetails = (record: ShiftHandover) => {
-    return record.expenseDetails || record.expenses || [];
+    return filterRecordItemsByShiftDate(record, record.expenseDetails || record.expenses || []);
   };
   
   const getIncomeDetails = (record: ShiftHandover) => {
-    return record.incomeDetails || record.incomes || [];
+    return filterRecordItemsByShiftDate(record, record.incomeDetails || record.incomes || []);
   };
 
   // Helper functions for enhanced customer payments table
@@ -536,6 +698,46 @@ export default function ShiftHandoverScreen() {
     }
   };
 
+  const getRecordComputedSummary = (record: ShiftHandover) => {
+    const customerPayments = getCustomerPayments(record);
+    const advancePayments = getAdvancePayments(record);
+    const expenses = getExpenseDetails(record);
+    const incomes = getIncomeDetails(record);
+
+    let cash = 0;
+    let bankTransfer = 0;
+    let card = 0;
+
+    customerPayments.forEach((room: any) => {
+      const method = mapPaymentMethodGroup(room.paymentMethod || room.method || 'cash');
+      const amount = Number(room.amount || room.totalAmount || room.adjustedTotal || 0);
+      if (method === 'bank_transfer') bankTransfer += amount;
+      else if (method === 'card') card += amount;
+      else cash += amount;
+    });
+
+    advancePayments.forEach((room: any) => {
+      const method = mapPaymentMethodGroup(room.advancePaymentMethod || room.paymentMethod || room.method || 'cash');
+      const amount = Number(room.advancePayment || room.amount || 0);
+      if (method === 'bank_transfer') bankTransfer += amount;
+      else if (method === 'card') card += amount;
+      else cash += amount;
+    });
+
+    const expense = expenses.reduce((sum, item) => sum + Number(item?.amount || 0), 0);
+    const income = incomes.reduce((sum, item) => sum + Number(item?.amount || 0), 0);
+    const totalRevenue = cash + bankTransfer + card + income - expense;
+
+    return {
+      cash,
+      bankTransfer,
+      card,
+      expense,
+      income,
+      totalRevenue,
+    };
+  };
+
   const getPaymentMethodLabel = (method: string) => {
     switch (method) {
       case 'cash': return 'Tiền mặt';
@@ -549,6 +751,15 @@ export default function ShiftHandoverScreen() {
 
   const historyItems = historyData?.data || [];
   const totalPages = historyData?.pagination?.totalPages || 1;
+  const revenueOverview = {
+    cashTotal: Number(revenueData?.cashTotal || 0),
+    bankTransferTotal: Number(revenueData?.bankTransferTotal || 0),
+    cardTotal: Number(revenueData?.cardTotal || 0),
+    expenseTotal: Number(revenueData?.expenseTotal || 0),
+    incomeTotal: Number(revenueData?.incomeTotal || 0),
+    totalRevenue: Number(revenueData?.totalRevenue || 0),
+  };
+  const activeFilterSummary = `${formatFilterDateLabel(appliedStartDate)} - ${formatFilterDateLabel(appliedEndDate)}`;
 
   return (
     <View style={styles.container}>
@@ -580,36 +791,47 @@ export default function ShiftHandoverScreen() {
               </TouchableOpacity>
             </View>
           </View>
-          
+
+          <View style={styles.filterSummaryBadge}>
+            <Ionicons name="calendar-outline" size={14} color="#1890ff" />
+            <Text style={styles.filterSummaryText}>{activeFilterSummary}</Text>
+          </View>
+
           <View style={styles.revenueGrid}>
             <View style={styles.revenueCard}>
               <Text style={styles.revenueLabel}>Tiền mặt</Text>
               <Text style={[styles.revenueValue, { color: '#52c41a' }]}>
-                {formatCurrency(revenueData?.cashTotal || 0)}
+                {formatCurrency(revenueOverview.cashTotal)}
               </Text>
             </View>
             <View style={styles.revenueCard}>
               <Text style={styles.revenueLabel}>Chuyển khoản</Text>
               <Text style={[styles.revenueValue, { color: '#1890ff' }]}>
-                {formatCurrency(revenueData?.bankTransferTotal || 0)}
+                {formatCurrency(revenueOverview.bankTransferTotal)}
               </Text>
             </View>
             <View style={styles.revenueCard}>
               <Text style={styles.revenueLabel}>Cà thẻ</Text>
               <Text style={[styles.revenueValue, { color: '#722ed1' }]}>
-                {formatCurrency(revenueData?.cardTotal || 0)}
+                {formatCurrency(revenueOverview.cardTotal)}
               </Text>
             </View>
             <View style={styles.revenueCard}>
               <Text style={styles.revenueLabel}>Phiếu Chi</Text>
               <Text style={[styles.revenueValue, { color: '#f5222d' }]}>
-                {formatCurrency(revenueData?.expenseTotal || 0)}
+                {formatCurrency(revenueOverview.expenseTotal)}
+              </Text>
+            </View>
+            <View style={styles.revenueCard}>
+              <Text style={styles.revenueLabel}>Phiếu Thu</Text>
+              <Text style={[styles.revenueValue, { color: '#13c2c2' }]}>
+                {formatCurrency(revenueOverview.incomeTotal)}
               </Text>
             </View>
             <View style={styles.revenueCard}>
               <Text style={styles.revenueLabel}>Tổng doanh thu</Text>
               <Text style={[styles.revenueValue, { color: '#faad14', fontWeight: 'bold' }]}>
-                {formatCurrency(revenueData?.totalRevenue || 0)}
+                {formatCurrency(revenueOverview.totalRevenue)}
               </Text>
             </View>
           </View>
@@ -626,7 +848,7 @@ export default function ShiftHandoverScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Lịch sử giao ca</Text>
             <View style={styles.sectionActions}>
-              <TouchableOpacity style={styles.actionButton} onPress={() => {/* TODO: Filter */}}>
+              <TouchableOpacity style={styles.actionButton} onPress={() => setFiltersVisible(prev => !prev)}>
                 <Ionicons name="filter" size={16} color="#1890ff" />
                 <Text style={styles.actionButtonText}>Lọc</Text>
               </TouchableOpacity>
@@ -640,6 +862,66 @@ export default function ShiftHandoverScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          {filtersVisible ? (
+            <View style={styles.filterPanel}>
+              <View style={styles.filterPresetRow}>
+                {[
+                  { key: 'today', label: 'Hôm nay' },
+                  { key: '7days', label: '7 ngày' },
+                  { key: '30days', label: '30 ngày' },
+                  { key: 'month', label: 'Tháng này' },
+                  { key: 'custom', label: 'Tùy chọn' },
+                ].map((item) => {
+                  const isActive = filterPreset === item.key;
+                  return (
+                    <TouchableOpacity
+                      key={item.key}
+                      style={[styles.filterChip, isActive && styles.filterChipActive]}
+                      onPress={() => setFilterPreset(item.key as FilterPreset)}
+                    >
+                      <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <View style={styles.filterInputsRow}>
+                <View style={styles.filterInputGroup}>
+                  <Text style={styles.filterInputLabel}>Từ ngày</Text>
+                  <TextInput
+                    style={styles.filterInput}
+                    value={draftStartDate}
+                    onChangeText={setDraftStartDate}
+                    placeholder="YYYY-MM-DD"
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View style={styles.filterInputGroup}>
+                  <Text style={styles.filterInputLabel}>Đến ngày</Text>
+                  <TextInput
+                    style={styles.filterInput}
+                    value={draftEndDate}
+                    onChangeText={setDraftEndDate}
+                    placeholder="YYYY-MM-DD"
+                    autoCapitalize="none"
+                  />
+                </View>
+              </View>
+
+              <View style={styles.filterActionRow}>
+                <TouchableOpacity style={styles.secondaryFilterButton} onPress={handleResetFilters}>
+                  <Ionicons name="refresh-outline" size={16} color="#1890ff" />
+                  <Text style={styles.secondaryFilterButtonText}>Đặt lại</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.primaryFilterButton} onPress={handleApplyFilters}>
+                  <Ionicons name="search-outline" size={16} color="#FFF" />
+                  <Text style={styles.primaryFilterButtonText}>Áp dụng</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
           {historyItems.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="time-outline" size={48} color="#C7C7CC" />
@@ -756,8 +1038,9 @@ export default function ShiftHandoverScreen() {
         animationType="slide"
         onRequestClose={handleCloseDetail}
       >
-        <Pressable style={styles.modalOverlay} onPress={handleCloseDetail}>
-          <Pressable style={[styles.modalContent, styles.detailModal]} onPress={() => {}}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={handleCloseDetail} />
+          <View style={[styles.modalContent, styles.detailModal]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { fontSize: 18 }]}>Chi tiết giao ca</Text>
               <TouchableOpacity onPress={handleCloseDetail} style={{ padding: 8 }}>
@@ -773,6 +1056,10 @@ export default function ShiftHandoverScreen() {
             >
               {selectedRecord && (
                 <View style={styles.detailContent}>
+                  {(() => {
+                    const computedSummary = getRecordComputedSummary(selectedRecord);
+                    return (
+                      <>
                   {/* Thông tin cơ bản */}
                   <View style={styles.detailSection}>
                     <Text style={styles.detailSectionTitle}>Thông tin giao ca</Text>
@@ -813,27 +1100,27 @@ export default function ShiftHandoverScreen() {
                     </View>
                     <View style={styles.detailRow}>
                       <Text style={[styles.detailLabel, { fontSize: 11 }]}>Tiền mặt thu:</Text>
-                      <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatCurrency(selectedRecord.cashAmount || 0)}</Text>
+                      <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatCurrency(computedSummary.cash)}</Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Text style={[styles.detailLabel, { fontSize: 11 }]}>Chuyển khoản:</Text>
-                      <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatCurrency(selectedRecord.bankTransferAmount || 0)}</Text>
+                      <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatCurrency(computedSummary.bankTransfer)}</Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Text style={[styles.detailLabel, { fontSize: 11 }]}>Cà thẻ:</Text>
-                      <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatCurrency(selectedRecord.cardPaymentAmount || 0)}</Text>
+                      <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatCurrency(computedSummary.card)}</Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Text style={[styles.detailLabel, { fontSize: 11 }]}>Phiếu chi:</Text>
-                      <Text style={[styles.detailValue, { fontSize: 11, color: '#E74C3C' }]}>{formatCurrency(selectedRecord.expenseAmount || 0)}</Text>
+                      <Text style={[styles.detailValue, { fontSize: 11, color: '#E74C3C' }]}>{formatCurrency(computedSummary.expense)}</Text>
                     </View>
                     <View style={styles.detailRow}>
                       <Text style={[styles.detailLabel, { fontSize: 11 }]}>Phiếu thu:</Text>
-                      <Text style={[styles.detailValue, { fontSize: 11, color: '#2ECC71' }]}>{formatCurrency(selectedRecord.incomeAmount || 0)}</Text>
+                      <Text style={[styles.detailValue, { fontSize: 11, color: '#2ECC71' }]}>{formatCurrency(computedSummary.income)}</Text>
                     </View>
                     <View style={[styles.detailRow, { borderTopWidth: 1, borderTopColor: '#E9ECEF', marginTop: 4, paddingTop: 6 }]}>
                       <Text style={[styles.detailLabel, { fontSize: 11, fontWeight: '600' }]}>Tổng doanh thu:</Text>
-                      <Text style={[styles.detailValue, styles.totalValue, { fontSize: 11 }]}>{formatCurrency(getTotalRevenue(selectedRecord))}</Text>
+                      <Text style={[styles.detailValue, styles.totalValue, { fontSize: 11 }]}>{formatCurrency(computedSummary.totalRevenue)}</Text>
                     </View>
                     <View style={[styles.detailRow, { marginTop: 2 }]}>
                       <Text style={[styles.detailLabel, { fontSize: 11, fontWeight: '600' }]}>Số tiền giao ca:</Text>
@@ -899,11 +1186,44 @@ export default function ShiftHandoverScreen() {
                     </View>
                   )}
 
+                  {/* Lịch sử tiền nhận từ đặt cọc */}
+                  {getAdvancePayments(selectedRecord).length > 0 && (
+                    <View style={styles.detailSection}>
+                      <Text style={styles.detailSectionTitle}>
+                        Chi tiết đặt cọc - Tổng: {formatCurrency(getTotalAmount(getAdvancePayments(selectedRecord)))}
+                      </Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                        <View>
+                          <View style={styles.tableHeader}>
+                            <Text style={[styles.tableHeaderText, { minWidth: 120 }]}>Phòng</Text>
+                            <Text style={[styles.tableHeaderText, { minWidth: 160 }]}>Khách hàng</Text>
+                            <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>Đặt cọc</Text>
+                            <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>PT thanh toán</Text>
+                            <Text style={[styles.tableHeaderText, { minWidth: 140 }]}>Check-in</Text>
+                          </View>
+                          {getAdvancePayments(selectedRecord).map((room, index) => (
+                            <View key={index} style={styles.tableRow}>
+                              <Text style={[styles.tableCell, { minWidth: 120 }]}>{`Phòng ${room.roomNumber || 'N/A'}`}</Text>
+                              <Text style={[styles.tableCell, { minWidth: 160 }]}>{room.customerName || room.guestName || 'Khách lẻ'}</Text>
+                              <Text style={[styles.tableCell, { minWidth: 120, textAlign: 'right' }]}>
+                                {formatCurrency(Number(room.advancePayment || room.amount || 0))}
+                              </Text>
+                              <Text style={[styles.tableCell, { minWidth: 120, textAlign: 'right' }]}>
+                                {getPaymentMethodLabel(room.advancePaymentMethod || room.paymentMethod || 'cash')}
+                              </Text>
+                              <Text style={[styles.tableCell, { minWidth: 140 }]}>{formatDateTime(getCheckinTime(room))}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </ScrollView>
+                    </View>
+                  )}
+
                   {/* Lịch sử tiền nhận từ khách */}
                   {getCustomerPayments(selectedRecord).length > 0 && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailSectionTitle}>
-                        Tổng doanh thu = Tiền mặt + Chuyển khoản + Thẻ tín dụng + Phiếu Thu - Phiếu Chi: {formatCurrency(getTotalRevenue(selectedRecord))}
+                        Tổng doanh thu = Tiền mặt + Chuyển khoản + Thẻ tín dụng + Phiếu Thu - Phiếu Chi: {formatCurrency(computedSummary.totalRevenue)}
                       </Text>
                       <View style={styles.tableContainer}>
                         <ScrollView horizontal showsHorizontalScrollIndicator={true} nestedScrollEnabled scrollEventThrottle={16}>
@@ -963,11 +1283,14 @@ export default function ShiftHandoverScreen() {
                       </View>
                     </View>
                   )}
+                      </>
+                    );
+                  })()}
                 </View>
               )}
             </ScrollView>
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -1226,6 +1549,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 8,
   },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
   modalContent: {
    backgroundColor: '#FFFF',
     borderRadius: 12,
@@ -1292,7 +1618,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   detailScroll: {
-    // Remove flex: 1 to allow content to determine height up to maxHeight
+    maxHeight: '100%',
   },
   detailContent: {
     gap: 12,
@@ -1439,6 +1765,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  filterSummaryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    backgroundColor: '#F0F8FF',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 12,
+  },
+  filterSummaryText: {
+    fontSize: 12,
+    color: '#1890ff',
+    fontWeight: '500',
+  },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1454,6 +1796,97 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#1890ff',
     fontWeight: '500',
+  },
+  filterPanel: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5EEF7',
+    padding: 12,
+    marginBottom: 16,
+    gap: 12,
+  },
+  filterPresetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D9E2EC',
+  },
+  filterChipActive: {
+    backgroundColor: '#1890ff',
+    borderColor: '#1890ff',
+  },
+  filterChipText: {
+    fontSize: 12,
+    color: '#52606D',
+    fontWeight: '500',
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  filterInputsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  filterInputGroup: {
+    flex: 1,
+  },
+  filterInputLabel: {
+    fontSize: 12,
+    color: '#52606D',
+    marginBottom: 6,
+  },
+  filterInput: {
+    borderWidth: 1,
+    borderColor: '#D9E2EC',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#2C3E50',
+    backgroundColor: '#FFFFFF',
+  },
+  filterActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  secondaryFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D9E2EC',
+  },
+  secondaryFilterButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1890ff',
+  },
+  primaryFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#1890ff',
+  },
+  primaryFilterButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   revenueGrid: {
     flexDirection: 'row',

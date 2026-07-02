@@ -1,5 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
+  Linking,
   View,
   Text,
   StyleSheet,
@@ -10,322 +12,636 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-import { roomsApi } from '@/services/api';
+import { paymentsApi } from '@/services/api';
+import type {
+  BankHubBankAccount,
+  HotelPaymentSettings,
+  PaymentHistoryItem,
+} from '@/services/api/payments';
+import { useAuth } from '@/contexts/AuthContext';
 import { useHotel } from '@/contexts/HotelContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-interface PaymentRecord {
-  id: string;
-  event: string;
-  type: string;
-  roomNumber?: string;
-  guestName?: string;
-  checkInTime?: string;
-  checkOutTime?: string;
-  checkoutTime?: string;
-  roomAmount?: number;
-  serviceAmount?: number;
-  additionalCharges?: number;
-  discount?: number;
-  advancePayment?: number;
-  totalAmount?: number;
-  paymentStatus?: string;
-  paymentMethod?: 'cash' | 'card' | 'bank_transfer' | string;
-  advancePaymentMethod?: 'cash' | 'card' | 'bank_transfer' | string;
-  payment?: {
-    status?: string;
-    paymentStatus?: string;
-    method?: 'cash' | 'card' | 'bank_transfer' | string;
+const REFRESH_INTERVAL = 30000;
+
+type PaymentTab = 'all' | 'sepay' | 'paypal' | 'crypto';
+type NormalizedStatus = 'paid' | 'pending' | 'unpaid' | 'refunded' | 'cancelled';
+
+type PaymentCardItem = PaymentHistoryItem & {
+  key: string;
+  methodKey: Exclude<PaymentTab, 'all'>;
+  paymentMethodLabel: string;
+  paymentMethodColor: string;
+  paymentMethodIcon: keyof typeof Ionicons.glyphMap;
+};
+
+const DEFAULT_SETTINGS_FALLBACK: HotelPaymentSettings = {
+  enablePayPalPayment: false,
+  enableCryptoPayment: false,
+  enableSePayPayment: true,
+  enablePaymentSpeaker: false,
+};
+
+const STATUS_FILTERS: Array<{ key: 'all' | NormalizedStatus; label: string }> = [
+  { key: 'all', label: 'Tất cả trạng thái' },
+  { key: 'paid', label: 'Hoàn thành' },
+  { key: 'pending', label: 'Đang xử lý' },
+  { key: 'unpaid', label: 'Thất bại' },
+  { key: 'refunded', label: 'Hoàn tiền' },
+  { key: 'cancelled', label: 'Đã hủy' },
+];
+
+const getPaymentDate = (item: PaymentHistoryItem): string =>
+  String(item.createdAt || item.created_at || item.completedAt || '');
+
+const toNumber = (value: unknown): number => {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+};
+
+const normalizeStatus = (status?: string): NormalizedStatus => {
+  const raw = String(status || '').trim().toLowerCase();
+  const map: Record<string, NormalizedStatus> = {
+    completed: 'paid',
+    success: 'paid',
+    paid: 'paid',
+    processing: 'pending',
+    pending: 'pending',
+    waiting: 'pending',
+    unpaid: 'unpaid',
+    failed: 'unpaid',
+    error: 'unpaid',
+    declined: 'unpaid',
+    refunded: 'refunded',
+    cancel: 'cancelled',
+    cancelled: 'cancelled',
+    canceled: 'cancelled',
   };
-}
+  return map[raw] || 'pending';
+};
+
+const getStatusLabel = (status: NormalizedStatus): string => {
+  if (status === 'paid') return 'Hoàn thành';
+  if (status === 'pending') return 'Đang xử lý';
+  if (status === 'unpaid') return 'Thất bại';
+  if (status === 'refunded') return 'Hoàn tiền';
+  return 'Đã hủy';
+};
+
+const getStatusStyle = (status: NormalizedStatus) => {
+  if (status === 'paid') return [styles.statusBadge, styles.statusPaidBadge, styles.statusPaidText] as const;
+  if (status === 'pending') return [styles.statusBadge, styles.statusPendingBadge, styles.statusPendingText] as const;
+  if (status === 'refunded') return [styles.statusBadge, styles.statusRefundedBadge, styles.statusRefundedText] as const;
+  if (status === 'cancelled') return [styles.statusBadge, styles.statusCancelledBadge, styles.statusCancelledText] as const;
+  return [styles.statusBadge, styles.statusUnpaidBadge, styles.statusUnpaidText] as const;
+};
+
+const formatCurrency = (amount: number, currency: string = 'VND') => {
+  if (currency === 'USD') {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount || 0);
+  }
+
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
+};
+
+const formatDate = (dateString?: string) => {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const getDisplayAmount = (item: PaymentHistoryItem) => {
+  const transferAmount = toNumber(item.paymentGatewayResponse?.transferAmount);
+  const amount = toNumber(item.amount);
+  const totalAmount = toNumber(item.totalAmount);
+  return transferAmount || amount || totalAmount || 0;
+};
+
+const getAmountCurrency = (item: PaymentHistoryItem) =>
+  String(item.currency || (item.paymentMethod === 'paypal' ? 'USD' : 'VND'));
+
+const makePaymentItems = (
+  source: PaymentHistoryItem[],
+  methodKey: Exclude<PaymentTab, 'all'>
+): PaymentCardItem[] =>
+  source.map((item, index) => {
+    if (methodKey === 'paypal') {
+      return {
+        ...item,
+        key: String(item._id || item.id || item.paypalOrderId || `paypal-${index}`),
+        methodKey,
+        paymentMethodLabel: 'PayPal',
+        paymentMethodColor: '#0070ba',
+        paymentMethodIcon: 'logo-paypal',
+      };
+    }
+
+    if (methodKey === 'crypto') {
+      return {
+        ...item,
+        key: String(item._id || item.id || item.cryptoTransactionHash || `crypto-${index}`),
+        methodKey,
+        paymentMethodLabel: item.cryptoNetwork ? `Crypto USDT (${item.cryptoNetwork})` : 'Crypto USDT',
+        paymentMethodColor: '#26a17b',
+        paymentMethodIcon: 'logo-bitcoin',
+      };
+    }
+
+    return {
+      ...item,
+      key: String(item._id || item.id || item.transactionId || `sepay-${index}`),
+      methodKey,
+      paymentMethodLabel: 'SePay',
+      paymentMethodColor: '#667eea',
+      paymentMethodIcon: 'card-outline',
+    };
+  });
 
 export default function PaymentHistoryScreen() {
   const { selectedHotelId } = useHotel();
-  const { t } = useLanguage();
+  const { user } = useAuth();
+  const { language, t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'pending' | 'unpaid'>('all');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(10);
+  const [statusFilter, setStatusFilter] = useState<'all' | NormalizedStatus>('all');
+  const [activeTab, setActiveTab] = useState<PaymentTab>('all');
+  const [isOpeningBankHub, setIsOpeningBankHub] = useState(false);
 
-  const { data: roomEvents = [], isLoading } = useQuery({
-    queryKey: ['roomEvents', selectedHotelId],
-    queryFn: () => selectedHotelId ? roomsApi.getEventsByHotel(selectedHotelId, { types: ['checkout'], limit: 200 }) : Promise.resolve([]),
+  const userId = String(user?.id || '');
+
+  const text = useMemo(() => ({
+    title: t('paymentHistory'),
+    subtitle: language === 'vi' ? 'Lịch sử thanh toán và giao dịch' : 'Payment and transaction history',
+    refresh: language === 'vi' ? 'Làm mới' : 'Refresh',
+    bankLink: language === 'vi' ? 'Liên kết ngân hàng' : 'Link bank',
+    bankHubPending: language === 'vi' ? 'Chưa xác thực BankHub' : 'BankHub not verified',
+    bankHubPendingDesc: language === 'vi'
+      ? 'Cần liên kết tài khoản ngân hàng qua SePay BankHub để xem đầy đủ giao dịch ngân hàng.'
+      : 'Link a bank account via SePay BankHub to view full bank transaction data.',
+    bankHubVerified: language === 'vi' ? 'BankHub đã xác thực' : 'BankHub verified',
+    bankHubVerifiedDesc: language === 'vi' ? 'Đã liên kết' : 'Linked',
+    searchPlaceholder: language === 'vi'
+      ? 'Tìm theo gói, mã giao dịch, network, phương thức...'
+      : 'Search by package, transaction id, network, method...',
+    noHotel: language === 'vi' ? 'Chưa chọn khách sạn để xem lịch sử thanh toán.' : 'Select a hotel to view payment history.',
+    noPayments: language === 'vi' ? 'Chưa có lịch sử thanh toán' : 'No payment history yet',
+    autoRefresh: language === 'vi' ? 'Tự động cập nhật mỗi 30 giây' : 'Auto refresh every 30 seconds',
+    packageLabel: language === 'vi' ? 'Gói' : 'Package',
+    amountLabel: language === 'vi' ? 'Số tiền' : 'Amount',
+    dateLabel: language === 'vi' ? 'Ngày tạo' : 'Created at',
+    completedAtLabel: language === 'vi' ? 'Ngày hoàn thành' : 'Completed at',
+    transactionLabel: language === 'vi' ? 'Mã GD' : 'Transaction',
+    orderLabel: language === 'vi' ? 'Order ID' : 'Order ID',
+    hashLabel: language === 'vi' ? 'TX Hash' : 'TX Hash',
+    networkLabel: language === 'vi' ? 'Network' : 'Network',
+    receivedAmountLabel: language === 'vi' ? 'Số tiền nhận được' : 'Received amount',
+    paymentSpeakerLabel: language === 'vi' ? 'Loa thông báo đang bật' : 'Payment speaker enabled',
+    openBankHubFailed: language === 'vi' ? 'Không thể mở liên kết BankHub.' : 'Unable to open BankHub link.',
+    bankHubUnavailable: language === 'vi' ? 'Không lấy được liên kết BankHub.' : 'Unable to load BankHub link.',
+    allTab: language === 'vi' ? 'Tất cả' : 'All',
+    sepayTab: 'SePay',
+    paypalTab: 'PayPal',
+    cryptoTab: language === 'vi' ? 'Crypto USDT' : 'Crypto USDT',
+  }), [language, t]);
+
+  const hotelSettingsQuery = useQuery({
+    queryKey: ['hotelPaymentSettings', selectedHotelId],
+    queryFn: () => (selectedHotelId
+      ? paymentsApi.getHotelPaymentSettings(selectedHotelId)
+      : Promise.resolve(DEFAULT_SETTINGS_FALLBACK)),
+    enabled: !!selectedHotelId,
+    staleTime: REFRESH_INTERVAL,
   });
 
-  const payments: PaymentRecord[] = useMemo(() => {
-    return roomEvents.map((e: any) => ({
-      id: e.id,
-      event: e.type,
-      type: e.type,
-      roomNumber: e.roomNumber,
-      guestName: e.guestName,
-      checkInTime: e.checkinTime,
-      checkOutTime: e.checkoutTime,
-      checkoutTime: e.checkoutTime,
-      totalAmount: typeof e.totalAmount === 'number' ? e.totalAmount : undefined,
-      advancePayment: typeof e.advancePayment === 'number' ? e.advancePayment : undefined,
-      paymentStatus: e.paymentStatus || e.payment?.status || e.payment?.paymentStatus,
-      paymentMethod: e.paymentMethod || e.payment?.method,
-      advancePaymentMethod: e.advancePaymentMethod,
-      payment: e.payment,
-    }));
-  }, [roomEvents]);
+  const paymentSettings = hotelSettingsQuery.data || DEFAULT_SETTINGS_FALLBACK;
+  const enableSePayPayment = paymentSettings.enableSePayPayment !== false;
+  const enablePayPalPayment = !!paymentSettings.enablePayPalPayment;
+  const enableCryptoPayment = !!paymentSettings.enableCryptoPayment;
 
-  const normalizePaymentStatus = (item: PaymentRecord) => {
-    const raw = (item.paymentStatus || item.payment?.status || item.payment?.paymentStatus || 'paid').toLowerCase();
-    const map: Record<string, 'paid' | 'pending' | 'unpaid' | 'refunded' | 'cancelled'> = {
-      completed: 'paid',
-      success: 'paid',
-      paid: 'paid',
-      processing: 'pending',
-      pending: 'pending',
-      waiting: 'pending',
-      unpaid: 'unpaid',
-      failed: 'unpaid',
-      error: 'unpaid',
-      declined: 'unpaid',
-      refunded: 'refunded',
-      cancel: 'cancelled',
-      cancelled: 'cancelled',
-      canceled: 'cancelled',
-    };
-    return map[raw] || 'paid';
-  };
+  const bankHubStatusQuery = useQuery({
+    queryKey: ['bankHubStatus'],
+    queryFn: () => paymentsApi.getBankHubStatus(),
+    staleTime: REFRESH_INTERVAL,
+    refetchInterval: REFRESH_INTERVAL,
+  });
 
-  const getPaymentStatusLabel = (status: 'paid' | 'pending' | 'unpaid' | 'refunded' | 'cancelled') => {
-    if (status === 'paid') return 'Đã thanh toán';
-    if (status === 'pending') return 'Chờ thanh toán';
-    if (status === 'refunded') return 'Đã hoàn tiền';
-    if (status === 'cancelled') return 'Đã hủy';
-    return 'Đã thanh toán';
-  };
+  const bankHubVerified = !!(bankHubStatusQuery.data?.configured && bankHubStatusQuery.data?.authenticated);
 
-  const getStatusBadgeStyle = (status: 'paid' | 'pending' | 'unpaid' | 'refunded' | 'cancelled') => {
-    if (status === 'paid') return styles.paidBadge;
-    if (status === 'pending') return styles.pendingBadge;
-    if (status === 'refunded') return styles.refundedBadge;
-    if (status === 'cancelled') return styles.cancelledBadge;
-    return styles.paidBadge;
-  };
+  const bankHubAccountsQuery = useQuery({
+    queryKey: ['bankHubAccounts', bankHubStatusQuery.data?.company_xid],
+    queryFn: () => paymentsApi.getBankHubBankAccounts(bankHubStatusQuery.data?.company_xid),
+    enabled: bankHubVerified,
+    staleTime: REFRESH_INTERVAL,
+  });
 
-  // Filter logic based on hotelapp table component
-  const paidData = useMemo(() => {
-    if (!payments) return [];
-    return payments
-      .filter(item => {
-        const excludedEvents = ['cleaning', 'maintenance', 'check-in'];
-        const eventType = (item.event || item.type || '').toLowerCase();
-        return !excludedEvents.includes(eventType) && (item.checkOutTime || item.checkoutTime);
-      })
-      .map(item => {
-        const roomAmount = item.roomAmount || 0;
-        const serviceAmount = item.serviceAmount || 0;
-        const additionalCharges = item.additionalCharges || 0;
-        const discount = item.discount || 0;
-        const advancePayment = item.advancePayment || 0;
-        const calculatedTotal = (item.totalAmount ?? (roomAmount + serviceAmount + additionalCharges - discount - advancePayment));
-        return {
-          ...item,
-          totalAmount: calculatedTotal,
-          roomTotal: item.roomAmount,
-          servicesTotal: item.serviceAmount,
-        };
-      });
-  }, [payments]);
+  const sepayQuery = useQuery({
+    queryKey: ['paymentHistory', 'sepay', userId],
+    queryFn: () => (userId ? paymentsApi.getSePayPaymentHistory({ userId, limit: 100 }) : Promise.resolve([])),
+    enabled: !!userId && enableSePayPayment,
+    staleTime: REFRESH_INTERVAL,
+    refetchInterval: REFRESH_INTERVAL,
+  });
 
-  const statusFilteredData = useMemo(() => {
-    if (statusFilter === 'all') return paidData;
-    return paidData.filter(item => normalizePaymentStatus(item) === statusFilter);
-  }, [paidData, statusFilter]);
+  const paypalQuery = useQuery({
+    queryKey: ['paymentHistory', 'paypal', userId],
+    queryFn: () => (userId ? paymentsApi.getPayPalPaymentHistory({ userId, limit: 100 }) : Promise.resolve([])),
+    enabled: !!userId && enablePayPalPayment,
+    staleTime: REFRESH_INTERVAL,
+    refetchInterval: REFRESH_INTERVAL,
+  });
 
-  const filteredData = useMemo(() => {
-    if (!searchQuery) return statusFilteredData;
-    return statusFilteredData.filter(item =>
-      item.roomNumber?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.guestName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.event?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [statusFilteredData, searchQuery]);
+  const cryptoQuery = useQuery({
+    queryKey: ['paymentHistory', 'crypto', userId],
+    queryFn: () => (userId ? paymentsApi.getCryptoPaymentHistory({ userId, limit: 100 }) : Promise.resolve([])),
+    enabled: !!userId && enableCryptoPayment,
+    staleTime: REFRESH_INTERVAL,
+    refetchInterval: REFRESH_INTERVAL,
+  });
 
-  const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    return filteredData.slice(startIndex, endIndex);
-  }, [filteredData, currentPage, pageSize]);
+  const sepayPayments = useMemo(() => makePaymentItems(sepayQuery.data || [], 'sepay'), [sepayQuery.data]);
+  const paypalPayments = useMemo(() => makePaymentItems(paypalQuery.data || [], 'paypal'), [paypalQuery.data]);
+  const cryptoPayments = useMemo(() => makePaymentItems(cryptoQuery.data || [], 'crypto'), [cryptoQuery.data]);
 
-  const totalPages = Math.ceil(filteredData.length / pageSize);
+  const allPayments = useMemo(
+    () =>
+      [...sepayPayments, ...paypalPayments, ...cryptoPayments].sort(
+        (a, b) => new Date(getPaymentDate(b)).getTime() - new Date(getPaymentDate(a)).getTime()
+      ),
+    [cryptoPayments, paypalPayments, sepayPayments]
+  );
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND',
-    }).format(amount || 0);
-  };
+  const availableTabs = useMemo(() => {
+    const tabs: Array<{ key: PaymentTab; label: string; count: number }> = [
+      { key: 'all', label: text.allTab, count: allPayments.length },
+    ];
+    if (enableSePayPayment) {
+      tabs.push({ key: 'sepay', label: text.sepayTab, count: sepayPayments.length });
+    }
+    if (enablePayPalPayment) {
+      tabs.push({ key: 'paypal', label: text.paypalTab, count: paypalPayments.length });
+    }
+    if (enableCryptoPayment) {
+      tabs.push({ key: 'crypto', label: text.cryptoTab, count: cryptoPayments.length });
+    }
+    return tabs;
+  }, [
+    allPayments.length,
+    cryptoPayments.length,
+    enableCryptoPayment,
+    enablePayPalPayment,
+    enableSePayPayment,
+    paypalPayments.length,
+    sepayPayments.length,
+    text.allTab,
+    text.cryptoTab,
+    text.paypalTab,
+    text.sepayTab,
+  ]);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('vi-VN', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+  useEffect(() => {
+    if (!availableTabs.some((item) => item.key === activeTab)) {
+      setActiveTab('all');
+    }
+  }, [activeTab, availableTabs]);
+
+  const activeData = useMemo(() => {
+    if (activeTab === 'sepay') return sepayPayments;
+    if (activeTab === 'paypal') return paypalPayments;
+    if (activeTab === 'crypto') return cryptoPayments;
+    return allPayments;
+  }, [activeTab, allPayments, cryptoPayments, paypalPayments, sepayPayments]);
+
+  const filteredPayments = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    return activeData.filter((item) => {
+      const normalized = normalizeStatus(item.status);
+      if (statusFilter !== 'all' && normalized !== statusFilter) {
+        return false;
+      }
+
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      const haystack = [
+        item.paymentMethodLabel,
+        item.packageId?.name,
+        item.transactionId,
+        item.paypalOrderId,
+        item.cryptoTransactionHash,
+        item.cryptoNetwork,
+        item.status,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return haystack.includes(normalizedQuery);
     });
-  };
+  }, [activeData, searchQuery, statusFilter]);
 
-  if (isLoading) {
+  const refreshAllData = useCallback(async () => {
+    await Promise.all([
+      hotelSettingsQuery.refetch(),
+      bankHubStatusQuery.refetch(),
+      bankHubAccountsQuery.refetch(),
+      sepayQuery.refetch(),
+      paypalQuery.refetch(),
+      cryptoQuery.refetch(),
+    ]);
+  }, [
+    bankHubAccountsQuery,
+    bankHubStatusQuery,
+    cryptoQuery,
+    hotelSettingsQuery,
+    paypalQuery,
+    sepayQuery,
+  ]);
+
+  const openBankHubLink = useCallback(async () => {
+    setIsOpeningBankHub(true);
+    try {
+      const result = await paymentsApi.createBankHubLinkToken();
+      const url = String(result?.hosted_link_url || '').trim();
+      if (!url) {
+        Alert.alert(text.title, text.bankHubUnavailable);
+        return;
+      }
+      await Linking.openURL(url);
+    } catch (error) {
+      Alert.alert(text.title, text.openBankHubFailed);
+    } finally {
+      setIsOpeningBankHub(false);
+    }
+  }, [text.bankHubUnavailable, text.openBankHubFailed, text.title]);
+
+  const isLoading =
+    hotelSettingsQuery.isLoading ||
+    sepayQuery.isLoading ||
+    (enablePayPalPayment && paypalQuery.isLoading) ||
+    (enableCryptoPayment && cryptoQuery.isLoading);
+
+  if (!selectedHotelId) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>{t('loadingData')}</Text>
+      <View style={styles.emptyStateScreen}>
+        <Ionicons name="business-outline" size={52} color="#8E8E93" />
+        <Text style={styles.emptyTitle}>{text.noHotel}</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>{t('paymentHistory')}</Text>
-        <View style={styles.headerStats}>
-          <Text style={styles.statText}>Tổng: {filteredData.length} giao dịch</Text>
-        </View>
-      </View>
-
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color="#8E8E93" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Tìm kiếm theo phòng, tên khách, loại giao dịch..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-
-      <View style={styles.statusFilterContainer}>
-        {[
-          { key: 'all', label: 'Tất cả' },
-          { key: 'paid', label: 'Đã thanh toán' },
-          { key: 'pending', label: 'Chờ thanh toán' },
-          { key: 'unpaid', label: 'Chưa thanh toán' },
-        ].map((item) => {
-          const isActive = statusFilter === item.key;
-          return (
-            <TouchableOpacity
-              key={item.key}
-              style={[styles.statusFilterChip, isActive && styles.statusFilterChipActive]}
-              onPress={() => {
-                setStatusFilter(item.key as 'all' | 'paid' | 'pending' | 'unpaid');
-                setCurrentPage(1);
-              }}
-            >
-              <Text style={[styles.statusFilterText, isActive && styles.statusFilterTextActive]}>
-                {item.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {/* Payment List */}
-      <ScrollView style={styles.paymentList}>
-        {paginatedData.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="time-outline" size={64} color="#C7C7CC" />
-            <Text style={styles.emptyText}>{t('noServices')}</Text>
+        <View style={styles.headerTopRow}>
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle}>{text.title}</Text>
+            <Text style={styles.headerSubtitle}>{text.subtitle}</Text>
           </View>
-        ) : (
-          paginatedData.map((item) => (
-            <View key={item.id} style={styles.paymentCard}>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={refreshAllData}
+            disabled={isLoading}
+          >
+            <Ionicons name="reload-outline" size={18} color="#007AFF" />
+            <Text style={styles.refreshButtonText}>{text.refresh}</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.statText}>Tổng: {filteredPayments.length} giao dịch</Text>
+      </View>
+
+      <ScrollView style={styles.paymentList} contentContainerStyle={styles.paymentListContent}>
+        <View style={styles.quickActionsRow}>
+          <TouchableOpacity
+            style={styles.secondaryActionButton}
+            onPress={openBankHubLink}
+            disabled={isOpeningBankHub}
+          >
+            {isOpeningBankHub ? (
+              <ActivityIndicator size="small" color="#007AFF" />
+            ) : (
+              <Ionicons name="business-outline" size={18} color="#007AFF" />
+            )}
+            <Text style={styles.secondaryActionText}>{text.bankLink}</Text>
+          </TouchableOpacity>
+          {paymentSettings.enablePaymentSpeaker ? (
+            <View style={styles.speakerBadge}>
+              <Ionicons name="volume-high-outline" size={16} color="#0A7F3F" />
+              <Text style={styles.speakerBadgeText}>{text.paymentSpeakerLabel}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {bankHubStatusQuery.data && !bankHubVerified ? (
+          <View style={styles.warningCard}>
+            <View style={styles.bannerHeader}>
+              <Ionicons name="warning-outline" size={20} color="#B26A00" />
+              <Text style={styles.warningTitle}>{text.bankHubPending}</Text>
+            </View>
+            <Text style={styles.warningDescription}>{text.bankHubPendingDesc}</Text>
+            <TouchableOpacity style={styles.bannerButton} onPress={openBankHubLink}>
+              <Text style={styles.bannerButtonText}>{text.bankLink}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {bankHubVerified ? (
+          <View style={styles.successCard}>
+            <View style={styles.bannerHeader}>
+              <Ionicons name="checkmark-circle-outline" size={20} color="#0A7F3F" />
+              <Text style={styles.successTitle}>{text.bankHubVerified}</Text>
+            </View>
+            <Text style={styles.successDescription}>
+              {text.bankHubVerifiedDesc} {bankHubAccountsQuery.data?.length || 0} tài khoản ngân hàng.
+            </Text>
+            <View style={styles.accountList}>
+              {(bankHubAccountsQuery.data || []).slice(0, 3).map((account: BankHubBankAccount, index: number) => (
+                <Text key={`${account.xid || account.account_number || index}`} style={styles.accountItem}>
+                  {`${account.bank_brand_name || 'Bank'} - ${account.account_number || 'N/A'}`}
+                </Text>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#8E8E93" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={text.searchPlaceholder}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#8E8E93"
+          />
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabScroll}>
+          <View style={styles.tabContainer}>
+            {availableTabs.map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[styles.tabChip, isActive && styles.tabChipActive]}
+                  onPress={() => setActiveTab(tab.key)}
+                >
+                  <Text style={[styles.tabChipText, isActive && styles.tabChipTextActive]}>
+                    {`${tab.label} (${tab.count})`}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+          <View style={styles.statusFilterContainer}>
+            {STATUS_FILTERS.map((item) => {
+              const isActive = statusFilter === item.key;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[styles.statusFilterChip, isActive && styles.statusFilterChipActive]}
+                  onPress={() => setStatusFilter(item.key)}
+                >
+                  <Text style={[styles.statusFilterText, isActive && styles.statusFilterTextActive]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+
+        {activeTab === 'sepay' ? (
+          <View style={styles.autoRefreshRow}>
+            <Ionicons name="information-circle-outline" size={16} color="#667eea" />
+            <Text style={styles.autoRefreshText}>{text.autoRefresh}</Text>
+          </View>
+        ) : null}
+
+        {isLoading && filteredPayments.length === 0 ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <Text style={styles.loadingText}>{t('loadingData')}</Text>
+          </View>
+        ) : null}
+
+        {!isLoading && filteredPayments.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="wallet-outline" size={64} color="#C7C7CC" />
+            <Text style={styles.emptyText}>{text.noPayments}</Text>
+          </View>
+        ) : null}
+
+        {filteredPayments.map((item) => {
+          const normalizedStatus = normalizeStatus(item.status);
+          const [badgeStyle, badgeColorStyle, badgeTextStyle] = getStatusStyle(normalizedStatus);
+          const amount = getDisplayAmount(item);
+          const currency = getAmountCurrency(item);
+
+          return (
+            <View key={item.key} style={styles.paymentCard}>
               <View style={styles.paymentHeader}>
-                <View style={styles.roomInfo}>
-                  <Text style={styles.roomNumber}>Phòng {item.roomNumber}</Text>
-                  <Text style={styles.guestName}>{item.guestName}</Text>
+                <View style={styles.methodMeta}>
+                  <View style={[styles.methodIconWrap, { backgroundColor: `${item.paymentMethodColor}18` }]}>
+                    <Ionicons name={item.paymentMethodIcon} size={18} color={item.paymentMethodColor} />
+                  </View>
+                  <View style={styles.methodTextWrap}>
+                    <Text style={styles.methodTitle}>{item.paymentMethodLabel}</Text>
+                    <Text style={styles.packageName}>{item.packageId?.name || 'N/A'}</Text>
+                  </View>
                 </View>
-                <View style={styles.statusContainer}>
-                  {(() => {
-                    const s = normalizePaymentStatus(item);
-                    return (
-                      <View style={[styles.statusBadge, getStatusBadgeStyle(s)]}>
-                        <Text style={[styles.statusText]}>
-                          {getPaymentStatusLabel(s)}
-                        </Text>
-                      </View>
-                    );
-                  })()}
+                <View style={[badgeStyle, badgeColorStyle]}>
+                  <Text style={[styles.statusText, badgeTextStyle]}>{getStatusLabel(normalizedStatus)}</Text>
                 </View>
               </View>
-              
+
               <View style={styles.paymentDetails}>
                 <View style={styles.amountRow}>
-                  <Text style={styles.amountLabel}>Tiền phòng:</Text>
-                  <Text style={styles.amountValue}>{formatCurrency(item.roomTotal || 0)}</Text>
+                  <Text style={styles.amountLabel}>{text.packageLabel}:</Text>
+                  <Text style={styles.amountValue}>{item.packageId?.name || 'N/A'}</Text>
                 </View>
-                {typeof item.servicesTotal === 'number' && item.servicesTotal > 0 && (
-                  <View style={styles.amountRow}>
-                    <Text style={styles.amountLabel}>Dịch vụ:</Text>
-                    <Text style={styles.amountValue}>{formatCurrency(item.servicesTotal)}</Text>
-                  </View>
-                )}
-                {typeof item.additionalCharges === 'number' && item.additionalCharges > 0 && (
-                  <View style={styles.amountRow}>
-                    <Text style={styles.amountLabel}>Phụ thu:</Text>
-                    <Text style={styles.amountValue}>{formatCurrency(item.additionalCharges)}</Text>
-                  </View>
-                )}
-                {typeof item.discount === 'number' && item.discount > 0 && (
-                  <View style={styles.amountRow}>
-                    <Text style={styles.amountLabel}>Giảm giá:</Text>
-                    <Text style={[styles.amountValue, styles.discountValue]}>-{formatCurrency(item.discount)}</Text>
-                  </View>
-                )}
-                {typeof item.advancePayment === 'number' && item.advancePayment > 0 && (
-                  <View style={styles.amountRow}>
-                    <Text style={styles.amountLabel}>Đã cọc:</Text>
-                    <Text style={[styles.amountValue, styles.advanceValue]}>-{formatCurrency(item.advancePayment)}</Text>
-                  </View>
-                )}
-                <View style={[styles.amountRow, styles.totalRow]}>
-                  <Text style={styles.totalLabel}>Tổng cộng:</Text>
-                  <Text style={styles.totalValue}>{formatCurrency(item.totalAmount || 0)}</Text>
+                <View style={styles.amountRow}>
+                  <Text style={styles.amountLabel}>{text.amountLabel}:</Text>
+                  <Text style={styles.amountValue}>{formatCurrency(amount, currency)}</Text>
                 </View>
-              </View>
-              
-              <View style={styles.paymentFooter}>
-                <Text style={styles.paymentTime}>
-                  {formatDate(item.checkOutTime || item.checkoutTime || '')}
-                </Text>
-                <Text style={styles.eventType}>{item.event}</Text>
+                <View style={styles.amountRow}>
+                  <Text style={styles.amountLabel}>{text.dateLabel}:</Text>
+                  <Text style={styles.amountValue}>{formatDate(getPaymentDate(item))}</Text>
+                </View>
+                {item.completedAt ? (
+                  <View style={styles.amountRow}>
+                    <Text style={styles.amountLabel}>{text.completedAtLabel}:</Text>
+                    <Text style={styles.amountValue}>{formatDate(item.completedAt)}</Text>
+                  </View>
+                ) : null}
+                {item.transactionId ? (
+                  <View style={styles.metaBlock}>
+                    <Text style={styles.metaLabel}>{text.transactionLabel}</Text>
+                    <Text style={styles.metaCode}>{item.transactionId}</Text>
+                  </View>
+                ) : null}
+                {item.paypalOrderId ? (
+                  <View style={styles.metaBlock}>
+                    <Text style={styles.metaLabel}>{text.orderLabel}</Text>
+                    <Text style={styles.metaCode}>{item.paypalOrderId}</Text>
+                  </View>
+                ) : null}
+                {item.cryptoTransactionHash ? (
+                  <View style={styles.metaBlock}>
+                    <Text style={styles.metaLabel}>{text.hashLabel}</Text>
+                    <Text style={styles.metaCode}>{item.cryptoTransactionHash}</Text>
+                  </View>
+                ) : null}
+                {item.cryptoNetwork ? (
+                  <View style={styles.amountRow}>
+                    <Text style={styles.amountLabel}>{text.networkLabel}:</Text>
+                    <View style={styles.networkBadge}>
+                      <Text style={styles.networkBadgeText}>{item.cryptoNetwork}</Text>
+                    </View>
+                  </View>
+                ) : null}
+                {toNumber(item.cryptoAmount) > 0 ? (
+                  <View style={styles.amountRow}>
+                    <Text style={styles.amountLabel}>USDT:</Text>
+                    <Text style={[styles.amountValue, styles.cryptoValue]}>{`${toNumber(item.cryptoAmount)} USDT`}</Text>
+                  </View>
+                ) : null}
+                {toNumber(item.paymentGatewayResponse?.transferAmount) > 0 ? (
+                  <View style={styles.amountRow}>
+                    <Text style={styles.amountLabel}>{text.receivedAmountLabel}:</Text>
+                    <Text style={[styles.amountValue, styles.receivedAmountValue]}>
+                      {formatCurrency(toNumber(item.paymentGatewayResponse?.transferAmount), 'VND')}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
             </View>
-          ))
-        )}
+          );
+        })}
       </ScrollView>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <View style={styles.paginationContainer}>
-          <TouchableOpacity
-            style={[styles.pageButton, currentPage === 1 && styles.disabledButton]}
-            onPress={() => setCurrentPage(Math.max(1, currentPage - 1))}
-            disabled={currentPage === 1}
-          >
-            <Ionicons name="chevron-back" size={20} color="#007AFF" />
-          </TouchableOpacity>
-          
-          <Text style={styles.pageInfo}>
-            {currentPage} / {totalPages}
-          </Text>
-          
-          <TouchableOpacity
-            style={[styles.pageButton, currentPage === totalPages && styles.disabledButton]}
-            onPress={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
-            disabled={currentPage === totalPages}
-          >
-            <Ionicons name="chevron-forward" size={20} color="#007AFF" />
-          </TouchableOpacity>
-        </View>
-      )}
     </View>
   );
 }
@@ -336,10 +652,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F2F2F7',
   },
   loadingContainer: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F2F2F7',
+    paddingVertical: 40,
   },
   loadingText: {
     marginTop: 10,
@@ -350,29 +665,57 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     paddingHorizontal: 20,
     paddingTop: 10,
-    paddingBottom: 20,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  headerTitleWrap: {
+    flex: 1,
   },
   headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
     color: '#000',
-    marginBottom: 5,
+    marginBottom: 4,
   },
-  headerStats: {
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#8E8E93',
+  },
+  refreshButton: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#F3F8FF',
+  },
+  refreshButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#007AFF',
   },
   statText: {
     fontSize: 14,
     color: '#8E8E93',
   },
+  paymentListContent: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 32,
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFF',
-    margin: 20,
+    marginBottom: 16,
     paddingHorizontal: 15,
     paddingVertical: 12,
     borderRadius: 10,
@@ -382,17 +725,146 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  quickActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 16,
+  },
+  secondaryActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#D8E8FF',
+  },
+  secondaryActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#007AFF',
+  },
+  speakerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EAF8F0',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  speakerBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0A7F3F',
+  },
+  warningCard: {
+    backgroundColor: '#FFF7E8',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FFE1A6',
+  },
+  successCard: {
+    backgroundColor: '#EDF9F1',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#C7EBD4',
+  },
+  bannerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  warningTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#8A5300',
+  },
+  successTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0A7F3F',
+  },
+  warningDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#8A5300',
+    marginBottom: 12,
+  },
+  successDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#0A7F3F',
+  },
+  bannerButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#007AFF',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  bannerButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  accountList: {
+    marginTop: 10,
+    gap: 6,
+  },
+  accountItem: {
+    fontSize: 13,
+    color: '#14532D',
+  },
+  tabScroll: {
+    marginBottom: 12,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  tabChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E5EA',
+  },
+  tabChipActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  tabChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#667085',
+  },
+  tabChipTextActive: {
+    color: '#FFFFFF',
+  },
+  filterScroll: {
+    marginBottom: 8,
+  },
   statusFilterContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
-    paddingHorizontal: 20,
-    marginBottom: 10,
   },
   statusFilterChip: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E5E5EA',
@@ -419,18 +891,39 @@ const styles = StyleSheet.create({
   },
   paymentList: {
     flex: 1,
-    paddingHorizontal: 20,
+  },
+  autoRefreshRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  autoRefreshText: {
+    fontSize: 13,
+    color: '#667eea',
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 100,
+    paddingVertical: 56,
   },
   emptyText: {
     fontSize: 18,
     color: '#8E8E93',
     marginTop: 10,
+  },
+  emptyStateScreen: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: '#F2F2F7',
+  },
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 18,
+    lineHeight: 25,
+    color: '#8E8E93',
+    textAlign: 'center',
   },
   paymentCard: {
     backgroundColor: '#FFF',
@@ -446,129 +939,127 @@ const styles = StyleSheet.create({
   paymentHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
+    gap: 12,
   },
-  roomInfo: {
+  methodMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
+  },
+  methodIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  methodTextWrap: {
     flex: 1,
   },
-  roomNumber: {
+  methodTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#007AFF',
+    fontWeight: '700',
+    color: '#101828',
   },
-  guestName: {
+  packageName: {
     fontSize: 14,
     color: '#8E8E93',
     marginTop: 2,
-  },
-  statusContainer: {
-    alignItems: 'flex-end',
   },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  paidBadge: {
+  statusPaidBadge: {
     backgroundColor: '#E8F5E8',
   },
-  pendingBadge: {
+  statusPendingBadge: {
     backgroundColor: '#E6F0FF',
   },
-  unpaidBadge: {
+  statusUnpaidBadge: {
     backgroundColor: '#FFF3E0',
   },
-  refundedBadge: {
+  statusRefundedBadge: {
     backgroundColor: '#E6FFFB',
   },
-  cancelledBadge: {
+  statusCancelledBadge: {
     backgroundColor: '#FFE6E6',
   },
   statusText: {
     fontSize: 12,
     fontWeight: '600',
   },
-  paidText: {
+  statusPaidText: {
     color: '#34C759',
   },
-  unpaidText: {
+  statusPendingText: {
+    color: '#1677FF',
+  },
+  statusUnpaidText: {
     color: '#FF9500',
   },
+  statusRefundedText: {
+    color: '#08979C',
+  },
+  statusCancelledText: {
+    color: '#D14343',
+  },
   paymentDetails: {
-    marginBottom: 12,
+    gap: 8,
   },
   amountRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  totalRow: {
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
-    paddingTop: 8,
-    marginTop: 4,
+    alignItems: 'center',
+    gap: 8,
   },
   amountLabel: {
     fontSize: 14,
     color: '#8E8E93',
+    flex: 1,
   },
   amountValue: {
     fontSize: 14,
     color: '#000',
     fontWeight: '500',
+    flex: 1,
+    textAlign: 'right',
   },
-  discountValue: {
-    color: '#34C759',
+  cryptoValue: {
+    color: '#26a17b',
   },
-  advanceValue: {
-    color: '#007AFF',
+  receivedAmountValue: {
+    color: '#1890FF',
   },
-  totalLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
+  metaBlock: {
+    marginTop: 2,
   },
-  totalValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#000',
-  },
-  paymentFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  paymentTime: {
+  metaLabel: {
     fontSize: 12,
     color: '#8E8E93',
+    marginBottom: 4,
   },
-  eventType: {
+  metaCode: {
     fontSize: 12,
-    color: '#007AFF',
-    fontWeight: '500',
-  },
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 20,
-    backgroundColor: '#FFF',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
-  },
-  pageButton: {
-    padding: 10,
+    color: '#344054',
+    backgroundColor: '#F2F4F7',
     borderRadius: 8,
-    backgroundColor: '#F2F2F7',
-    marginHorizontal: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
-  disabledButton: {
-    opacity: 0.5,
+  networkBadge: {
+    backgroundColor: '#E6F0FF',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  pageInfo: {
-    fontSize: 16,
-    color: '#000',
-    fontWeight: '500',
+  networkBadgeText: {
+    fontSize: 12,
+    color: '#1677FF',
+    fontWeight: '600',
   },
 });

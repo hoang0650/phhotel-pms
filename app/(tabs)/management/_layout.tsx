@@ -67,6 +67,27 @@ export default function ManagementLayout() {
           headerShown: true
         }} 
       />
+      <Stack.Screen 
+        name="zalo" 
+        options={{ 
+          title: 'Quản Lý Zalo OA',
+          headerShown: true
+        }} 
+      />
+      <Stack.Screen 
+        name="telegram" 
+        options={{ 
+          title: 'Quản Lý Telegram',
+          headerShown: true
+        }} 
+      />
+      <Stack.Screen 
+        name="camera" 
+        options={{ 
+          title: 'Quản Lý Camera',
+          headerShown: true
+        }} 
+      />
     </Stack>
   );
 }

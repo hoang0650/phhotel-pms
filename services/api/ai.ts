@@ -128,18 +128,26 @@ class AiClient {
     context?: string,
     userRole?: string | null,
     userId?: string | null,
-    userToken?: string | null
+    userToken?: string | null,
+    options?: {
+      hotelId?: string | null;
+      businessId?: string | null;
+      apiUrl?: string | null;
+    }
   ): Promise<{ answer?: string }> {
     const token = userToken || (await AsyncStorage.getItem('auth_token'));
     return this.requestJson('/chat', {
       method: 'POST',
       body: {
         tenant_id: tenantId,
+        hotel_id: options?.hotelId || null,
+        business_id: options?.businessId || null,
         question,
         context,
         user_role: userRole || null,
         user_id: userId || null,
         user_token: token || null,
+        api_url: options?.apiUrl || API_CONFIG.BASE_URL,
       },
     });
   }
@@ -160,6 +168,34 @@ class AiClient {
     return this.requestJson(`/facebook/oauth-url?${params.toString()}`);
   }
 
+  async getZaloOAuthUrl(tenantId: string): Promise<{ url?: string }> {
+    const params = new URLSearchParams({ tenant_id: tenantId });
+    return this.requestJson(`/zalo/oauth-url?${params.toString()}`);
+  }
+
+  async getZaloOAs(tenantId: string): Promise<{ oas?: any[] }> {
+    const params = new URLSearchParams({ tenant_id: tenantId });
+    return this.requestJson(`/zalo/oas?${params.toString()}`);
+  }
+
+  async getZaloMessages(tenantId: string, oaId?: string): Promise<{ messages?: any[] }> {
+    const params = new URLSearchParams({ tenant_id: tenantId });
+    if (oaId) params.append('oa_id', oaId);
+    return this.requestJson(`/zalo/messages?${params.toString()}`);
+  }
+
+  async sendZaloMessage(tenantId: string, oaId: string, recipientId: string, text: string): Promise<any> {
+    return this.requestJson('/zalo/send', {
+      method: 'POST',
+      body: {
+        tenant_id: tenantId,
+        oa_id: oaId,
+        recipient_id: recipientId,
+        text,
+      },
+    });
+  }
+
   async getFacebookPages(tenantId: string): Promise<{ pages?: any[] }> {
     const params = new URLSearchParams({ tenant_id: tenantId });
     return this.requestJson(`/facebook/pages?${params.toString()}`);
@@ -178,6 +214,39 @@ class AiClient {
         tenant_id: tenantId,
         page_id: pageId,
         recipient_id: recipientId,
+        text,
+      },
+    });
+  }
+
+  async connectTelegramBot(tenantId: string, botToken?: string): Promise<any> {
+    return this.requestJson('/telegram/connect', {
+      method: 'POST',
+      body: {
+        tenant_id: tenantId,
+        bot_token: botToken?.trim() || undefined,
+      },
+    });
+  }
+
+  async getTelegramBots(tenantId: string): Promise<{ bots?: any[] }> {
+    const params = new URLSearchParams({ tenant_id: tenantId });
+    return this.requestJson(`/telegram/bots?${params.toString()}`);
+  }
+
+  async getTelegramMessages(tenantId: string, botId?: string): Promise<{ messages?: any[] }> {
+    const params = new URLSearchParams({ tenant_id: tenantId });
+    if (botId) params.append('bot_id', botId);
+    return this.requestJson(`/telegram/messages?${params.toString()}`);
+  }
+
+  async sendTelegramMessage(tenantId: string, botId: string, chatId: string, text: string): Promise<any> {
+    return this.requestJson('/telegram/send', {
+      method: 'POST',
+      body: {
+        tenant_id: tenantId,
+        bot_id: botId,
+        chat_id: chatId,
         text,
       },
     });

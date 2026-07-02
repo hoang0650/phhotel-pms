@@ -1,6 +1,9 @@
 import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
 
+const isNetworkError = (error: unknown): boolean =>
+  error instanceof Error && (error.message === 'NETWORK_ERROR' || error.message === 'Request timeout');
+
 export interface Notification {
   id: string;
   title: string;
@@ -147,6 +150,9 @@ export const notificationsApi = {
         expiresAt: a.endDate,
       }));
     } catch (error) {
+      if (isNetworkError(error)) {
+        return [];
+      }
       console.warn('[notificationsApi.getAll] Error:', error);
       return [];
     }

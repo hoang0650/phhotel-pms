@@ -13,3 +13,5 @@ export { authApi } from './auth';
 export { notificationsApi } from './notifications';
 export { transactionsApi } from './transactions';
 export { debtsApi } from './debts';
+export { cameraApi } from './camera';
+export { paymentsApi } from './payments';

@@ -18,6 +18,9 @@ import {
   Sparkles,
   Building2,
   ChevronRight,
+  MessageCircleMore,
+  Send,
+  Camera,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -117,6 +120,36 @@ const managementModules: ManagementModule[] = [
     icon: Sparkles,
     route: '/management/ai-chat',
     gradient: ['#667eea', '#764ba2'],
+  },
+  {
+    id: 'zalo',
+    titleVi: 'Quản Lý Zalo OA',
+    titleEn: 'Zalo OA Management',
+    descriptionVi: 'Đồng bộ hội thoại, bot và trả lời Zalo OA',
+    descriptionEn: 'Sync Zalo OA conversations, bot and replies',
+    icon: MessageCircleMore,
+    route: '/management/zalo',
+    gradient: ['#06b6d4', '#0ea5e9'],
+  },
+  {
+    id: 'telegram',
+    titleVi: 'Quản Lý Telegram',
+    titleEn: 'Telegram Management',
+    descriptionVi: 'Kết nối bot Telegram và quản lý hội thoại',
+    descriptionEn: 'Connect Telegram bot and manage conversations',
+    icon: Send,
+    route: '/management/telegram',
+    gradient: ['#38bdf8', '#2563eb'],
+  },
+  {
+    id: 'camera',
+    titleVi: 'Quản Lý Camera',
+    titleEn: 'Camera Management',
+    descriptionVi: 'Cấu hình camera, AI OCR và thống kê camera',
+    descriptionEn: 'Configure camera, AI OCR and camera stats',
+    icon: Camera,
+    route: '/management/camera',
+    gradient: ['#f97316', '#ef4444'],
   },
 ];
 

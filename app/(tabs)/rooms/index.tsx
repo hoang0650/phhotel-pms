@@ -139,6 +139,26 @@ interface SelectedServiceItem {
   totalPrice: number;
 }
 
+interface RoomBookingSnapshot {
+  guestName: string;
+  guestPhone: string;
+  guestId: string;
+  guestSource: string;
+  adults: number;
+  children: number;
+  rateType: RateType;
+  rateTypeLabel: string;
+  paymentMethod: PaymentMethod;
+  advancePayment: number;
+  additionalCharges: number;
+  discount: number;
+  notes: string;
+  selectedServices: SelectedServiceItem[];
+  checkInTime?: string;
+  checkOutDate?: string;
+  hasActiveBookingData: boolean;
+}
+
 export default function RoomsScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -246,37 +266,75 @@ export default function RoomsScreen() {
 
   // 3. EFFECT: Khôi phục tự động dữ liệu từ Web/Thiết bị khác đồng bộ sang Mobile khi mở Modal (Web -> Mobile)
   useEffect(() => {
-    if (modalVisible && selectedRoom && modalMode === 'checkin' && roomSessions) {
-      // Bọc an toàn để tương thích cả id hoặc _id tùy cấu trúc trả về từ backend
-      const roomId = selectedRoom.id || (selectedRoom as any)._id || '';
-      const currentSession = roomSessions[roomId];
-      
-      if (currentSession) {
-        setCheckInForm(prev => ({
-          ...prev,
-          guestName: currentSession.guestInfo?.name || '',
-          guestPhone: currentSession.guestInfo?.phone || '',
-          guestId: currentSession.guestInfo?.idNumber || '',
-          rateType: (currentSession.rateType as RateType) || 'hourly', // Khớp kiểu enum nghiêm ngặt
-          paymentMethod: (currentSession.paymentMethod as PaymentMethod) || 'cash',
-          advancePayment: currentSession.advancePayment?.toString() || '',
-          additionalCharges: currentSession.additionalCharges?.toString() || '',
-          discount: currentSession.discount?.toString() || '',
-          notes: currentSession.notes || '',
-        }));
+    if (!modalVisible || !selectedRoom || !roomSessions) return;
 
-        if (currentSession.selectedServices) {
-          setSelectedServices(currentSession.selectedServices.map((s: any) => ({
-            serviceId: s.serviceId || s.id || '',
-            serviceName: s.serviceName || s.name || '',
-            price: Number(s.price) || Number(s.unitPrice) || 0,
-            quantity: Number(s.quantity) || 1,
-            totalPrice: Number(s.totalPrice) || 0,
-          })));
-        }
-      }
+    const roomId = selectedRoom.id || (selectedRoom as any)._id || '';
+    if (!roomId) return;
+
+    const currentSession = roomSessions[roomId];
+    if (!currentSession) return;
+
+    const latestRoom = rooms.find((room) => room.id === roomId) || selectedRoom;
+    const mergedRoom = {
+      ...latestRoom,
+      currentGuest: currentSession?.guestInfo?.name || latestRoom.currentGuest,
+      guestPhone: currentSession?.guestInfo?.phone || latestRoom.guestPhone,
+      guestIdNumber: currentSession?.guestInfo?.idNumber || latestRoom.guestIdNumber,
+      rateType: normalizeRateType(currentSession?.rateType || currentSession?.bookingType || latestRoom.rateType),
+      paymentMethod: normalizePaymentMethod(currentSession?.paymentMethod || latestRoom.paymentMethod),
+      advancePayment: Number(currentSession?.advancePayment ?? latestRoom.advancePayment ?? 0) || 0,
+      additionalCharges: Number(currentSession?.additionalCharges ?? latestRoom.additionalCharges ?? 0) || 0,
+      discount: Number(currentSession?.discount ?? latestRoom.discount ?? 0) || 0,
+      currentBooking: {
+        ...(((latestRoom as any)?.currentBooking && typeof (latestRoom as any).currentBooking === 'object')
+          ? (latestRoom as any).currentBooking
+          : {}),
+        ...currentSession,
+        guestInfo: {
+          ...((((latestRoom as any)?.currentBooking && typeof (latestRoom as any).currentBooking === 'object')
+            ? (latestRoom as any).currentBooking?.guestInfo
+            : {}) || {}),
+          ...(currentSession?.guestInfo || {}),
+        },
+      },
+    } as Room;
+    const snapshot = getRoomBookingSnapshot(mergedRoom);
+    if (!snapshot) return;
+
+    if (modalMode === 'checkin') {
+      setCheckInForm(prev => ({
+        ...prev,
+        guestName: snapshot.guestName,
+        guestPhone: snapshot.guestPhone,
+        guestId: snapshot.guestId,
+        adults: snapshot.adults,
+        children: snapshot.children,
+        rateType: snapshot.rateType,
+        paymentMethod: snapshot.paymentMethod,
+        advancePayment: snapshot.advancePayment ? String(snapshot.advancePayment) : '',
+        additionalCharges: snapshot.additionalCharges ? String(snapshot.additionalCharges) : '',
+        discount: snapshot.discount ? String(snapshot.discount) : '',
+        notes: snapshot.notes || '',
+      }));
     }
-  }, [modalVisible, selectedRoom, modalMode, roomSessions]);
+
+    if (modalMode === 'checkout') {
+      setCheckOutForm(prev => ({
+        ...prev,
+        guestName: snapshot.guestName,
+        guestPhone: snapshot.guestPhone,
+        guestId: snapshot.guestId,
+        rateType: snapshot.rateType,
+        paymentMethod: snapshot.paymentMethod,
+        advancePayment: snapshot.advancePayment ? String(snapshot.advancePayment) : '',
+        notes: snapshot.notes || '',
+      }));
+    }
+
+    if (snapshot.selectedServices.length > 0) {
+      setSelectedServices(snapshot.selectedServices);
+    }
+  }, [modalVisible, selectedRoom, modalMode, roomSessions, rooms, getRoomBookingSnapshot, normalizePaymentMethod, normalizeRateType]);
 
   // 4. EFFECT: Lắng nghe thay đổi trên Form Mobile để tự động sync lên Cloud Redis qua Debounce (Mobile -> Web)
   useEffect(() => {
@@ -518,6 +576,156 @@ export default function RoomsScreen() {
       minute: '2-digit',
     }).format(date);
   }, [language]);
+
+  const normalizeRateType = useCallback((value?: string | null): RateType => {
+    switch (String(value || '').toLowerCase()) {
+      case 'daily':
+        return 'daily';
+      case 'nightly':
+        return 'nightly';
+      case 'weekly':
+        return 'weekly';
+      case 'monthly':
+        return 'monthly';
+      default:
+        return 'hourly';
+    }
+  }, []);
+
+  const normalizePaymentMethod = useCallback((value?: string | null): PaymentMethod => {
+    const normalized = String(value || '').toLowerCase();
+    if (normalized === 'bank_transfer') return 'transfer';
+    if (normalized === 'card' || normalized === 'credit_card') return 'card';
+    return normalized === 'transfer' ? 'transfer' : 'cash';
+  }, []);
+
+  const getRateTypeLabel = useCallback((rateType?: string | null) => {
+    const normalized = normalizeRateType(rateType);
+    const labels: Record<RateType, { vi: string; en: string }> = {
+      hourly: { vi: 'Theo gio', en: 'Hourly' },
+      daily: { vi: 'Ngay dem', en: 'Daily' },
+      nightly: { vi: 'Qua dem', en: 'Nightly' },
+      weekly: { vi: 'Theo tuan', en: 'Weekly' },
+      monthly: { vi: 'Theo thang', en: 'Monthly' },
+    };
+    return language === 'vi' ? labels[normalized].vi : labels[normalized].en;
+  }, [language, normalizeRateType]);
+
+  const normalizeSelectedServiceItems = useCallback((services?: any[]): SelectedServiceItem[] => {
+    if (!Array.isArray(services)) return [];
+    return services.map((service, index) => {
+      const price = Number(service?.price ?? service?.unitPrice ?? 0) || 0;
+      const quantity = Number(service?.quantity ?? 1) || 1;
+      const totalPrice = Number(service?.totalPrice ?? price * quantity) || 0;
+      return {
+        serviceId: String(service?.serviceId || service?.id || service?._id || `service-${index}`),
+        serviceName: service?.serviceName || service?.name || t('services'),
+        price,
+        quantity,
+        totalPrice,
+      };
+    });
+  }, [t]);
+
+  const getRoomBookingSnapshot = useCallback((room?: Room | null): RoomBookingSnapshot | null => {
+    if (!room) return null;
+
+    const roomId = room.id || (room as any)?._id || '';
+    const liveSession = roomId ? roomSessions?.[roomId] : null;
+    const currentBooking =
+      (room as any)?.currentBooking && typeof (room as any).currentBooking === 'object'
+        ? (room as any).currentBooking
+        : null;
+    const mergedBooking = {
+      ...(currentBooking || {}),
+      ...(liveSession && typeof liveSession === 'object' ? liveSession : {}),
+      guestInfo: {
+        ...(currentBooking?.guestInfo || currentBooking?.guestDetails || {}),
+        ...((liveSession && typeof liveSession === 'object' ? liveSession.guestInfo : null) || {}),
+      },
+    };
+    const guestInfo = mergedBooking?.guestInfo || {};
+    const hasActiveBookingData = Boolean(
+      room.status === 'occupied' ||
+      room.status === 'booked' ||
+      mergedBooking?.checkInDate ||
+      mergedBooking?.checkinTime ||
+      mergedBooking?.expectedCheckoutTime ||
+      mergedBooking?.rateType ||
+      mergedBooking?.bookingType ||
+      guestInfo?.name ||
+      room.currentGuest
+    );
+    const rawRateType = mergedBooking?.rateType || mergedBooking?.bookingType || room.rateType;
+    const rateType = hasActiveBookingData ? normalizeRateType(rawRateType) : undefined;
+    const paymentMethod = normalizePaymentMethod(mergedBooking?.paymentMethod || room.paymentMethod);
+    const selectedServices = normalizeSelectedServiceItems(
+      (Array.isArray(mergedBooking?.selectedServices) && mergedBooking.selectedServices.length > 0)
+        ? mergedBooking.selectedServices
+        : (Array.isArray(mergedBooking?.services) && mergedBooking.services.length > 0)
+          ? mergedBooking.services
+          : room.selectedServices
+    );
+    const guestName =
+      guestInfo?.name ||
+      mergedBooking?.guestName ||
+      room.currentGuest ||
+      '';
+    const guestPhone =
+      guestInfo?.phone ||
+      mergedBooking?.guestPhone ||
+      room.guestPhone ||
+      '';
+    const guestId =
+      guestInfo?.idNumber ||
+      mergedBooking?.guestId ||
+      mergedBooking?.guestIdNumber ||
+      room.guestIdNumber ||
+      '';
+    const checkInTime =
+      mergedBooking?.checkinTime ||
+      mergedBooking?.checkInTime ||
+      mergedBooking?.actualCheckInDate ||
+      mergedBooking?.checkInDate ||
+      room.checkInTime;
+    const checkOutDate =
+      mergedBooking?.actualCheckOutDate ||
+      mergedBooking?.checkOutDate ||
+      mergedBooking?.expectedCheckoutTime ||
+      mergedBooking?.checkoutDate ||
+      room.checkoutDate;
+
+    return {
+      guestName,
+      guestPhone,
+      guestId,
+      guestSource: guestInfo?.guestSource || mergedBooking?.guestSource || 'walkin',
+      adults: Math.max(1, Number(mergedBooking?.numberOfGuests?.adults ?? mergedBooking?.adults ?? 1) || 1),
+      children: Math.max(0, Number(mergedBooking?.numberOfGuests?.children ?? mergedBooking?.children ?? 0) || 0),
+      rateType: rateType || 'hourly',
+      rateTypeLabel: rateType ? getRateTypeLabel(rateType) : '',
+      paymentMethod,
+      advancePayment: Number(mergedBooking?.advancePayment ?? room.advancePayment ?? 0) || 0,
+      additionalCharges: Number(mergedBooking?.additionalCharges ?? room.additionalCharges ?? 0) || 0,
+      discount: Number(mergedBooking?.discount ?? mergedBooking?.discounts ?? room.discount ?? 0) || 0,
+      notes: mergedBooking?.notes || '',
+      selectedServices,
+      checkInTime,
+      checkOutDate,
+      hasActiveBookingData,
+    };
+  }, [getRateTypeLabel, normalizePaymentMethod, normalizeRateType, normalizeSelectedServiceItems, roomSessions]);
+
+  const liveSelectedRoom = useMemo(() => {
+    if (!selectedRoom) return null;
+    if (modalMode === 'checkout' && checkoutRoomDetail) return checkoutRoomDetail;
+    return rooms.find((room) => room.id === selectedRoom.id) || selectedRoom;
+  }, [selectedRoom, modalMode, checkoutRoomDetail, rooms]);
+
+  const liveSelectedRoomSnapshot = useMemo(
+    () => getRoomBookingSnapshot(liveSelectedRoom),
+    [getRoomBookingSnapshot, liveSelectedRoom]
+  );
 
   const getRoomPriceDetails = useCallback(
     (room: Room | null, checkInTime?: string, rateType?: RateType, checkOutTime?: Date) => {
@@ -791,6 +999,7 @@ export default function RoomsScreen() {
   }, []);
 
   const openRoomModal = useCallback((room: Room, mode: ModalMode) => {
+    const roomSnapshot = getRoomBookingSnapshot(room);
     setSelectedRoom(room);
     setModalMode(mode);
     setModalVisible(true);
@@ -800,32 +1009,32 @@ export default function RoomsScreen() {
     setSelectedServiceQuantity(1);
     setCheckInForm(prev => ({
       ...prev,
-      guestName: '',
-      guestPhone: '',
-      guestId: '',
-      adults: 1,
-      children: 0,
-      rateType: 'hourly',
-      paymentMethod: 'cash',
-      advancePayment: '',
-      additionalCharges: '',
-      discount: '',
-      notes: '',
+      guestName: roomSnapshot?.guestName || '',
+      guestPhone: roomSnapshot?.guestPhone || '',
+      guestId: roomSnapshot?.guestId || '',
+      adults: roomSnapshot?.adults || 1,
+      children: roomSnapshot?.children || 0,
+      rateType: roomSnapshot?.rateType || 'hourly',
+      paymentMethod: roomSnapshot?.paymentMethod || 'cash',
+      advancePayment: roomSnapshot?.advancePayment ? String(roomSnapshot.advancePayment) : '',
+      additionalCharges: roomSnapshot?.additionalCharges ? String(roomSnapshot.additionalCharges) : '',
+      discount: roomSnapshot?.discount ? String(roomSnapshot.discount) : '',
+      notes: roomSnapshot?.notes || '',
     }));
     setCheckOutForm(prev => ({
       ...prev,
-      guestName: room.currentGuest || '',
-      guestPhone: room.guestPhone || '',
-      guestId: room.guestIdNumber || '',
-      rateType: (room.rateType as RateType) || 'hourly',
-      paymentMethod: (room.paymentMethod as PaymentMethod) || 'cash',
-      advancePayment: room.advancePayment ? String(room.advancePayment) : '',
+      guestName: roomSnapshot?.guestName || room.currentGuest || '',
+      guestPhone: roomSnapshot?.guestPhone || room.guestPhone || '',
+      guestId: roomSnapshot?.guestId || room.guestIdNumber || '',
+      rateType: roomSnapshot?.rateType || (room.rateType as RateType) || 'hourly',
+      paymentMethod: roomSnapshot?.paymentMethod || (room.paymentMethod as PaymentMethod) || 'cash',
+      advancePayment: roomSnapshot?.advancePayment ? String(roomSnapshot.advancePayment) : '',
       additionalCharges: '',
       discount: '',
-      notes: '',
+      notes: roomSnapshot?.notes || '',
     }));
-    setSelectedServices([]);
-  }, []);
+    setSelectedServices(roomSnapshot?.selectedServices || []);
+  }, [getRoomBookingSnapshot]);
 
   const normalizedAssignRoomId = useMemo(() => {
     if (!assignRoomId) return null;
@@ -839,6 +1048,44 @@ export default function RoomsScreen() {
     openRoomModal(targetRoom, 'checkin');
     router.replace('/(tabs)/rooms');
   }, [normalizedAssignRoomId, rooms, openRoomModal, router]);
+
+  useEffect(() => {
+    if (!modalVisible || !liveSelectedRoomSnapshot) return;
+
+    if (modalMode === 'checkin') {
+      setCheckInForm(prev => ({
+        ...prev,
+        guestName: prev.guestName || liveSelectedRoomSnapshot.guestName,
+        guestPhone: prev.guestPhone || liveSelectedRoomSnapshot.guestPhone,
+        guestId: prev.guestId || liveSelectedRoomSnapshot.guestId,
+        adults: (prev.adults === 1 && liveSelectedRoomSnapshot.adults > 1) ? liveSelectedRoomSnapshot.adults : prev.adults,
+        children: (prev.children === 0 && liveSelectedRoomSnapshot.children > 0) ? liveSelectedRoomSnapshot.children : prev.children,
+        rateType: prev.rateType === 'hourly' ? liveSelectedRoomSnapshot.rateType : prev.rateType,
+        paymentMethod: prev.paymentMethod === 'cash' ? liveSelectedRoomSnapshot.paymentMethod : prev.paymentMethod,
+        advancePayment: prev.advancePayment !== '' ? prev.advancePayment : (liveSelectedRoomSnapshot.advancePayment ? String(liveSelectedRoomSnapshot.advancePayment) : ''),
+        additionalCharges: prev.additionalCharges !== '' ? prev.additionalCharges : (liveSelectedRoomSnapshot.additionalCharges ? String(liveSelectedRoomSnapshot.additionalCharges) : ''),
+        discount: prev.discount !== '' ? prev.discount : (liveSelectedRoomSnapshot.discount ? String(liveSelectedRoomSnapshot.discount) : ''),
+        notes: prev.notes || liveSelectedRoomSnapshot.notes || '',
+      }));
+    }
+
+    if (modalMode === 'checkout') {
+      setCheckOutForm(prev => ({
+        ...prev,
+        guestName: prev.guestName || liveSelectedRoomSnapshot.guestName,
+        guestPhone: prev.guestPhone || liveSelectedRoomSnapshot.guestPhone,
+        guestId: prev.guestId || liveSelectedRoomSnapshot.guestId,
+        rateType: prev.rateType === 'hourly' ? liveSelectedRoomSnapshot.rateType : prev.rateType,
+        paymentMethod: prev.paymentMethod === 'cash' ? liveSelectedRoomSnapshot.paymentMethod : prev.paymentMethod,
+        advancePayment: prev.advancePayment !== '' ? prev.advancePayment : (liveSelectedRoomSnapshot.advancePayment ? String(liveSelectedRoomSnapshot.advancePayment) : ''),
+        notes: prev.notes || liveSelectedRoomSnapshot.notes || '',
+      }));
+    }
+
+    if (selectedServices.length === 0 && liveSelectedRoomSnapshot.selectedServices.length > 0) {
+      setSelectedServices(liveSelectedRoomSnapshot.selectedServices);
+    }
+  }, [modalVisible, modalMode, liveSelectedRoomSnapshot, selectedServices.length]);
 
   useEffect(() => {
     if (!modalVisible || modalMode !== 'checkout') return;
@@ -1120,6 +1367,7 @@ export default function RoomsScreen() {
 
   const handleCheckIn = useCallback(() => {
     if (!selectedRoom) return;
+    const roomSnapshot = getRoomBookingSnapshot(selectedRoom);
     const guestName = checkInForm.guestName.trim() || t('walkInGuest');
     doCheckIn({
       id: selectedRoom.id,
@@ -1134,6 +1382,7 @@ export default function RoomsScreen() {
           name: guestName,
           phone: checkInForm.guestPhone,
           idNumber: checkInForm.guestId,
+          guestSource: roomSnapshot?.guestSource || 'walkin',
         },
         numberOfGuests: {
           adults: checkInForm.adults,
@@ -1148,12 +1397,14 @@ export default function RoomsScreen() {
         selectedServices: servicePayload,
         servicesTotal: serviceTotal,
         notes: checkInForm.notes.trim(),
+        bookingType: checkInForm.rateType,
       },
     });
-  }, [selectedRoom, checkInForm, doCheckIn, t, servicePayload, serviceTotal]);
+  }, [selectedRoom, checkInForm, doCheckIn, t, servicePayload, serviceTotal, getRoomBookingSnapshot]);
 
   const handleSaveCheckOutInfo = useCallback(() => {
     if (!selectedRoom) return;
+    const roomSnapshot = getRoomBookingSnapshot(selectedRoom);
     const { additionalCharges, discount, advancePayment } = checkoutTotals;
     doSaveCheckinInfo({
       id: selectedRoom.id,
@@ -1162,10 +1413,11 @@ export default function RoomsScreen() {
           name: checkOutForm.guestName,
           phone: checkOutForm.guestPhone,
           idNumber: checkOutForm.guestId,
-          guestSource: 'walkin',
+          guestSource: roomSnapshot?.guestSource || 'walkin',
         },
         advancePayment: advancePayment || 0,
         rateType: checkOutForm.rateType,
+        bookingType: checkOutForm.rateType,
         paymentMethod: checkOutForm.paymentMethod,
         additionalCharges,
         discount,
@@ -1174,10 +1426,11 @@ export default function RoomsScreen() {
         servicesTotal: serviceTotal,
       },
     });
-  }, [selectedRoom, checkOutForm, checkoutTotals, doSaveCheckinInfo, servicePayload, serviceTotal]);
+  }, [selectedRoom, checkOutForm, checkoutTotals, doSaveCheckinInfo, servicePayload, serviceTotal, getRoomBookingSnapshot]);
 
   const handleCheckOut = useCallback(() => {
     if (!selectedRoom) return;
+    const roomSnapshot = getRoomBookingSnapshot(selectedRoom);
     const { additionalCharges, discount, advancePayment, roomTotal, totalAmount } = checkoutTotals;
     doCheckOut({
       id: selectedRoom.id,
@@ -1201,10 +1454,12 @@ export default function RoomsScreen() {
           name: checkOutForm.guestName,
           phone: checkOutForm.guestPhone,
           idNumber: checkOutForm.guestId,
+          guestSource: roomSnapshot?.guestSource || 'walkin',
         },
+        bookingType: checkOutForm.rateType,
       },
     });
-  }, [selectedRoom, doCheckOut, checkOutForm, serviceTotal, servicePayload, checkoutTotals]);
+  }, [selectedRoom, doCheckOut, checkOutForm, serviceTotal, servicePayload, checkoutTotals, getRoomBookingSnapshot]);
 
   const handleTransfer = useCallback(() => {
     if (!selectedRoom || !transferTargetId) return;
@@ -1269,6 +1524,7 @@ export default function RoomsScreen() {
       return null;
     }
     const StatusIcon = status.icon;
+    const roomSnapshot = getRoomBookingSnapshot(room);
 
     return (
       <TouchableOpacity
@@ -1285,15 +1541,20 @@ export default function RoomsScreen() {
           <Text style={[styles.gridRoomType, { color: colors.textSecondary }]}>
             {roomTypeLabels[room.type] || room.type}
           </Text>
+          {roomSnapshot?.hasActiveBookingData && roomSnapshot.rateTypeLabel ? (
+            <Text style={[styles.gridRoomType, { color: colors.tint }]}>
+              {roomSnapshot.rateTypeLabel}
+            </Text>
+          ) : null}
           <Text style={[styles.gridPrice, { color: colors.tint }]}>{formatCurrency(room.price)}</Text>
-          {room.currentGuest && (
+          {roomSnapshot?.hasActiveBookingData && roomSnapshot.guestName ? (
             <View style={styles.gridGuest}>
               <User size={12} color={colors.textSecondary} />
               <Text style={[styles.gridGuestName, { color: colors.textSecondary }]} numberOfLines={1}>
-                {room.currentGuest}
+                {roomSnapshot.guestName}
               </Text>
             </View>
-          )}
+          ) : null}
           {room.status === 'occupied' && room.guestStatus === 'out' && (
             <View style={[styles.guestOutBadge, { backgroundColor: Colors.status.guestOut + '20' }]}>
               <LogOut size={12} color={Colors.status.guestOut} />
@@ -1305,7 +1566,7 @@ export default function RoomsScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [handleRoomPress, formatCurrency, colors]);
+  }, [handleRoomPress, formatCurrency, colors, getRoomBookingSnapshot]);
 
   const renderListItem = useCallback((room: Room) => {
     const status = statusConfig[room.status];
@@ -1314,6 +1575,7 @@ export default function RoomsScreen() {
       return null;
     }
     const StatusIcon = status.icon;
+    const roomSnapshot = getRoomBookingSnapshot(room);
 
     return (
       <TouchableOpacity
@@ -1344,9 +1606,16 @@ export default function RoomsScreen() {
 
         <View style={styles.roomInfo}>
           <View style={styles.roomType}>
-            <Text style={[styles.roomTypeText, { color: colors.text }]}>
-              {roomTypeLabels[room.type] || room.type}
-            </Text>
+            <View>
+              <Text style={[styles.roomTypeText, { color: colors.text }]}>
+                {roomTypeLabels[room.type] || room.type}
+              </Text>
+              {roomSnapshot?.hasActiveBookingData && roomSnapshot.rateTypeLabel ? (
+                <Text style={[styles.floorText, { color: colors.tint, backgroundColor: 'transparent', paddingHorizontal: 0 }]}>
+                  {roomSnapshot.rateTypeLabel}
+                </Text>
+              ) : null}
+            </View>
             <Text style={[styles.floorText, { color: colors.textSecondary, backgroundColor: isDark ? '#334155' : '#f3f4f6' }]}>
               {t('floor')} {room.floor}
             </Text>
@@ -1356,15 +1625,15 @@ export default function RoomsScreen() {
           </Text>
         </View>
 
-        {room.status === 'occupied' && room.currentGuest && (
+        {(room.status === 'occupied' || room.status === 'booked') && roomSnapshot?.hasActiveBookingData && roomSnapshot.guestName && (
           <View style={[styles.guestInfo, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
             <User size={14} color={colors.textSecondary} />
-            <Text style={[styles.guestName, { color: colors.text }]}>{room.currentGuest}</Text>
-            {room.checkoutDate && (
+            <Text style={[styles.guestName, { color: colors.text }]}>{roomSnapshot.guestName}</Text>
+            {roomSnapshot.checkOutDate && (
               <View style={styles.checkoutInfo}>
                 <Calendar size={12} color={colors.textSecondary} />
                 <Text style={[styles.checkoutText, { color: colors.textSecondary }]}>
-                  {t('checkOutDate')}: {room.checkoutDate}
+                  {t('checkOutDate')}: {formatDateTime(roomSnapshot.checkOutDate)}
                 </Text>
               </View>
             )}
@@ -1457,7 +1726,7 @@ export default function RoomsScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [handleRoomPress, openRoomModal, formatCurrency, getStatusLabel, colors, isDark, t, language, doMarkClean]);
+  }, [handleRoomPress, openRoomModal, formatCurrency, formatDateTime, getStatusLabel, colors, isDark, t, language, doMarkClean, getRoomBookingSnapshot]);
 
   const renderModalContent = useCallback(() => {
     if (!selectedRoom) return null;
@@ -1970,10 +2239,12 @@ export default function RoomsScreen() {
     }
 
     if (modalMode === 'checkout') {
-      const checkInDisplay = formatDateTime(selectedRoom.checkInTime);
-      const guestDisplay = checkOutForm.guestName || selectedRoom.currentGuest || t('walkInGuest');
-      const phoneDisplay = checkOutForm.guestPhone || selectedRoom.guestPhone || '';
-      const idDisplay = checkOutForm.guestId || selectedRoom.guestIdNumber || '';
+      const roomSnapshot = liveSelectedRoomSnapshot || getRoomBookingSnapshot(selectedRoom);
+      const checkInDisplay = formatDateTime(roomSnapshot?.checkInTime || selectedRoom.checkInTime);
+      const checkOutDisplay = formatDateTime(roomSnapshot?.checkOutDate);
+      const guestDisplay = checkOutForm.guestName || roomSnapshot?.guestName || selectedRoom.currentGuest || t('walkInGuest');
+      const phoneDisplay = checkOutForm.guestPhone || roomSnapshot?.guestPhone || selectedRoom.guestPhone || '';
+      const idDisplay = checkOutForm.guestId || roomSnapshot?.guestId || selectedRoom.guestIdNumber || '';
       return (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <ScrollView
@@ -2015,8 +2286,16 @@ export default function RoomsScreen() {
               ) : null}
               <View style={styles.checkoutInfoRow}>
                 <Text style={[styles.checkoutInfoLabel, { color: colors.textSecondary }]}>{t('rateType')}</Text>
-                <Text style={[styles.checkoutInfoValue, { color: colors.text }]}>{t(checkOutForm.rateType)}</Text>
+                <Text style={[styles.checkoutInfoValue, { color: colors.text }]}>
+                  {roomSnapshot?.rateTypeLabel || getRateTypeLabel(checkOutForm.rateType)}
+                </Text>
               </View>
+              {checkOutDisplay ? (
+                <View style={styles.checkoutInfoRow}>
+                  <Text style={[styles.checkoutInfoLabel, { color: colors.textSecondary }]}>{t('checkOutDate')}</Text>
+                  <Text style={[styles.checkoutInfoValue, { color: colors.text }]}>{checkOutDisplay}</Text>
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.formSection}>
@@ -2692,8 +2971,16 @@ export default function RoomsScreen() {
         }
       >
         {viewMode === 'list'
-          ? filteredRooms.map((room) => <View key={room.id}>{renderListItem(room)}</View>)
-          : filteredRooms.map((room) => <View key={room.id}>{renderGridItem(room)}</View>)}
+          ? filteredRooms.map((room, index) => (
+              <View key={room.id || `${room.number}-${room.floor}-${index}`}>
+                {renderListItem(room)}
+              </View>
+            ))
+          : filteredRooms.map((room, index) => (
+              <View key={room.id || `${room.number}-${room.floor}-${index}`}>
+                {renderGridItem(room)}
+              </View>
+            ))}
         {filteredRooms.length === 0 && (
           <View style={styles.emptyState}>
             {rooms.length === 0 ? (

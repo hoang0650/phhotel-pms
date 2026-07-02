@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useHotel } from '@/contexts/HotelContext';
 import { aiApi } from '@/services/api/ai';
+import { API_CONFIG } from '@/services/api/config';
 import { useRouter } from 'expo-router';
 
 interface ChatMessage {
@@ -26,6 +28,9 @@ interface ChatMessage {
   sender: 'user' | 'ai' | 'system';
   timestamp: string;
   type: 'text' | 'image' | 'file' | 'quick_reply';
+  fileUrl?: string;
+  fileType?: string;
+  fileName?: string;
   metadata?: {
     confidence?: number;
     intent?: string;
@@ -44,10 +49,103 @@ interface Conversation {
 }
 
 const DEFAULT_CONVERSATION_ID = 'default-ai-chat';
+const FILE_URL_REGEX = /(?:Link tải:\s*)?(https?:\/\/[^\s]+?\.(?:xlsx|docx|pdf))/i;
+
+const buildToolAwareMessage = (
+  id: string,
+  answerText: string,
+  timestamp: string
+): ChatMessage => {
+  const rawText = (answerText || '').trim();
+  const match = rawText.match(FILE_URL_REGEX);
+
+  if (!match?.[1]) {
+    return {
+      id,
+      content: rawText || 'Xin lỗi, tôi chưa có dữ liệu để tư vấn.',
+      sender: 'ai',
+      timestamp,
+      type: 'text',
+    };
+  }
+
+  const fileUrl = match[1];
+  const extension = fileUrl.split('.').pop()?.toLowerCase() || '';
+  const fileType =
+    extension === 'xlsx'
+      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : extension === 'docx'
+        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        : 'application/pdf';
+  const cleanedContent = rawText
+    .replace(match[0], '')
+    .replace('Đã xuất file Excel thành công.', '')
+    .replace('Đã tạo file Word thành công.', '')
+    .replace('Đã tạo file PDF thành công.', '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return {
+    id,
+    content: cleanedContent || 'AI đã tạo file đính kèm.',
+    sender: 'ai',
+    timestamp,
+    type: 'file',
+    fileUrl,
+    fileType,
+    fileName: fileUrl.split('/').pop() || `report.${extension || 'file'}`,
+  };
+};
+
+const isRevenuePrompt = (message: string) => {
+  const normalized = message.toLowerCase();
+  return [
+    'doanh thu',
+    'thu chi',
+    'phiếu thu',
+    'phiếu chi',
+    'tiền mặt',
+    'chuyển khoản',
+    'cà thẻ',
+    'giao ca',
+    'profit',
+    'revenue',
+  ].some(keyword => normalized.includes(keyword));
+};
+
+const isWebPrompt = (message: string) => {
+  const normalized = message.toLowerCase();
+  const hasUrl = /(https?:\/\/|www\.)/i.test(message);
+  return hasUrl || [
+    'đọc báo',
+    'doc bao',
+    'tin tức',
+    'tin tuc',
+    'bài báo',
+    'bai bao',
+    'tóm tắt web',
+    'tom tat web',
+    'tóm tắt bài',
+    'tom tat bai',
+    'tóm tắt link',
+    'tom tat link',
+    'đọc link',
+    'doc link',
+    'đọc web',
+    'doc web',
+    'website',
+    'web',
+    'news',
+    'article',
+    'search web',
+    'web search',
+  ].some(keyword => normalized.includes(keyword));
+};
 
 export default function AIChatScreen() {
   const { language } = useLanguage();
   const { user, token } = useAuth();
+  const { selectedHotelId, selectedHotel, hotels, selectHotel, canSelectMultipleHotels, isLoading: hotelContextLoading } = useHotel();
   const router = useRouter();
   const [conversations, setConversations] = useState<Conversation[]>([
     {
@@ -94,6 +192,17 @@ export default function AIChatScreen() {
       confidence: 'Độ tin cậy',
       intent: 'Ý định',
       entities: 'Thực thể',
+      selectedHotel: 'Khách sạn',
+      noHotelSelected: 'Vui lòng chọn khách sạn trước khi dùng AI.',
+      noRevenuePermission: 'Bạn không có quyền hỏi dữ liệu doanh thu.',
+      exportExcel: 'Xuất Excel',
+      exportWord: 'Xuất Word',
+      exportPdf: 'Xuất PDF',
+      openFile: 'Mở file',
+      generatedFile: 'File AI tạo',
+      hotelLoading: 'Đang tải khách sạn...',
+      webSummary: 'Tóm tắt web',
+      webNews: 'Tin tức mới',
       deleteConversation: 'Xóa cuộc hội thoại',
       confirmDelete: 'Bạn có chắc chắn muốn xóa cuộc hội thoại này?',
       noMessages: 'Chưa có tin nhắn nào',
@@ -121,6 +230,17 @@ export default function AIChatScreen() {
       confidence: 'Confidence',
       intent: 'Intent',
       entities: 'Entities',
+      selectedHotel: 'Hotel',
+      noHotelSelected: 'Please select a hotel before using AI.',
+      noRevenuePermission: 'You do not have permission to ask revenue data.',
+      exportExcel: 'Export Excel',
+      exportWord: 'Export Word',
+      exportPdf: 'Export PDF',
+      openFile: 'Open file',
+      generatedFile: 'Generated file',
+      hotelLoading: 'Loading hotels...',
+      webSummary: 'Web summary',
+      webNews: 'Latest news',
       deleteConversation: 'Delete Conversation',
       confirmDelete: 'Are you sure you want to delete this conversation?',
       noMessages: 'No messages yet',
@@ -129,7 +249,16 @@ export default function AIChatScreen() {
   };
 
   const t = translations[language as keyof typeof translations];
-  const tenantId = (user?.hotelId || user?.businessId || 'default').toString();
+  const effectiveHotelId = useMemo(
+    () => (selectedHotelId || user?.hotelId || '').toString(),
+    [selectedHotelId, user?.hotelId]
+  );
+  const businessId = (user?.businessId || '').toString();
+  const tenantId = (effectiveHotelId || businessId || 'default').toString();
+  const canAskRevenue = useMemo(() => {
+    const role = String(user?.role || '').toLowerCase();
+    return ['superadmin', 'admin', 'business', 'hotel', 'staff', 'manager', 'hotel_manager'].includes(role);
+  }, [user?.role]);
 
   const addMessage = useCallback((message: ChatMessage) => {
     setMessages(prev => [...prev, message]);
@@ -188,8 +317,26 @@ export default function AIChatScreen() {
     };
   }, [tenantId, addMessage]);
 
+  const openFileUrl = useCallback(async (url?: string) => {
+    if (!url) return;
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      Alert.alert(t.openFile, 'Không thể mở file được tạo.');
+    }
+  }, [t.openFile]);
+
   const sendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
+    const webPrompt = isWebPrompt(content);
+    if (!effectiveHotelId && !businessId && !webPrompt) {
+      Alert.alert(t.title, t.noHotelSelected);
+      return;
+    }
+    if (isRevenuePrompt(content) && !canAskRevenue) {
+      Alert.alert(t.title, t.noRevenuePermission);
+      return;
+    }
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -210,21 +357,24 @@ export default function AIChatScreen() {
         userMessage.content,
         undefined,
         user?.role || null,
-        (user as any)?._id || null,
-        token || null
+        user?.id || null,
+        token || null,
+        {
+          hotelId: effectiveHotelId || null,
+          businessId: businessId || null,
+          apiUrl: API_CONFIG.BASE_URL,
+        }
       );
       const answerText = response?.answer || 'Xin lỗi, tôi chưa có dữ liệu để tư vấn.';
-      const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        content: answerText,
-        sender: 'ai',
-        timestamp: new Date().toISOString(),
-        type: 'text',
-        metadata: {
-          confidence: 0.9,
-          intent: 'general_response',
-          entities: [],
-        },
+      const aiMessage = buildToolAwareMessage(
+        (Date.now() + 1).toString(),
+        answerText,
+        new Date().toISOString()
+      );
+      aiMessage.metadata = {
+        confidence: 0.9,
+        intent: aiMessage.type === 'file' ? 'tool_export' : 'general_response',
+        entities: [],
       };
       addMessage(aiMessage);
     } catch (error) {
@@ -267,6 +417,37 @@ export default function AIChatScreen() {
       sendMessage(content);
     }
   };
+
+  const exportQuickActions = useMemo(
+    () => [
+      {
+        label: t.exportExcel,
+        query: 'Xuất file Excel báo cáo doanh thu tháng này',
+      },
+      {
+        label: t.exportWord,
+        query: 'Xuất file Word báo cáo doanh thu tháng này',
+      },
+      {
+        label: t.exportPdf,
+        query: 'Xuất file PDF báo cáo doanh thu tháng này',
+      },
+    ],
+    [t.exportExcel, t.exportPdf, t.exportWord]
+  );
+  const webQuickActions = useMemo(
+    () => [
+      {
+        label: t.webSummary,
+        query: 'Tóm tắt nội dung link web này: https://vnexpress.net/',
+      },
+      {
+        label: t.webNews,
+        query: 'Tìm tin tức mới nhất về du lịch Việt Nam hôm nay và tóm tắt ngắn gọn',
+      },
+    ],
+    [t.webNews, t.webSummary]
+  );
 
   const switchConversation = (conversationId: string) => {
     setCurrentConversationId(conversationId);
@@ -337,6 +518,27 @@ export default function AIChatScreen() {
         >
           {message.content}
         </Text>
+
+        {message.fileUrl ? (
+          <TouchableOpacity
+            style={styles.fileCard}
+            onPress={() => openFileUrl(message.fileUrl)}
+            activeOpacity={0.85}
+          >
+            <View style={styles.fileCardHeader}>
+              <Ionicons
+                name={message.fileType?.includes('sheet') ? 'grid' : message.fileType?.includes('wordprocessingml') ? 'document-text' : 'document'}
+                size={18}
+                color="#1890ff"
+              />
+              <Text style={styles.fileCardTitle}>{t.generatedFile}</Text>
+            </View>
+            <Text style={styles.fileCardName} numberOfLines={1}>
+              {message.fileName || message.fileUrl.split('/').pop()}
+            </Text>
+            <Text style={styles.fileCardAction}>{t.openFile}</Text>
+          </TouchableOpacity>
+        ) : null}
         
         {message.metadata && (
           <View style={styles.metadataContainer}>
@@ -513,6 +715,33 @@ export default function AIChatScreen() {
         </View>
       </View>
 
+      <View style={styles.hotelContextBar}>
+        <Text style={styles.hotelContextLabel}>{t.selectedHotel}:</Text>
+        <Text style={styles.hotelContextValue}>
+          {hotelContextLoading ? t.hotelLoading : selectedHotel?.name || effectiveHotelId || t.noHotelSelected}
+        </Text>
+      </View>
+      {canSelectMultipleHotels ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.hotelChipScroll}
+          contentContainerStyle={styles.hotelChipContent}
+        >
+          {hotels.map(hotel => (
+            <TouchableOpacity
+              key={hotel.id}
+              style={[styles.hotelChip, selectedHotelId === hotel.id && styles.hotelChipActive]}
+              onPress={() => selectHotel(hotel.id)}
+            >
+              <Text style={[styles.hotelChipText, selectedHotelId === hotel.id && styles.hotelChipTextActive]}>
+                {hotel.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : null}
+
       <Modal
         visible={showConversations}
         animationType="slide"
@@ -593,20 +822,60 @@ export default function AIChatScreen() {
           </ScrollView>
         )}
 
+        {canAskRevenue ? (
+          <>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.quickActionsContainer}
+              contentContainerStyle={styles.quickActionsContent}
+            >
+              {revenueQuickActions.map(action => (
+                <TouchableOpacity
+                  key={action.query}
+                  style={styles.quickActionButton}
+                  onPress={() => sendMessage(action.query)}
+                  disabled={isLoading}
+                >
+                  <Text style={styles.quickActionText}>{action.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.exportActionsContainer}
+              contentContainerStyle={styles.quickActionsContent}
+            >
+              {exportQuickActions.map(action => (
+                <TouchableOpacity
+                  key={action.query}
+                  style={[styles.quickActionButton, styles.exportActionButton]}
+                  onPress={() => sendMessage(action.query)}
+                  disabled={isLoading}
+                >
+                  <Ionicons name="download-outline" size={14} color="#1890ff" />
+                  <Text style={[styles.quickActionText, styles.exportActionText]}>{action.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </>
+        ) : null}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={styles.quickActionsContainer}
+          style={styles.exportActionsContainer}
           contentContainerStyle={styles.quickActionsContent}
         >
-          {revenueQuickActions.map(action => (
+          {webQuickActions.map(action => (
             <TouchableOpacity
               key={action.query}
-              style={styles.quickActionButton}
+              style={[styles.quickActionButton, styles.exportActionButton]}
               onPress={() => sendMessage(action.query)}
               disabled={isLoading}
             >
-              <Text style={styles.quickActionText}>{action.label}</Text>
+              <Ionicons name="globe-outline" size={14} color="#1890ff" />
+              <Text style={[styles.quickActionText, styles.exportActionText]}>{action.label}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -710,6 +979,53 @@ const styles = StyleSheet.create({
     padding: 8,
     marginLeft: 8,
   },
+  hotelContextBar: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  hotelContextLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  hotelContextValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  hotelChipScroll: {
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eaeaea',
+  },
+  hotelChipContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  hotelChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: '#f5f5f5',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  hotelChipActive: {
+    backgroundColor: '#e6f4ff',
+    borderColor: '#1890ff',
+  },
+  hotelChipText: {
+    fontSize: 13,
+    color: '#555',
+  },
+  hotelChipTextActive: {
+    color: '#1890ff',
+    fontWeight: '600',
+  },
   datasetOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -811,6 +1127,36 @@ const styles = StyleSheet.create({
   aiMessageText: {
     color: '#333',
   },
+  fileCard: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#d6e4ff',
+    backgroundColor: '#f8fbff',
+    borderRadius: 12,
+    padding: 12,
+  },
+  fileCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 6,
+  },
+  fileCardTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1890ff',
+  },
+  fileCardName: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '500',
+  },
+  fileCardAction: {
+    marginTop: 8,
+    fontSize: 13,
+    color: '#1890ff',
+    fontWeight: '600',
+  },
   timestamp: {
     fontSize: 12,
     color: '#999',
@@ -880,6 +1226,23 @@ const styles = StyleSheet.create({
   quickActionText: {
     fontSize: 12,
     color: '#333',
+  },
+  exportActionsContainer: {
+    maxHeight: 44,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    backgroundColor: '#fff',
+  },
+  exportActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f0f7ff',
+    borderColor: '#bfdbfe',
+  },
+  exportActionText: {
+    color: '#1890ff',
+    fontWeight: '600',
   },
   inputContainer: {
     flexDirection: 'row',

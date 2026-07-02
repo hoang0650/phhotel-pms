@@ -2,6 +2,9 @@ import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
 import { Room, RoomStatus } from '@/types/hotel';
 
+const isNetworkError = (error: unknown): boolean =>
+  error instanceof Error && (error.message === 'NETWORK_ERROR' || error.message === 'Request timeout');
+
 export type RateType = 'hourly' | 'daily' | 'nightly' | 'weekly' | 'monthly';
 
 export interface ApiRoomPricing {
@@ -140,15 +143,122 @@ export interface HotelRoomSessions {
 export const mergeRoomWithSession = (room: Room, sessionData: any): Room => {
   if (!sessionData) return room;
 
-  const mergedRoom = {
+  const existingBooking =
+    (room as any)?.currentBooking && typeof (room as any).currentBooking === 'object'
+      ? (room as any).currentBooking
+      : {};
+  const mergedGuestInfo = {
+    ...(existingBooking?.guestInfo || {}),
+    ...(sessionData?.guestInfo || {}),
+  };
+  const mergedSelectedServices =
+    Array.isArray(sessionData?.selectedServices) && sessionData.selectedServices.length > 0
+      ? sessionData.selectedServices
+      : Array.isArray(existingBooking?.selectedServices) && existingBooking.selectedServices.length > 0
+        ? existingBooking.selectedServices
+        : Array.isArray(existingBooking?.services)
+          ? existingBooking.services
+          : [];
+
+  const mergedCurrentBooking = {
+    ...existingBooking,
+    ...sessionData,
+    guestInfo: mergedGuestInfo,
+    rateType:
+      sessionData?.rateType ||
+      sessionData?.bookingType ||
+      existingBooking?.rateType ||
+      existingBooking?.bookingType ||
+      room.rateType ||
+      'hourly',
+    bookingType:
+      sessionData?.bookingType ||
+      existingBooking?.bookingType ||
+      sessionData?.rateType ||
+      existingBooking?.rateType ||
+      room.rateType ||
+      'hourly',
+    paymentMethod: sessionData?.paymentMethod || existingBooking?.paymentMethod || room.paymentMethod,
+    advancePayment:
+      sessionData?.advancePayment ?? existingBooking?.advancePayment ?? room.advancePayment ?? 0,
+    additionalCharges:
+      sessionData?.additionalCharges ?? existingBooking?.additionalCharges ?? room.additionalCharges ?? 0,
+    discount:
+      sessionData?.discount ?? existingBooking?.discount ?? existingBooking?.discounts ?? room.discount ?? 0,
+    selectedServices: mergedSelectedServices,
+    services: Array.isArray(existingBooking?.services) ? existingBooking.services : mergedSelectedServices,
+    checkinTime:
+      sessionData?.checkinTime ||
+      existingBooking?.checkinTime ||
+      existingBooking?.checkInTime ||
+      existingBooking?.actualCheckInDate ||
+      sessionData?.checkInDate ||
+      existingBooking?.checkInDate ||
+      room.checkInTime,
+    checkInTime:
+      sessionData?.checkinTime ||
+      existingBooking?.checkInTime ||
+      existingBooking?.checkinTime ||
+      existingBooking?.actualCheckInDate ||
+      sessionData?.checkInDate ||
+      existingBooking?.checkInDate ||
+      room.checkInTime,
+    checkInDate:
+      sessionData?.checkInDate ||
+      existingBooking?.checkInDate ||
+      existingBooking?.actualCheckInDate ||
+      existingBooking?.checkinTime ||
+      room.checkInTime,
+    expectedCheckoutTime:
+      sessionData?.expectedCheckoutTime ||
+      sessionData?.checkOutDate ||
+      existingBooking?.expectedCheckoutTime ||
+      existingBooking?.checkOutDate ||
+      existingBooking?.actualCheckOutDate ||
+      existingBooking?.checkoutDate ||
+      room.checkoutDate,
+    checkOutDate:
+      sessionData?.checkOutDate ||
+      sessionData?.expectedCheckoutTime ||
+      existingBooking?.checkOutDate ||
+      existingBooking?.actualCheckOutDate ||
+      existingBooking?.expectedCheckoutTime ||
+      existingBooking?.checkoutDate ||
+      room.checkoutDate,
+    checkoutDate:
+      sessionData?.checkOutDate ||
+      sessionData?.expectedCheckoutTime ||
+      existingBooking?.checkoutDate ||
+      existingBooking?.checkOutDate ||
+      existingBooking?.actualCheckOutDate ||
+      room.checkoutDate,
+  };
+
+  const guestName =
+    mergedCurrentBooking?.guestInfo?.name ||
+    mergedCurrentBooking?.guestDetails?.name ||
+    mergedCurrentBooking?.guestName ||
+    room.currentGuest;
+
+  return {
     ...room,
     status: sessionData.roomStatus || sessionData.status || room.status,
-  } as any;
-
-  // Gán động thuộc tính mở rộng
-  mergedRoom.currentBooking = sessionData;
-
-  return mergedRoom as Room;
+    currentGuest: guestName || room.currentGuest,
+    guestPhone: mergedCurrentBooking?.guestInfo?.phone || room.guestPhone,
+    guestIdNumber: mergedCurrentBooking?.guestInfo?.idNumber || room.guestIdNumber,
+    rateType: mergedCurrentBooking.rateType || room.rateType,
+    paymentMethod: mergedCurrentBooking.paymentMethod || room.paymentMethod,
+    advancePayment: Number(mergedCurrentBooking.advancePayment ?? room.advancePayment ?? 0) || 0,
+    additionalCharges: Number(mergedCurrentBooking.additionalCharges ?? room.additionalCharges ?? 0) || 0,
+    discount: Number(mergedCurrentBooking.discount ?? room.discount ?? 0) || 0,
+    checkInTime: mergedCurrentBooking.checkinTime || mergedCurrentBooking.checkInDate || room.checkInTime,
+    checkoutDate:
+      mergedCurrentBooking.checkOutDate ||
+      mergedCurrentBooking.expectedCheckoutTime ||
+      mergedCurrentBooking.checkoutDate ||
+      room.checkoutDate,
+    currentBooking: mergedCurrentBooking,
+  } as Room;
 };
 
 const mapApiRoomEventToRoomEvent = (e: ApiRoomEvent): RoomEvent => {
@@ -530,6 +640,9 @@ export const roomsApi = {
       const rooms = Array.isArray(response) ? response : [];
       return rooms.map(mapApiRoomToRoom);
     } catch (error) {
+      if (isNetworkError(error)) {
+        return [];
+      }
       console.warn('[roomsApi.getAll] Error:', error);
       return [];
     }
@@ -567,6 +680,9 @@ export const roomsApi = {
       return normalizedSessions;
     } catch (error: any) {
       // Bọc catch nhẹ nhàng để nếu xảy ra lỗi timeout mạng, App Mobile không bị văng/crash màn hình chính
+      if (isNetworkError(error)) {
+        return {};
+      }
       console.warn('[roomsApi.getRoomSessions] Lỗi kết nối hoặc Timeout:', error?.message || error);
       return {};
     }
@@ -598,28 +714,34 @@ export const roomsApi = {
     try {
       // 1. Chạy lấy dữ liệu
       const [roomsResponse, sessionsMap] = await Promise.all([
-        apiClient.get<Room[] | { data: Room[] }>(`${API_ENDPOINTS.ROOMS.BASE}?hotelId=${hotelId}`),
+        apiClient.get<ApiRoom[] | { data: ApiRoom[] }>(`${API_ENDPOINTS.ROOMS.BASE}?hotelId=${hotelId}`),
         roomsApi.getRoomSessions(hotelId)
       ]);
 
-      const rooms = Array.isArray(roomsResponse) ? roomsResponse : (roomsResponse as any)?.data || [];
+      const apiRooms = Array.isArray(roomsResponse) ? roomsResponse : (roomsResponse as any)?.data || [];
+      const rooms = apiRooms.map(mapApiRoomToRoom);
 
       // 2. Map dữ liệu
-      return rooms.map((room: Room) => {
+      return rooms.map((room) => {
         const roomIdStr = String(room.id || (room as any)._id || '');
         const liveSession = sessionsMap[roomIdStr] || null;
         return mergeRoomWithSession(room, liveSession);
       });
     } catch (error) {
-      console.error('[roomsApi.getRoomsWithLiveSessions] Lỗi kết hợp dữ liệu:', error);
+      if (!isNetworkError(error)) {
+        console.error('[roomsApi.getRoomsWithLiveSessions] Lỗi kết hợp dữ liệu:', error);
+      }
       
       // FALLBACK: Trả về danh sách phòng cơ bản nếu bị timeout
       try {
         console.log('Đang thử lấy danh sách phòng cơ bản...');
-        const fallbackResponse = await apiClient.get<Room[] | { data: Room[] }>(`${API_ENDPOINTS.ROOMS.BASE}?hotelId=${hotelId}`);
-        return Array.isArray(fallbackResponse) ? fallbackResponse : (fallbackResponse as any)?.data || [];
+        const fallbackResponse = await apiClient.get<ApiRoom[] | { data: ApiRoom[] }>(`${API_ENDPOINTS.ROOMS.BASE}?hotelId=${hotelId}`);
+        const fallbackRooms = Array.isArray(fallbackResponse) ? fallbackResponse : (fallbackResponse as any)?.data || [];
+        return fallbackRooms.map(mapApiRoomToRoom);
       } catch (fallbackError) {
-        console.error('Lỗi Fallback (Có thể đứt mạng hoàn toàn):', fallbackError);
+        if (!isNetworkError(fallbackError)) {
+          console.error('Lỗi Fallback (Có thể đứt mạng hoàn toàn):', fallbackError);
+        }
         return []; // Trả về mảng rỗng để không crash App
       }
     }
@@ -630,6 +752,9 @@ export const roomsApi = {
       const response = await apiClient.get<ApiRoom>(API_ENDPOINTS.ROOMS.BY_ID(id));
       return mapApiRoomToRoom(response);
     } catch (error) {
+      if (isNetworkError(error)) {
+        return null;
+      }
       console.warn('[roomsApi.getById] Error:', error);
       return null;
     }
@@ -711,7 +836,10 @@ export const roomsApi = {
     return apiClient.post(API_ENDPOINTS.ROOMS.GUEST_RETURN(id), { staffId });
   },
   
-  getEventsByHotel: async (hotelId: string, options?: { limit?: number; skip?: number; types?: string[] }): Promise<RoomEvent[]> => {
+  getEventsByHotel: async (
+    hotelId: string,
+    options?: { limit?: number; skip?: number; types?: string[]; startDate?: string; endDate?: string }
+  ): Promise<RoomEvent[]> => {
     try {
       const params = new URLSearchParams({ hotelId });
       if (options?.limit !== undefined) params.append('limit', String(options.limit));
@@ -719,6 +847,8 @@ export const roomsApi = {
       if (options?.types && options.types.length > 0) {
         params.append('types', JSON.stringify(options.types));
       }
+      if (options?.startDate) params.append('startDate', options.startDate);
+      if (options?.endDate) params.append('endDate', options.endDate);
       const endpoint = `${API_ENDPOINTS.ROOMS.BASE}/events?${params.toString()}`;
       const response = await apiClient.get<ApiRoomEvent[] | { data: ApiRoomEvent[] }>(endpoint);
       const events = Array.isArray(response) ? response : (response as any)?.data || [];

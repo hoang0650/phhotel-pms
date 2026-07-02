@@ -1,6 +1,9 @@
 import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
 
+const isNetworkError = (error: unknown): boolean =>
+  error instanceof Error && (error.message === 'NETWORK_ERROR' || error.message === 'Request timeout');
+
 export interface RevenueChartParams {
   hotelId: string;
   period?: 'day' | 'week' | 'month';
@@ -90,6 +93,21 @@ export const revenueApi = {
       const response = await apiClient.get<RevenueChartData>(`${endpoint}?${queryParams.toString()}`);
       return response;
     } catch (error) {
+      if (isNetworkError(error)) {
+        return {
+          message: 'Network error',
+          labels: [],
+          revenueData: [],
+          paymentData: [],
+          expenseData: [],
+          totalRevenue: 0,
+          totalPayment: 0,
+          totalExpense: 0,
+          period: params.period || 'day',
+          startDate: new Date().toISOString(),
+          endDate: new Date().toISOString()
+        };
+      }
       console.warn('[revenueApi.getRevenueByPeriod] Error:', error);
       return {
         message: 'Error',
@@ -230,6 +248,16 @@ export const revenueApi = {
         period: data?.period,
       };
     } catch (error) {
+      if (isNetworkError(error)) {
+        return {
+          roomRevenue: 0,
+          serviceRevenue: 0,
+          receiptRevenue: 0,
+          otherRevenue: 0,
+          totalRevenue: 0,
+          period: { startDate, endDate },
+        };
+      }
       console.warn('[revenueApi.getBreakdownByRange] Error:', error);
       return {
         roomRevenue: 0,

@@ -102,12 +102,24 @@ export const shiftHandoverApi = {
     }
   },
 
-  getHistory: async (hotelId: string, page = 1, limit = 20): Promise<ShiftHandoverHistoryResponse> => {
+  getHistory: async (
+    hotelId: string,
+    page = 1,
+    limit = 20,
+    filters?: {
+      startDate?: string;
+      endDate?: string;
+      staffId?: string;
+    }
+  ): Promise<ShiftHandoverHistoryResponse> => {
     const params = new URLSearchParams({
       hotelId,
       page: String(page),
       limit: String(limit),
     });
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.staffId) params.append('staffId', filters.staffId);
     const response = await apiClient.get<ShiftHandoverHistoryResponse>(
       `${API_ENDPOINTS.SHIFT_HANDOVER.HISTORY}?${params.toString()}`
     );
