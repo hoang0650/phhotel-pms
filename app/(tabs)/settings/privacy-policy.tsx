@@ -1,19 +1,31 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Linking } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ArrowLeft } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
 import { useTheme } from '@/contexts/ThemeContext';
 
 export default function PrivacyPolicyScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
 
   const styles = createStyles(colors);
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Chính sách bảo mật</Text>
-        <Text style={styles.lastUpdated}>Cập nhật lần cuối: 19 tháng 12 năm 2025</Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <ArrowLeft size={24} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Chính sách bảo mật</Text>
+      </View>
 
-        <View style={styles.section}>
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.content}>
+          <Text style={styles.title}>Chính sách bảo mật</Text>
+          <Text style={styles.lastUpdated}>Cập nhật lần cuối: 19 tháng 12 năm 2025</Text>
+
+          <View style={styles.section}>
           <Text style={styles.sectionTitle}>1. GIỚI THIỆU</Text>
           <Text style={styles.subsectionTitle}>1.1</Text>
           <Text style={styles.text}>
@@ -273,14 +285,15 @@ export default function PrivacyPolicyScreen() {
           </Text>
         </View>
 
-        <View style={styles.section}>
+          <View style={styles.section}>
           <Text style={styles.sectionTitle}>17. CÁC ĐIỀU KHOẢN VÀ ĐIỀU KIỆN</Text>
           <Text style={styles.text}>
             Xin vui lòng đọc Điều khoản Dịch vụ về việc sử dụng, từ bỏ và giới hạn trách nhiệm khi sử dụng các Trang web, Dịch Vụ và các chính sách liên quan khác.
           </Text>
         </View>
-      </View>
-    </ScrollView>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -294,6 +307,27 @@ const createStyles = (colors: {
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.textSecondary + '33',
+    backgroundColor: colors.sectionCard,
+  },
+  backButton: {
+    padding: 8,
+    marginRight: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  scrollView: {
+    flex: 1,
   },
   content: {
     padding: 20,
