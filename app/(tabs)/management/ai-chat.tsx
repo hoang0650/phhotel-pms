@@ -721,7 +721,7 @@ export default function AIChatScreen() {
           {hotelContextLoading ? t.hotelLoading : selectedHotel?.name || effectiveHotelId || t.noHotelSelected}
         </Text>
       </View>
-      {canSelectMultipleHotels ? (
+      {/* {canSelectMultipleHotels ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -740,7 +740,7 @@ export default function AIChatScreen() {
             </TouchableOpacity>
           ))}
         </ScrollView>
-      ) : null}
+      ) : null} */}
 
       <Modal
         visible={showConversations}

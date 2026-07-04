@@ -238,24 +238,20 @@ export default function RoomsScreen() {
     if (!selectedHotelId || selectedHotelId.trim() === '') {
       return [];
     }
-    return roomsApi.getRoomsWithLiveSessions(selectedHotelId);
+    return roomsApi.getAll();
   },
   // ĐIỀU KIỆN QUAN TRỌNG: Chỉ bật query khi selectedHotelId không null, không undefined và không phải chuỗi rỗng
   enabled: !!selectedHotelId && selectedHotelId.trim() !== '',
   
-  refetchInterval: 10000, 
-  refetchIntervalInBackground: false,
 });
 
 // 1. QUERY: Lấy danh sách các phiên bản nháp (Sessions) từ Redis backend công khai an toàn
   const { data: roomSessions, refetch: refetchSessions } = useQuery({
     queryKey: ['roomSessions', selectedHotelId],
     // Giải pháp: Sử dụng toán tử rút gọn || '' để loại bỏ hoàn toàn lỗi Type 'null' is not assignable to type 'string'
-    queryFn: () => roomsApi.getRoomSessions(selectedHotelId || ''), 
+    queryFn: () => roomsApi.getAll(), 
     enabled: !!selectedHotelId && selectedHotelId !== 'null' && selectedHotelId.trim() !== '', 
-    refetchInterval: 15000, // Tần suất đồng bộ giãn cách tránh timeout
     retry: 1,
-    refetchOnWindowFocus: false,
   });
 
   // 2. MUTATION: Khai báo hàm đẩy trạng thái đồng bộ lên Redis của Backend đúng chuẩn cấu trúc
