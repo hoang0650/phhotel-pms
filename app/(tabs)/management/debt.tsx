@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useHotel } from '@/contexts/HotelContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { debtsApi, Debt, DebtLabel } from '@/services/api/debts';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface SettleDebtData {
   amount: number;
@@ -24,6 +25,8 @@ interface SettleDebtData {
 export default function DebtManagementScreen() {
   const { selectedHotelId, hotels, selectHotel, canSelectMultipleHotels, isLoading: hotelsLoading } = useHotel();
   const { isAdmin, isBusiness, user } = useAuth();
+  const { language } = useLanguage();
+  const isVi = language === 'vi';
   const [debts, setDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -49,42 +52,129 @@ export default function DebtManagementScreen() {
   const [newLabelInput, setNewLabelInput] = useState('');
   const [selectedLabelColor, setSelectedLabelColor] = useState('default');
   const [isUpdatingLabels, setIsUpdatingLabels] = useState(false);
+  const text = useMemo(() => ({
+    cash: isVi ? 'Tiền mặt' : 'Cash',
+    bankTransfer: isVi ? 'Chuyển khoản' : 'Bank transfer',
+    card: isVi ? 'Thẻ' : 'Card',
+    other: isVi ? 'Khác' : 'Other',
+    all: isVi ? 'Tất cả' : 'All',
+    pending: isVi ? 'Chờ xử lý' : 'Pending',
+    partial: isVi ? 'Thanh toán một phần' : 'Partially paid',
+    settled: isVi ? 'Đã thanh toán' : 'Paid',
+    cancelled: isVi ? 'Đã hủy' : 'Cancelled',
+    defaultColor: isVi ? 'Mặc định' : 'Default',
+    red: isVi ? 'Đỏ' : 'Red',
+    orange: isVi ? 'Cam' : 'Orange',
+    gold: isVi ? 'Vàng' : 'Gold',
+    green: isVi ? 'Xanh lá' : 'Green',
+    blue: isVi ? 'Xanh dương' : 'Blue',
+    purple: isVi ? 'Tím' : 'Purple',
+    cyan: 'Cyan',
+    magenta: 'Magenta',
+    deepRed: isVi ? 'Đỏ đậm' : 'Deep red',
+    important: isVi ? 'Quan trọng' : 'Important',
+    needContact: isVi ? 'Cần liên hệ' : 'Need contact',
+    vip: 'VIP',
+    overdue: isVi ? 'Quá hạn' : 'Overdue',
+    contacted: isVi ? 'Đã liên hệ' : 'Contacted',
+    awaitingConfirmation: isVi ? 'Chờ xác nhận' : 'Awaiting confirmation',
+    error: isVi ? 'Lỗi' : 'Error',
+    confirm: isVi ? 'Xác nhận' : 'Confirm',
+    cancel: isVi ? 'Hủy' : 'Cancel',
+    delete: isVi ? 'Xóa' : 'Delete',
+    label: isVi ? 'Nhãn' : 'Labels',
+    settle: isVi ? 'Thanh toán' : 'Settle',
+    loading: isVi ? 'Đang tải dữ liệu...' : 'Loading data...',
+    title: isVi ? 'Quản Lý Công Nợ' : 'Debt Management',
+    showing: (shown: number, totalCount: number) =>
+      isVi ? `Hiển thị ${shown}/${totalCount} công nợ` : `Showing ${shown}/${totalCount} debts`,
+    totalDebt: isVi ? 'Tổng công nợ' : 'Total debt',
+    totalPaid: isVi ? 'Đã thanh toán' : 'Paid',
+    totalRemaining: isVi ? 'Còn phải thu' : 'Remaining',
+    chooseHotel: isVi ? 'Chọn khách sạn' : 'Select hotel',
+    searchPlaceholder: isVi ? 'Tìm theo tên, SĐT, số phòng, hóa đơn...' : 'Search by name, phone, room, invoice...',
+    fromDate: isVi ? 'Từ ngày (YYYY-MM-DD)' : 'From date (YYYY-MM-DD)',
+    toDate: isVi ? 'Đến ngày (YYYY-MM-DD)' : 'To date (YYYY-MM-DD)',
+    filter: isVi ? 'Lọc' : 'Filter',
+    noDebt: isVi ? 'Không có công nợ nào' : 'No debts found',
+    changeFilterHint: isVi ? 'Thử thay đổi bộ lọc hoặc khoảng thời gian' : 'Try changing the filter or date range',
+    room: isVi ? 'Phòng' : 'Room',
+    invoice: isVi ? 'Hóa đơn' : 'Invoice',
+    remainingToCollect: isVi ? 'Còn lại cần thu' : 'Remaining to collect',
+    debtDate: isVi ? 'Ngày công nợ:' : 'Debt date:',
+    dueDate: isVi ? 'Hạn thanh toán:' : 'Due date:',
+    prev: isVi ? 'Trước' : 'Prev',
+    next: isVi ? 'Tiếp' : 'Next',
+    page: (current: number, totalCount: number) => (isVi ? `Trang ${current}/${totalCount}` : `Page ${current}/${totalCount}`),
+    chooseHotelTitle: isVi ? 'Chọn Khách Sạn' : 'Select Hotel',
+    loadingHotels: isVi ? 'Đang tải khách sạn...' : 'Loading hotels...',
+    debtLabels: isVi ? 'Nhãn Công Nợ' : 'Debt Labels',
+    currentLabels: isVi ? 'Nhãn hiện tại' : 'Current labels',
+    noLabels: isVi ? 'Chưa có nhãn' : 'No labels yet',
+    addNewLabel: isVi ? 'Thêm nhãn mới' : 'Add new label',
+    labelName: isVi ? 'Tên nhãn' : 'Label name',
+    add: isVi ? 'Thêm' : 'Add',
+    suggestion: isVi ? 'Gợi ý' : 'Suggestions',
+    saveLabels: isVi ? 'Lưu nhãn' : 'Save labels',
+    settleDebtTitle: isVi ? 'Thanh Toán Công Nợ' : 'Settle Debt',
+    remaining: isVi ? 'Còn lại:' : 'Remaining:',
+    settleAmount: isVi ? 'Số tiền thanh toán' : 'Settlement amount',
+    enterAmount: isVi ? 'Nhập số tiền' : 'Enter amount',
+    paymentMethod: isVi ? 'Phương thức thanh toán' : 'Payment method',
+    notes: isVi ? 'Ghi chú' : 'Notes',
+    optionalNotes: isVi ? 'Nhập ghi chú (tùy chọn)' : 'Enter notes (optional)',
+    confirmSettlement: isVi ? 'Xác nhận thanh toán' : 'Confirm settlement',
+    loadFailed: isVi ? 'Không thể tải danh sách công nợ' : 'Unable to load debt list',
+    invalidAmount: isVi ? 'Vui lòng nhập số tiền hợp lệ' : 'Please enter a valid amount',
+    amountExceeds: isVi ? 'Số tiền vượt quá số dư còn lại' : 'Amount exceeds remaining balance',
+    settleConfirm: (amount: string, name: string) =>
+      isVi ? `Bạn có chắc chắn muốn thanh toán ${amount} cho ${name}?` : `Do you want to settle ${amount} for ${name}?`,
+    settleSuccess: isVi ? 'Đã thanh toán công nợ thành công' : 'Debt settled successfully',
+    settleFailed: isVi ? 'Không thể thanh toán công nợ' : 'Unable to settle debt',
+    deleteConfirm: (name: string) =>
+      isVi ? `Bạn có chắc chắn muốn xóa công nợ của ${name}?` : `Do you want to delete the debt of ${name}?`,
+    deleteSuccess: isVi ? 'Đã xóa công nợ' : 'Debt deleted',
+    deleteFailed: isVi ? 'Không thể xóa công nợ' : 'Unable to delete debt',
+    updateLabelSuccess: isVi ? 'Đã cập nhật nhãn công nợ' : 'Debt labels updated',
+    updateLabelFailed: isVi ? 'Không thể cập nhật nhãn' : 'Unable to update labels',
+    unknown: isVi ? 'Không xác định' : 'Unknown',
+  }), [isVi]);
 
   const paymentMethods = [
-    { value: 'cash', label: 'Tiền mặt' },
-    { value: 'bank_transfer', label: 'Chuyển khoản' },
-    { value: 'card', label: 'Thẻ' },
-    { value: 'other', label: 'Khác' },
+    { value: 'cash', label: text.cash },
+    { value: 'bank_transfer', label: text.bankTransfer },
+    { value: 'card', label: text.card },
+    { value: 'other', label: text.other },
   ];
 
   const statusOptions = [
-    { value: 'all', label: 'Tất cả' },
-    { value: 'pending', label: 'Chờ xử lý' },
-    { value: 'partial', label: 'Thanh toán một phần' },
-    { value: 'settled', label: 'Đã thanh toán' },
-    { value: 'cancelled', label: 'Đã hủy' },
+    { value: 'all', label: text.all },
+    { value: 'pending', label: text.pending },
+    { value: 'partial', label: text.partial },
+    { value: 'settled', label: text.settled },
+    { value: 'cancelled', label: text.cancelled },
   ];
 
   const labelColors = [
-    { value: 'default', label: 'Mặc định', color: '#8E8E93' },
-    { value: 'red', label: 'Đỏ', color: '#ef4444' },
-    { value: 'orange', label: 'Cam', color: '#f97316' },
-    { value: 'gold', label: 'Vàng', color: '#f59e0b' },
-    { value: 'green', label: 'Xanh lá', color: '#22c55e' },
-    { value: 'blue', label: 'Xanh dương', color: '#3b82f6' },
-    { value: 'purple', label: 'Tím', color: '#a855f7' },
-    { value: 'cyan', label: 'Cyan', color: '#06b6d4' },
-    { value: 'magenta', label: 'Magenta', color: '#d946ef' },
-    { value: 'volcano', label: 'Đỏ đậm', color: '#f97316' },
+    { value: 'default', label: text.defaultColor, color: '#8E8E93' },
+    { value: 'red', label: text.red, color: '#ef4444' },
+    { value: 'orange', label: text.orange, color: '#f97316' },
+    { value: 'gold', label: text.gold, color: '#f59e0b' },
+    { value: 'green', label: text.green, color: '#22c55e' },
+    { value: 'blue', label: text.blue, color: '#3b82f6' },
+    { value: 'purple', label: text.purple, color: '#a855f7' },
+    { value: 'cyan', label: text.cyan, color: '#06b6d4' },
+    { value: 'magenta', label: text.magenta, color: '#d946ef' },
+    { value: 'volcano', label: text.deepRed, color: '#f97316' },
   ];
 
   const suggestedLabels: DebtLabel[] = [
-    { name: 'Quan trọng', color: 'red' },
-    { name: 'Cần liên hệ', color: 'orange' },
-    { name: 'VIP', color: 'purple' },
-    { name: 'Quá hạn', color: 'volcano' },
-    { name: 'Đã liên hệ', color: 'blue' },
-    { name: 'Chờ xác nhận', color: 'gold' },
+    { name: text.important, color: 'red' },
+    { name: text.needContact, color: 'orange' },
+    { name: text.vip, color: 'purple' },
+    { name: text.overdue, color: 'volcano' },
+    { name: text.contacted, color: 'blue' },
+    { name: text.awaitingConfirmation, color: 'gold' },
   ];
 
   const loadDebts = useCallback(async () => {
@@ -102,11 +192,11 @@ export default function DebtManagementScreen() {
       setTotal(response.total);
       setTotalPages(response.totalPages || 1);
     } catch {
-      Alert.alert('Lỗi', 'Không thể tải danh sách công nợ');
+      Alert.alert(text.error, text.loadFailed);
     } finally {
       setLoading(false);
     }
-  }, [pageIndex, pageSize, selectedHotelId, statusFilter, startDate, endDate]);
+  }, [pageIndex, pageSize, selectedHotelId, statusFilter, startDate, endDate, text.error, text.loadFailed]);
 
   useEffect(() => {
     if (!selectedHotelId && !isAdmin && !isBusiness) return;
@@ -127,20 +217,20 @@ export default function DebtManagementScreen() {
     if (!selectedDebt) return;
     const amount = Number(settleData.amount) || 0;
     if (amount <= 0) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
+      Alert.alert(text.error, text.invalidAmount);
       return;
     }
     if (amount > selectedDebt.remainingAmount) {
-      Alert.alert('Lỗi', 'Số tiền vượt quá số dư còn lại');
+      Alert.alert(text.error, text.amountExceeds);
       return;
     }
     Alert.alert(
-      'Xác nhận',
-      `Bạn có chắc chắn muốn thanh toán ${formatCurrency(amount)} cho ${selectedDebt.customerName}?`,
+      text.confirm,
+      text.settleConfirm(formatCurrency(amount), selectedDebt.customerName),
       [
-        { text: 'Hủy', style: 'cancel' },
+        { text: text.cancel, style: 'cancel' },
         {
-          text: 'Xác nhận',
+          text: text.confirm,
           onPress: async () => {
             const updated = await debtsApi.settleDebt(selectedDebt.id, {
               amount,
@@ -151,9 +241,9 @@ export default function DebtManagementScreen() {
               setSettleModalVisible(false);
               setSelectedDebt(null);
               loadDebts();
-              Alert.alert('Thành công', 'Đã thanh toán công nợ thành công');
+              Alert.alert(text.confirm, text.settleSuccess);
             } else {
-              Alert.alert('Lỗi', 'Không thể thanh toán công nợ');
+              Alert.alert(text.error, text.settleFailed);
             }
           },
         },
@@ -163,20 +253,20 @@ export default function DebtManagementScreen() {
 
   const handleDeleteDebt = (debt: Debt) => {
     Alert.alert(
-      'Xác nhận',
-      `Bạn có chắc chắn muốn xóa công nợ của ${debt.customerName}?`,
+      text.confirm,
+      text.deleteConfirm(debt.customerName),
       [
-        { text: 'Hủy', style: 'cancel' },
+        { text: text.cancel, style: 'cancel' },
         {
-          text: 'Xóa',
+          text: text.delete,
           style: 'destructive',
           onPress: async () => {
             const ok = await debtsApi.deleteDebt(debt.id);
             if (ok) {
               loadDebts();
-              Alert.alert('Thành công', 'Đã xóa công nợ');
+              Alert.alert(text.confirm, text.deleteSuccess);
             } else {
-              Alert.alert('Lỗi', 'Không thể xóa công nợ');
+              Alert.alert(text.error, text.deleteFailed);
             }
           },
         },
@@ -230,9 +320,9 @@ export default function DebtManagementScreen() {
     if (updated) {
       closeLabelModal();
       loadDebts();
-      Alert.alert('Thành công', 'Đã cập nhật nhãn công nợ');
+      Alert.alert(text.confirm, text.updateLabelSuccess);
     } else {
-      Alert.alert('Lỗi', 'Không thể cập nhật nhãn');
+      Alert.alert(text.error, text.updateLabelFailed);
     }
   };
 
@@ -254,7 +344,7 @@ export default function DebtManagementScreen() {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
+    return new Intl.NumberFormat(isVi ? 'vi-VN' : 'en-US', {
       style: 'currency',
       currency: 'VND',
     }).format(amount);
@@ -264,7 +354,7 @@ export default function DebtManagementScreen() {
     if (!dateString) return '-';
     const d = new Date(dateString);
     if (isNaN(d.getTime())) return '-';
-    return d.toLocaleDateString('vi-VN');
+    return d.toLocaleDateString(isVi ? 'vi-VN' : 'en-US');
   };
 
   const getStatusColor = (status: string) => {
@@ -279,11 +369,11 @@ export default function DebtManagementScreen() {
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'pending': return 'Chờ xử lý';
-      case 'partial': return 'Thanh toán một phần';
-      case 'settled': return 'Đã thanh toán';
-      case 'cancelled': return 'Đã hủy';
-      default: return 'Không xác định';
+      case 'pending': return text.pending;
+      case 'partial': return text.partial;
+      case 'settled': return text.settled;
+      case 'cancelled': return text.cancelled;
+      default: return text.unknown;
     }
   };
 
@@ -340,7 +430,7 @@ export default function DebtManagementScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Đang tải dữ liệu...</Text>
+        <Text style={styles.loadingText}>{text.loading}</Text>
       </View>
     );
   }
@@ -348,25 +438,25 @@ export default function DebtManagementScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Quản Lý Công Nợ</Text>
+        <Text style={styles.headerTitle}>{text.title}</Text>
         <View style={styles.headerStats}>
-          <Text style={styles.statText}>Hiển thị {filteredDebts.length}/{total} công nợ</Text>
+          <Text style={styles.statText}>{text.showing(filteredDebts.length, total)}</Text>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statCardLabel}>Tổng công nợ</Text>
+            <Text style={styles.statCardLabel}>{text.totalDebt}</Text>
             <Text style={styles.statCardValue}>{formatCurrency(debtStats.totalDebt)}</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statCardLabel}>Đã thanh toán</Text>
+            <Text style={styles.statCardLabel}>{text.totalPaid}</Text>
             <Text style={[styles.statCardValue, styles.successValue]}>{formatCurrency(debtStats.totalPaid)}</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statCardLabel}>Còn phải thu</Text>
+            <Text style={styles.statCardLabel}>{text.totalRemaining}</Text>
             <Text style={[styles.statCardValue, styles.warningValue]}>{formatCurrency(debtStats.totalRemaining)}</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statCardLabel}>Quá hạn</Text>
+            <Text style={styles.statCardLabel}>{text.overdue}</Text>
             <Text style={[styles.statCardValue, styles.dangerValue]}>{debtStats.overdueCount}</Text>
           </View>
         </ScrollView>
@@ -379,8 +469,8 @@ export default function DebtManagementScreen() {
               <Ionicons name="business-outline" size={18} color="#007AFF" />
               <Text style={styles.hotelSelectorText}>
                 {selectedHotelId
-                  ? hotels.find(hotel => hotel.id === selectedHotelId)?.name || 'Chọn khách sạn'
-                  : 'Chọn khách sạn'}
+                  ? hotels.find(hotel => hotel.id === selectedHotelId)?.name || text.chooseHotel
+                  : text.chooseHotel}
               </Text>
               <Ionicons name="chevron-down" size={18} color="#007AFF" />
             </TouchableOpacity>
@@ -390,7 +480,7 @@ export default function DebtManagementScreen() {
             <Ionicons name="search" size={20} color="#8E8E93" style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
-              placeholder="Tìm theo tên, SĐT, số phòng, hóa đơn..."
+              placeholder={text.searchPlaceholder}
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
@@ -399,20 +489,20 @@ export default function DebtManagementScreen() {
           <View style={styles.dateRangeRow}>
             <TextInput
               style={styles.dateInput}
-              placeholder="Từ ngày (YYYY-MM-DD)"
+              placeholder={text.fromDate}
               value={startDateInput}
               onChangeText={setStartDateInput}
               autoCapitalize="none"
             />
             <TextInput
               style={styles.dateInput}
-              placeholder="Đến ngày (YYYY-MM-DD)"
+              placeholder={text.toDate}
               value={endDateInput}
               onChangeText={setEndDateInput}
               autoCapitalize="none"
             />
             <TouchableOpacity style={styles.applyDateButton} onPress={applyDateRange}>
-              <Text style={styles.applyDateText}>Lọc</Text>
+              <Text style={styles.applyDateText}>{text.filter}</Text>
             </TouchableOpacity>
           </View>
 
@@ -450,8 +540,8 @@ export default function DebtManagementScreen() {
         {filteredDebts.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="wallet-outline" size={64} color="#C7C7CC" />
-            <Text style={styles.emptyText}>Không có công nợ nào</Text>
-            <Text style={styles.emptySubText}>Thử thay đổi bộ lọc hoặc khoảng thời gian</Text>
+            <Text style={styles.emptyText}>{text.noDebt}</Text>
+            <Text style={styles.emptySubText}>{text.changeFilterHint}</Text>
           </View>
         ) : (
           filteredDebts.map((debt) => (
@@ -461,10 +551,10 @@ export default function DebtManagementScreen() {
                   <Text style={styles.guestName}>{debt.customerName}</Text>
                   {debt.customerPhone ? <Text style={styles.guestPhone}>{debt.customerPhone}</Text> : null}
                   {debt.roomNumber && (
-                    <Text style={styles.roomNumber}>Phòng {debt.roomNumber}</Text>
+                    <Text style={styles.roomNumber}>{text.room} {debt.roomNumber}</Text>
                   )}
                   {debt.invoiceNumber ? (
-                    <Text style={styles.invoiceNumber}>Hóa đơn #{debt.invoiceNumber}</Text>
+                    <Text style={styles.invoiceNumber}>{text.invoice} #{debt.invoiceNumber}</Text>
                   ) : null}
                 </View>
                 <View style={styles.statusContainer}>
@@ -475,14 +565,14 @@ export default function DebtManagementScreen() {
                   </View>
                   {isOverdue(debt) ? (
                     <View style={styles.overdueBadge}>
-                      <Text style={styles.overdueText}>Quá hạn</Text>
+                      <Text style={styles.overdueText}>{text.overdue}</Text>
                     </View>
                   ) : null}
                 </View>
               </View>
 
               <View style={styles.remainingHighlight}>
-                <Text style={styles.remainingLabel}>Còn lại cần thu</Text>
+                <Text style={styles.remainingLabel}>{text.remainingToCollect}</Text>
                 <Text style={[
                   styles.remainingValue,
                   isOverdue(debt) ? styles.remainingDanger : styles.remainingNormal
@@ -493,24 +583,24 @@ export default function DebtManagementScreen() {
 
               <View style={styles.debtDetails}>
                 <View style={styles.amountRow}>
-                  <Text style={styles.amountLabel}>Tổng công nợ:</Text>
+                  <Text style={styles.amountLabel}>{text.totalDebt}:</Text>
                   <Text style={styles.amountValue}>{formatCurrency(debt.debtAmount)}</Text>
                 </View>
                 <View style={styles.amountRow}>
-                  <Text style={styles.amountLabel}>Đã thanh toán:</Text>
+                  <Text style={styles.amountLabel}>{text.totalPaid}:</Text>
                   <Text style={styles.amountValue}>{formatCurrency(debt.paidAmount)}</Text>
                 </View>
                 <View style={styles.amountRow}>
-                  <Text style={styles.amountLabel}>Còn lại:</Text>
+                  <Text style={styles.amountLabel}>{text.totalRemaining}:</Text>
                   <Text style={styles.amountValue}>{formatCurrency(debt.remainingAmount)}</Text>
                 </View>
                 <View style={styles.amountRow}>
-                  <Text style={styles.amountLabel}>Ngày công nợ:</Text>
+                  <Text style={styles.amountLabel}>{text.debtDate}</Text>
                   <Text style={styles.dueDate}>{formatDate(debt.debtDate || '')}</Text>
                 </View>
                 {debt.dueDate ? (
                   <View style={styles.amountRow}>
-                    <Text style={styles.amountLabel}>Hạn thanh toán:</Text>
+                    <Text style={styles.amountLabel}>{text.dueDate}</Text>
                     <Text style={styles.dueDate}>{formatDate(debt.dueDate)}</Text>
                   </View>
                 ) : null}
@@ -538,7 +628,7 @@ export default function DebtManagementScreen() {
                     onPress={() => handleSettleDebt(debt)}
                   >
                     <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
-                    <Text style={styles.settleButtonText}>Thanh toán</Text>
+                    <Text style={styles.settleButtonText}>{text.settle}</Text>
                   </TouchableOpacity>
                 )}
 
@@ -547,7 +637,7 @@ export default function DebtManagementScreen() {
                   onPress={() => openLabelModal(debt)}
                 >
                   <Ionicons name="pricetags-outline" size={18} color="#007AFF" />
-                  <Text style={styles.labelButtonText}>Nhãn</Text>
+                  <Text style={styles.labelButtonText}>{text.label}</Text>
                 </TouchableOpacity>
 
                 {canDelete(debt) && (
@@ -556,7 +646,7 @@ export default function DebtManagementScreen() {
                     onPress={() => handleDeleteDebt(debt)}
                   >
                     <Ionicons name="trash-outline" size={18} color="#FF3B30" />
-                    <Text style={styles.deleteButtonText}>Xóa</Text>
+                    <Text style={styles.deleteButtonText}>{text.delete}</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -572,15 +662,15 @@ export default function DebtManagementScreen() {
             onPress={() => setPageIndex(prev => Math.max(1, prev - 1))}
             disabled={pageIndex <= 1}
           >
-            <Text style={styles.paginationButtonText}>Trước</Text>
+            <Text style={styles.paginationButtonText}>{text.prev}</Text>
           </TouchableOpacity>
-          <Text style={styles.paginationText}>Trang {pageIndex}/{totalPages}</Text>
+          <Text style={styles.paginationText}>{text.page(pageIndex, totalPages)}</Text>
           <TouchableOpacity
             style={[styles.paginationButton, pageIndex >= totalPages && styles.paginationButtonDisabled]}
             onPress={() => setPageIndex(prev => Math.min(totalPages, prev + 1))}
             disabled={pageIndex >= totalPages}
           >
-            <Text style={styles.paginationButtonText}>Tiếp</Text>
+            <Text style={styles.paginationButtonText}>{text.next}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -594,7 +684,7 @@ export default function DebtManagementScreen() {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn Khách Sạn</Text>
+              <Text style={styles.modalTitle}>{text.chooseHotelTitle}</Text>
               <TouchableOpacity onPress={() => setHotelModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#8E8E93" />
               </TouchableOpacity>
@@ -603,7 +693,7 @@ export default function DebtManagementScreen() {
               {hotelsLoading ? (
                 <View style={styles.loadingSmall}>
                   <ActivityIndicator size="small" color="#007AFF" />
-                  <Text style={styles.loadingText}>Đang tải khách sạn...</Text>
+                  <Text style={styles.loadingText}>{text.loadingHotels}</Text>
                 </View>
               ) : (
                 hotels.map((hotel) => (
@@ -644,7 +734,7 @@ export default function DebtManagementScreen() {
         <View style={styles.modalContainer}>
           <View style={styles.modalContentLarge}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Nhãn Công Nợ</Text>
+              <Text style={styles.modalTitle}>{text.debtLabels}</Text>
               <TouchableOpacity onPress={closeLabelModal}>
                 <Ionicons name="close" size={24} color="#8E8E93" />
               </TouchableOpacity>
@@ -654,9 +744,9 @@ export default function DebtManagementScreen() {
                 <Text style={styles.modalSubtitle}>{selectedDebt.customerName}</Text>
               )}
 
-              <Text style={styles.sectionTitle}>Nhãn hiện tại</Text>
+              <Text style={styles.sectionTitle}>{text.currentLabels}</Text>
               {currentLabels.length === 0 ? (
-                <Text style={styles.emptyLabelText}>Chưa có nhãn</Text>
+                <Text style={styles.emptyLabelText}>{text.noLabels}</Text>
               ) : (
                 currentLabels.map((label) => (
                   <View key={label.name} style={styles.labelEditor}>
@@ -688,16 +778,16 @@ export default function DebtManagementScreen() {
                 ))
               )}
 
-              <Text style={styles.sectionTitle}>Thêm nhãn mới</Text>
+              <Text style={styles.sectionTitle}>{text.addNewLabel}</Text>
               <View style={styles.addLabelRow}>
                 <TextInput
                   style={styles.addLabelInput}
-                  placeholder="Tên nhãn"
+                  placeholder={text.labelName}
                   value={newLabelInput}
                   onChangeText={setNewLabelInput}
                 />
                 <TouchableOpacity style={styles.addLabelButton} onPress={addLabel}>
-                  <Text style={styles.addLabelButtonText}>Thêm</Text>
+                  <Text style={styles.addLabelButtonText}>{text.add}</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.colorPickerRow}>
@@ -715,7 +805,7 @@ export default function DebtManagementScreen() {
                 ))}
               </View>
 
-              <Text style={styles.sectionTitle}>Gợi ý</Text>
+              <Text style={styles.sectionTitle}>{text.suggestion}</Text>
               <View style={styles.suggestedLabelContainer}>
                 {suggestedLabels.map(label => (
                   <TouchableOpacity
@@ -735,7 +825,7 @@ export default function DebtManagementScreen() {
               onPress={saveLabels}
               disabled={isUpdatingLabels}
             >
-              <Text style={styles.confirmButtonText}>Lưu nhãn</Text>
+              <Text style={styles.confirmButtonText}>{text.saveLabels}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -751,7 +841,7 @@ export default function DebtManagementScreen() {
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Thanh Toán Công Nợ</Text>
+              <Text style={styles.modalTitle}>{text.settleDebtTitle}</Text>
               <TouchableOpacity onPress={() => setSettleModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#8E8E93" />
               </TouchableOpacity>
@@ -761,22 +851,22 @@ export default function DebtManagementScreen() {
               <View style={styles.modalBody}>
                 <View style={styles.debtInfo}>
                   <Text style={styles.debtGuestName}>{selectedDebt.customerName}</Text>
-                  <Text style={styles.debtAmount}>Còn lại: {formatCurrency(selectedDebt.remainingAmount)}</Text>
+                  <Text style={styles.debtAmount}>{text.remaining} {formatCurrency(selectedDebt.remainingAmount)}</Text>
                 </View>
                 
                 <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Số tiền thanh toán</Text>
+                  <Text style={styles.formLabel}>{text.settleAmount}</Text>
                   <TextInput
                     style={styles.formInput}
                     value={settleData.amount.toString()}
                     onChangeText={(text) => setSettleData({...settleData, amount: parseFloat(text) || 0})}
                     keyboardType="numeric"
-                    placeholder="Nhập số tiền"
+                    placeholder={text.enterAmount}
                   />
                 </View>
                 
                 <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Phương thức thanh toán</Text>
+                  <Text style={styles.formLabel}>{text.paymentMethod}</Text>
                   <View style={styles.paymentMethodContainer}>
                     {paymentMethods.map((method) => (
                       <TouchableOpacity
@@ -799,19 +889,19 @@ export default function DebtManagementScreen() {
                 </View>
                 
                 <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Ghi chú</Text>
+                  <Text style={styles.formLabel}>{text.notes}</Text>
                   <TextInput
                     style={[styles.formInput, styles.textArea]}
                     value={settleData.notes}
                     onChangeText={(text) => setSettleData({...settleData, notes: text})}
-                    placeholder="Nhập ghi chú (tùy chọn)"
+                    placeholder={text.optionalNotes}
                     multiline
                     numberOfLines={3}
                   />
                 </View>
                 
                 <TouchableOpacity style={styles.confirmButton} onPress={confirmSettleDebt}>
-                  <Text style={styles.confirmButtonText}>Xác nhận thanh toán</Text>
+                  <Text style={styles.confirmButtonText}>{text.confirmSettlement}</Text>
                 </TouchableOpacity>
               </View>
             )}

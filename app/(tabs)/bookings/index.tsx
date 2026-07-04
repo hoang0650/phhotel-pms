@@ -33,13 +33,7 @@ import { bookingsApi } from '@/services/api';
 import { Booking, BookingStatus } from '@/types/hotel';
 import { useHotel } from '@/contexts/HotelContext';
 import { useTheme } from '@/contexts/ThemeContext';
-
-const statusConfig: Record<BookingStatus, { label: string; color: string; icon: typeof CheckCircle }> = {
-  confirmed: { label: 'Đã xác nhận', color: Colors.booking.confirmed, icon: CheckCircle },
-  checked_in: { label: 'Đã nhận phòng', color: Colors.booking.checked_in, icon: LogIn },
-  checked_out: { label: 'Đã trả phòng', color: Colors.booking.checked_out, icon: LogOut },
-  cancelled: { label: 'Đã hủy', color: Colors.booking.cancelled, icon: XCircle },
-};
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function BookingsScreen() {
   const insets = useSafeAreaInsets();
@@ -47,8 +41,46 @@ export default function BookingsScreen() {
   const isSmallScreen = width < 380;
   const { selectedHotelId, selectedHotel } = useHotel();
   const { isDark, colors } = useTheme();
+  const { language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<BookingStatus | 'all'>('all');
+  const isVi = language === 'vi';
+  const text = useMemo(() => ({
+    statusConfirmed: isVi ? 'Da xac nhan' : 'Confirmed',
+    statusCheckedIn: isVi ? 'Da nhan phong' : 'Checked in',
+    statusCheckedOut: isVi ? 'Da tra phong' : 'Checked out',
+    statusCancelled: isVi ? 'Da huy' : 'Cancelled',
+    title: isVi ? 'Dat phong' : 'Bookings',
+    allHotels: isVi ? 'Tat ca khach san' : 'All hotels',
+    searchPlaceholder: isVi ? 'Tim khach hoac phong...' : 'Search guest or room...',
+    revenue: isVi ? 'Doanh thu' : 'Revenue',
+    staying: isVi ? 'Dang o' : 'Staying',
+    paid: isVi ? 'Da thanh toan' : 'Paid',
+    unpaid: isVi ? 'Chua thanh toan' : 'Unpaid',
+    all: isVi ? 'Tat ca' : 'All',
+    adults: isVi ? 'nguoi lon' : 'adults',
+    children: isVi ? 'tre em' : 'children',
+    room: isVi ? 'Phong' : 'Room',
+    nights: isVi ? 'dem' : 'nights',
+    checkIn: isVi ? 'Nhan phong' : 'Check-in',
+    checkOut: isVi ? 'Tra phong' : 'Check-out',
+    remaining: isVi ? 'Con thieu' : 'Remaining',
+    paidStatus: isVi ? 'Da thanh toan' : 'Paid',
+    unpaidStatus: isVi ? 'Chua thanh toan' : 'Unpaid',
+    specialRequest: isVi ? 'Yeu cau dac biet:' : 'Special request:',
+    loading: isVi ? 'Dang tai danh sach dat phong...' : 'Loading bookings...',
+    noBookingData: isVi ? 'Chua co du lieu dat phong' : 'No booking data yet',
+    checkApi: isVi ? 'Kiem tra ket noi API' : 'Check API connection',
+    notFound: isVi ? 'Khong tim thay booking' : 'No bookings found',
+    tryOtherFilter: isVi ? 'Thu doi bo loc hoac tu khoa tim kiem' : 'Try another filter or keyword',
+    bookingWord: isVi ? 'booking' : 'bookings',
+  }), [isVi]);
+  const statusConfig: Record<BookingStatus, { label: string; color: string; icon: typeof CheckCircle }> = {
+    confirmed: { label: text.statusConfirmed, color: Colors.booking.confirmed, icon: CheckCircle },
+    checked_in: { label: text.statusCheckedIn, color: Colors.booking.checked_in, icon: LogIn },
+    checked_out: { label: text.statusCheckedOut, color: Colors.booking.checked_out, icon: LogOut },
+    cancelled: { label: text.statusCancelled, color: Colors.booking.cancelled, icon: XCircle },
+  };
 
   const { data: bookings = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['bookings', selectedHotelId],
@@ -121,7 +153,7 @@ export default function BookingsScreen() {
   }, [filteredBookings]);
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
+    return new Intl.NumberFormat(isVi ? 'vi-VN' : 'en-US', {
       style: 'currency',
       currency: 'VND',
       maximumFractionDigits: 0,
@@ -140,7 +172,7 @@ export default function BookingsScreen() {
     if (Number.isNaN(parsed.getTime())) {
       return value;
     }
-    return parsed.toLocaleDateString('vi-VN');
+    return parsed.toLocaleDateString(isVi ? 'vi-VN' : 'en-US');
   };
 
   const renderBookingCard = (booking: Booking) => {
@@ -169,7 +201,7 @@ export default function BookingsScreen() {
           <View style={styles.guestInfo}>
             <Text style={[styles.guestName, { color: colors.text }]}>{booking.guestName}</Text>
             <Text style={[styles.guestMeta, { color: colors.textSecondary }]}>
-              {Number(booking.adults) || 1} người lớn{Number(booking.children) > 0 ? ` • ${Number(booking.children)} trẻ em` : ''}
+              {Number(booking.adults) || 1} {text.adults}{Number(booking.children) > 0 ? ` • ${Number(booking.children)} ${text.children}` : ''}
             </Text>
           </View>
         </View>
@@ -178,25 +210,25 @@ export default function BookingsScreen() {
           {booking.roomNumber && (
             <View style={styles.detailItem}>
               <BedDouble size={16} color={colors.tint} />
-              <Text style={[styles.detailText, { color: colors.text }]}>Phòng {booking.roomNumber}</Text>
+              <Text style={[styles.detailText, { color: colors.text }]}>{text.room} {booking.roomNumber}</Text>
             </View>
           )}
           <View style={styles.detailItem}>
             <Clock size={16} color={colors.textSecondary} />
-            <Text style={[styles.detailText, { color: colors.text }]}>{nights} đêm</Text>
+            <Text style={[styles.detailText, { color: colors.text }]}>{nights} {text.nights}</Text>
           </View>
         </View>
 
         <View style={[styles.dateRow, { backgroundColor: isDark ? colors.background : Colors.light.background }]}>
           <View style={styles.dateItem}>
-            <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>Nhận phòng</Text>
+            <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{text.checkIn}</Text>
             <Text style={[styles.dateValue, { color: colors.text }]}>{formatDate(booking.checkIn)}</Text>
           </View>
           <View style={styles.dateArrow}>
             <ChevronRight size={16} color={colors.textSecondary} />
           </View>
           <View style={[styles.dateItem, { alignItems: 'flex-end' }]}>
-            <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>Trả phòng</Text>
+            <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{text.checkOut}</Text>
             <Text style={[styles.dateValue, { color: colors.text }]}>{formatDate(booking.checkOut)}</Text>
           </View>
         </View>
@@ -207,20 +239,20 @@ export default function BookingsScreen() {
             <View>
               <Text style={[styles.totalAmount, { color: colors.text }]}>{formatCurrency(booking.totalAmount)}</Text>
               {!isPaid && (
-                <Text style={styles.remainingText}>Còn thiếu {formatCurrency(remainingAmount)}</Text>
+                <Text style={styles.remainingText}>{text.remaining} {formatCurrency(remainingAmount)}</Text>
               )}
             </View>
           </View>
           <View style={[styles.paymentBadge, { backgroundColor: isPaid ? (isDark ? '#052e16' : '#dcfce7') : (isDark ? '#451a03' : '#fef3c7') }]}>
             <Text style={[styles.paymentStatus, { color: isPaid ? Colors.status.available : Colors.status.cleaning }]}>
-              {isPaid ? 'Đã thanh toán' : 'Chưa thanh toán'}
+              {isPaid ? text.paidStatus : text.unpaidStatus}
             </Text>
           </View>
         </View>
 
         {booking.specialRequests && (
           <View style={[styles.specialRequest, { borderTopColor: colors.border }]}>
-            <Text style={[styles.specialRequestLabel, { color: colors.textSecondary }]}>Yêu cầu đặc biệt:</Text>
+            <Text style={[styles.specialRequestLabel, { color: colors.textSecondary }]}>{text.specialRequest}</Text>
             <Text style={[styles.specialRequestText, { color: colors.text }]}>{booking.specialRequests}</Text>
           </View>
         )}
@@ -232,7 +264,7 @@ export default function BookingsScreen() {
     return (
       <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top, backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.tint} />
-        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Đang tải danh sách đặt phòng...</Text>
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>{text.loading}</Text>
       </View>
     );
   }
@@ -245,10 +277,10 @@ export default function BookingsScreen() {
       >
         <View style={styles.headerTop}>
           <View style={styles.headerLeft}>
-            <Text style={[styles.title, { color: '#fff' }]}>Đặt phòng</Text>
-            <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.8)' }]}>{filteredBookings.length}/{bookings.length} booking</Text>
+            <Text style={[styles.title, { color: '#fff' }]}>{text.title}</Text>
+            <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.8)' }]}>{filteredBookings.length}/{bookings.length} {text.bookingWord}</Text>
             <View style={[styles.hotelBadge, { backgroundColor: 'rgba(255,255,255,0.2)', borderColor: 'rgba(255,255,255,0.3)' }]}>
-              <Text style={[styles.hotelBadgeText, { color: '#fff' }]}>{selectedHotel?.name || 'Tất cả khách sạn'}</Text>
+              <Text style={[styles.hotelBadgeText, { color: '#fff' }]}>{selectedHotel?.name || text.allHotels}</Text>
             </View>
           </View>
           <TouchableOpacity style={[styles.addButton, { backgroundColor: 'rgba(255,255,255,0.2)', shadowColor: 'transparent' }]}>
@@ -261,7 +293,7 @@ export default function BookingsScreen() {
             <Search size={18} color="rgba(255,255,255,0.7)" />
             <TextInput
               style={[styles.searchInput, { color: '#fff' }]}
-              placeholder="Tìm khách hoặc phòng..."
+              placeholder={text.searchPlaceholder}
               value={searchQuery}
               onChangeText={setSearchQuery}
               placeholderTextColor="rgba(255,255,255,0.5)"
@@ -277,19 +309,19 @@ export default function BookingsScreen() {
         contentContainerStyle={styles.statsContent}
       >
         <View style={[styles.statCard, isSmallScreen && styles.statCardCompact, { backgroundColor: colors.cardBackground }]}>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Doanh thu</Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{text.revenue}</Text>
           <Text style={[styles.statValue, { color: colors.text }]}>{formatCurrency(bookingStats.totalRevenue)}</Text>
         </View>
         <View style={[styles.statCard, isSmallScreen && styles.statCardCompact, { backgroundColor: colors.cardBackground }]}>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Đang ở</Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{text.staying}</Text>
           <Text style={[styles.statValue, { color: colors.text }]}>{bookingStats.checkedInCount}</Text>
         </View>
         <View style={[styles.statCard, isSmallScreen && styles.statCardCompact, { backgroundColor: colors.cardBackground }]}>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Đã thanh toán</Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{text.paid}</Text>
           <Text style={[styles.statValue, { color: Colors.status.available }]}>{bookingStats.paidCount}</Text>
         </View>
         <View style={[styles.statCard, isSmallScreen && styles.statCardCompact, { backgroundColor: colors.cardBackground }]}>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Chưa thanh toán</Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{text.unpaid}</Text>
           <Text style={[styles.statValue, { color: Colors.status.cleaning }]}>{bookingStats.unpaidCount}</Text>
         </View>
       </ScrollView>
@@ -305,7 +337,7 @@ export default function BookingsScreen() {
           onPress={() => setSelectedFilter('all')}
         >
           <Text style={[styles.filterChipText, { color: selectedFilter === 'all' ? '#fff' : colors.textSecondary }]}>
-            Tất cả
+            {text.all}
           </Text>
         </TouchableOpacity>
         {(Object.keys(statusConfig) as BookingStatus[]).map((status) => (
@@ -344,14 +376,14 @@ export default function BookingsScreen() {
             {bookings.length === 0 ? (
               <>
                 <AlertCircle size={48} color={colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Chưa có dữ liệu đặt phòng</Text>
-                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Kiểm tra kết nối API</Text>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{text.noBookingData}</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>{text.checkApi}</Text>
               </>
             ) : (
               <>
                 <Calendar size={48} color={colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Không tìm thấy booking</Text>
-                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Thử đổi bộ lọc hoặc từ khóa tìm kiếm</Text>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{text.notFound}</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>{text.tryOtherFilter}</Text>
               </>
             )}
           </View>

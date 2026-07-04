@@ -731,8 +731,8 @@ export default function SettingsScreen() {
         </TouchableOpacity>
 
         <View style={styles.versionContainer}>
-          <Text style={[styles.versionText, { color: colors.textSecondary }]}>PHHotel PMS v1.0.0</Text>
-          <Text style={[styles.copyrightText, { color: colors.textSecondary }]}>© 2025 PHGroup. All rights reserved.</Text>
+          <Text style={[styles.versionText, { color: colors.textSecondary }]}>PHHotel PMS v1.0.1</Text>
+          <Text style={[styles.copyrightText, { color: colors.textSecondary }]}>© 2026 PHGroup. All rights reserved.</Text>
         </View>
       </ScrollView>
 
@@ -918,7 +918,8 @@ export default function SettingsScreen() {
           style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}
           onPress={() => setBiometricModalVisible(false)}
         >
-          <View style={[styles.biometricModal, { backgroundColor: colors.cardBackground }]}>
+          <Pressable onPress={() => {}}>
+            <View style={[styles.biometricModal, { backgroundColor: colors.cardBackground }]}>
             <Text style={[styles.biometricTitle, { color: colors.text }]}>
               {biometricMode === 'enable'
                 ? language === 'vi' ? 'Bật sinh trắc học' : 'Enable biometric'
@@ -971,7 +972,8 @@ export default function SettingsScreen() {
                 )}
               </TouchableOpacity>
             </View>
-          </View>
+            </View>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -985,31 +987,33 @@ export default function SettingsScreen() {
           style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}
           onPress={() => setLanguageModalVisible(false)}
         >
-          <View style={[styles.languageModal, { backgroundColor: colors.cardBackground }]}>
-            <Text style={[styles.languageModalTitle, { color: colors.text }]}>{t('selectLanguage')}</Text>
+          <Pressable onPress={() => {}}>
+            <View style={[styles.languageModal, { backgroundColor: colors.cardBackground }]}>
+              <Text style={[styles.languageModalTitle, { color: colors.text }]}>{t('selectLanguage')}</Text>
 
-            <TouchableOpacity
-              style={[styles.languageOption, language === 'vi' && [styles.languageOptionSelected, { backgroundColor: isDark ? 'rgba(15,118,110,0.15)' : '#ecfdf5', borderColor: colors.tint }]]}
-              onPress={() => handleSelectLanguage('vi')}
-            >
-              <Text style={styles.languageFlag}>🇻🇳</Text>
-              <Text style={[styles.languageOptionText, { color: colors.text }, language === 'vi' && { fontWeight: '600' as const, color: colors.tint }]}>
-                Tiếng Việt
-              </Text>
-              {language === 'vi' && <Check size={20} color={colors.tint} />}
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.languageOption, language === 'vi' && [styles.languageOptionSelected, { backgroundColor: isDark ? 'rgba(15,118,110,0.15)' : '#ecfdf5', borderColor: colors.tint }]]}
+                onPress={() => handleSelectLanguage('vi')}
+              >
+                <Text style={styles.languageFlag}>🇻🇳</Text>
+                <Text style={[styles.languageOptionText, { color: colors.text }, language === 'vi' && { fontWeight: '600' as const, color: colors.tint }]}>
+                  Tiếng Việt
+                </Text>
+                {language === 'vi' && <Check size={20} color={colors.tint} />}
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.languageOption, language === 'en' && [styles.languageOptionSelected, { backgroundColor: isDark ? 'rgba(15,118,110,0.15)' : '#ecfdf5', borderColor: colors.tint }]]}
-              onPress={() => handleSelectLanguage('en')}
-            >
-              <Text style={styles.languageFlag}>🇺🇸</Text>
-              <Text style={[styles.languageOptionText, { color: colors.text }, language === 'en' && { fontWeight: '600' as const, color: colors.tint }]}>
-                English
-              </Text>
-              {language === 'en' && <Check size={20} color={colors.tint} />}
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity
+                style={[styles.languageOption, language === 'en' && [styles.languageOptionSelected, { backgroundColor: isDark ? 'rgba(15,118,110,0.15)' : '#ecfdf5', borderColor: colors.tint }]]}
+                onPress={() => handleSelectLanguage('en')}
+              >
+                <Text style={styles.languageFlag}>🇺🇸</Text>
+                <Text style={[styles.languageOptionText, { color: colors.text }, language === 'en' && { fontWeight: '600' as const, color: colors.tint }]}>
+                  English
+                </Text>
+                {language === 'en' && <Check size={20} color={colors.tint} />}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
         </Pressable>
       </Modal>
 

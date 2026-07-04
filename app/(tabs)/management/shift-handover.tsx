@@ -18,32 +18,15 @@ import { shiftHandoverApi, staffsApi, roomsApi, transactionsApi } from '@/servic
 import { ShiftHandover, ShiftHandoverHistoryResponse } from '@/types/hotel';
 import { useHotel } from '@/contexts/HotelContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter } from 'expo-router';
 import { Staff } from '@/types/hotel';
-
-const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-  }).format(amount || 0);
-};
 
 const parseCurrency = (value: string) => {
   if (!value) return 0;
   const cleaned = value.replace(/[^\d.-]/g, '');
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const formatDateTime = (value?: string | Date) => {
-  if (!value) return '';
-  return new Date(value).toLocaleString('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 };
 
 type FilterPreset = 'today' | '7days' | '30days' | 'month' | 'custom';
@@ -88,12 +71,6 @@ const getRangeFromPreset = (preset: Exclude<FilterPreset, 'custom'>) => {
   };
 };
 
-const formatFilterDateLabel = (value: string) => {
-  const parsed = parseDateInput(value);
-  if (!parsed) return value;
-  return parsed.toLocaleDateString('vi-VN');
-};
-
 const isSameDay = (left?: string | Date, right?: string | Date) => {
   if (!left || !right) return false;
   const leftDate = new Date(left);
@@ -104,21 +81,6 @@ const isSameDay = (left?: string | Date, right?: string | Date) => {
     leftDate.getMonth() === rightDate.getMonth() &&
     leftDate.getDate() === rightDate.getDate()
   );
-};
-
-const getStatusLabel = (status?: string) => {
-  switch (status) {
-    case 'confirmed':
-      return 'Đã xác nhận';
-    case 'pending':
-      return 'Đang chờ';
-    case 'rejected':
-      return 'Từ chối';
-    case 'cancelled':
-      return 'Đã hủy';
-    default:
-      return 'Không rõ';
-  }
 };
 
 const getStatusColor = (status?: string) => {
@@ -186,11 +148,291 @@ const resolveStaffName = (value: any, staffs: Staff[]) => {
   return value._id || '';
 };
 
+type RevenueOverviewSummary = {
+  cashTotal: number;
+  bankTransferTotal: number;
+  cardTotal: number;
+  expenseTotal: number;
+  incomeTotal: number;
+  totalRevenue: number;
+};
+
+const buildRevenueOverview = (
+  paymentHistory: any[] = [],
+  expenses: any[] = [],
+  incomes: any[] = []
+): RevenueOverviewSummary => {
+  const enrichedPayments = paymentHistory.map((event: any) => {
+    const roomAmount = Number(event.roomAmount) || Number(event.roomTotal) || 0;
+    const serviceAmount = Number(event.serviceAmount) || Number(event.serviceTotal) || Number(event.servicesTotal) || 0;
+    const additionalCharges = Number(event.additionalCharges) || 0;
+    const discount = Number(event.discount) || 0;
+    const advancePayment = Number(event.advancePayment) || 0;
+    const rawTotal =
+      (typeof event.totalAmount === 'number' ? Number(event.totalAmount) : undefined) ??
+      (typeof event.amount === 'number' ? Number(event.amount) : undefined) ??
+      (typeof event.payment === 'number' ? Number(event.payment) : undefined);
+    const totalAmount = Number.isFinite(rawTotal as number)
+      ? Number(rawTotal)
+      : roomAmount + serviceAmount + additionalCharges - discount - advancePayment;
+
+    return {
+      totalAmount,
+      status: normalizePaymentStatus(event),
+      eventType: String(event.type || event.event || '').toLowerCase(),
+      methodGroup: mapPaymentMethodGroup(
+        event.paymentMethod || event.payment?.method || event.method || event.advancePaymentMethod || 'cash'
+      ),
+      advanceMethodGroup: mapPaymentMethodGroup(
+        event.advancePaymentMethod || event.paymentMethod || event.method || 'cash'
+      ),
+      advancePayment,
+    };
+  });
+
+  const checkoutPayments = enrichedPayments.filter((payment) => {
+    const isCheckout = payment.eventType === 'checkout' || payment.eventType === 'check-out';
+    return isCheckout && payment.status === 'paid';
+  });
+
+  let cashTotal = checkoutPayments
+    .filter((payment) => payment.methodGroup === 'cash')
+    .reduce((sum, payment) => sum + payment.totalAmount, 0);
+  let bankTransferTotal = checkoutPayments
+    .filter((payment) => payment.methodGroup === 'bank_transfer')
+    .reduce((sum, payment) => sum + payment.totalAmount, 0);
+  let cardTotal = checkoutPayments
+    .filter((payment) => payment.methodGroup === 'card')
+    .reduce((sum, payment) => sum + payment.totalAmount, 0);
+
+  const advanceCheckins = enrichedPayments.filter((payment) => {
+    const isCheckin =
+      payment.eventType === 'checkin' ||
+      payment.eventType === 'check-in' ||
+      payment.eventType === 'checkin_event';
+    return isCheckin;
+  });
+
+  advanceCheckins.forEach((payment) => {
+    const amount = Number(payment.advancePayment) || 0;
+    if (amount <= 0) return;
+
+    if (payment.advanceMethodGroup === 'bank_transfer') {
+      bankTransferTotal += amount;
+    } else if (payment.advanceMethodGroup === 'card') {
+      cardTotal += amount;
+    } else {
+      cashTotal += amount;
+    }
+  });
+
+  const expenseTotal = expenses
+    .filter((expense: any) => expense?.status === 'completed')
+    .reduce((sum, expense: any) => sum + (Number(expense?.amount) || 0), 0);
+  const incomeTotal = incomes
+    .filter((income: any) => income?.status === 'completed')
+    .reduce((sum, income: any) => sum + (Number(income?.amount) || 0), 0);
+
+  return {
+    cashTotal,
+    bankTransferTotal,
+    cardTotal,
+    expenseTotal,
+    incomeTotal,
+    totalRevenue: cashTotal + bankTransferTotal + cardTotal + incomeTotal - expenseTotal,
+  };
+};
+
 export default function ShiftHandoverScreen() {
   const queryClient = useQueryClient();
   const { selectedHotelId } = useHotel();
   const { user } = useAuth();
+  const { language } = useLanguage();
   const router = useRouter();
+  const isVi = language === 'vi';
+  const text = useMemo(() => ({
+    statusConfirmed: isVi ? 'Da xac nhan' : 'Confirmed',
+    statusPending: isVi ? 'Dang cho' : 'Pending',
+    statusRejected: isVi ? 'Tu choi' : 'Rejected',
+    statusCancelled: isVi ? 'Da huy' : 'Cancelled',
+    statusUnknown: isVi ? 'Khong ro' : 'Unknown',
+    success: isVi ? 'Thanh cong' : 'Success',
+    error: isVi ? 'Loi' : 'Error',
+    missingInfo: isVi ? 'Thieu thong tin' : 'Missing information',
+    invalidFilter: isVi ? 'Bo loc khong hop le' : 'Invalid filter',
+    handoverCreated: isVi ? 'Da giao ca thanh cong' : 'Shift handover completed successfully',
+    managerHandoverCreated: isVi ? 'Da giao tien quan ly' : 'Manager handover completed successfully',
+    handoverFailed: isVi ? 'Khong the giao ca' : 'Unable to complete shift handover',
+    managerHandoverFailed: isVi ? 'Khong the giao tien quan ly' : 'Unable to complete manager handover',
+    selectHotel: isVi ? 'Vui long chon khach san' : 'Please select a hotel',
+    fromStaffMissing: isVi ? 'Khong tim thay nhan vien giao ca' : 'Cannot find the handing-over staff',
+    selectToStaff: isVi ? 'Vui long chon nhan vien nhan ca' : 'Please select the receiving staff',
+    enterReceiverPassword: isVi ? 'Vui long nhap mat khau nguoi nhan ca' : 'Please enter the receiver password',
+    enterManagerAccount: isVi ? 'Vui long nhap tai khoan quan ly' : 'Please enter the manager account',
+    managerAmountPositive: isVi ? 'So tien giao quan ly phai lon hon 0' : 'Manager handover amount must be greater than 0',
+    invalidDateFormat: isVi ? 'Vui long nhap ngay theo dinh dang YYYY-MM-DD' : 'Please enter dates in YYYY-MM-DD format',
+    invalidDateRange: isVi ? 'Ngay bat dau khong duoc lon hon ngay ket thuc' : 'Start date cannot be later than end date',
+    direct: isVi ? 'Truc tiep' : 'Direct',
+    booking: isVi ? 'Dat phong' : 'Booking',
+    walkin: isVi ? 'Khach vang lai' : 'Walk-in',
+    cash: isVi ? 'Tien mat' : 'Cash',
+    bankTransfer: isVi ? 'Chuyen khoan' : 'Bank transfer',
+    card: isVi ? 'Ca the' : 'Card',
+    cardCredit: isVi ? 'The tin dung' : 'Credit card',
+    title: isVi ? 'Quan Ly Giao Ca' : 'Shift Handover Management',
+    subtitle: isVi ? 'Theo doi va ban giao ca lam viec' : 'Track and hand over work shifts',
+    revenueOverview: isVi ? 'Tong quan doanh thu' : 'Revenue overview',
+    exportExcel: isVi ? 'Xuat Excel' : 'Export Excel',
+    history: isVi ? 'Lich su giao ca' : 'Shift handover history',
+    filter: isVi ? 'Loc' : 'Filter',
+    exportRevenue: isVi ? 'Xuat doanh thu' : 'Export revenue',
+    today: isVi ? 'Hom nay' : 'Today',
+    sevenDays: isVi ? '7 ngay' : '7 days',
+    thirtyDays: isVi ? '30 ngay' : '30 days',
+    thisMonth: isVi ? 'Thang nay' : 'This month',
+    custom: isVi ? 'Tuy chon' : 'Custom',
+    fromDate: isVi ? 'Tu ngay' : 'From date',
+    toDate: isVi ? 'Den ngay' : 'To date',
+    reset: isVi ? 'Dat lai' : 'Reset',
+    apply: isVi ? 'Ap dung' : 'Apply',
+    noHistory: isVi ? 'Chua co lich su giao ca' : 'No shift handover history yet',
+    staff: isVi ? 'Nhan vien' : 'Staff',
+    handoverAmount: isVi ? 'So tien giao ca' : 'Handover amount',
+    viewDetail: isVi ? 'Xem chi tiet' : 'View details',
+    pageLabel: isVi ? 'Trang' : 'Page',
+    selectStaff: isVi ? 'Chon nhan vien' : 'Select staff',
+    searchStaffPlaceholder: isVi ? 'Tim kiem nhan vien...' : 'Search staff...',
+    detailTitle: isVi ? 'Chi tiet giao ca' : 'Shift handover details',
+    handoverInfo: isVi ? 'Thong tin giao ca' : 'Handover information',
+    time: isVi ? 'Thoi gian:' : 'Time:',
+    from: isVi ? 'Tu:' : 'From:',
+    to: isVi ? 'Den:' : 'To:',
+    status: isVi ? 'Trang thai:' : 'Status:',
+    moneyDetails: isVi ? 'Chi tiet tien' : 'Money details',
+    previousShiftCash: isVi ? 'Tien ca truoc:' : 'Previous shift cash:',
+    shiftCash: isVi ? 'Tien mat trong ca:' : 'Cash in shift:',
+    managerCash: isVi ? 'Tien giao quan ly:' : 'Manager handover:',
+    collectedCash: isVi ? 'Tien mat thu:' : 'Collected cash:',
+    expenseVoucher: isVi ? 'Phieu chi:' : 'Expense voucher:',
+    incomeVoucher: isVi ? 'Phieu thu:' : 'Income voucher:',
+    totalRevenue: isVi ? 'Tong doanh thu:' : 'Total revenue:',
+    notes: isVi ? 'Ghi chu' : 'Notes',
+    expenseDetailsTotal: isVi ? 'Chi tiet phieu chi - Tong:' : 'Expense voucher details - Total:',
+    incomeDetailsTotal: isVi ? 'Chi tiet phieu thu - Tong:' : 'Income voucher details - Total:',
+    depositDetailsTotal: isVi ? 'Chi tiet dat coc - Tong:' : 'Deposit details - Total:',
+    content: isVi ? 'Noi dung' : 'Content',
+    amount: isVi ? 'So tien' : 'Amount',
+    method: isVi ? 'Phuong thuc' : 'Method',
+    room: isVi ? 'Phong' : 'Room',
+    customer: isVi ? 'Khach hang' : 'Customer',
+    deposit: isVi ? 'Dat coc' : 'Deposit',
+    paymentMethodShort: isVi ? 'PT thanh toan' : 'Payment method',
+    checkin: 'Check-in',
+    checkout: 'Check-out',
+    guest: isVi ? 'Khach le' : 'Walk-in guest',
+    customerRevenueSummary: isVi
+      ? 'Tong doanh thu = Tien mat + Chuyen khoan + The tin dung + Phieu Thu - Phieu Chi:'
+      : 'Total revenue = Cash + Bank transfer + Credit card + Income voucher - Expense voucher:',
+    action: isVi ? 'Thao tac' : 'Action',
+    source: isVi ? 'Nguon' : 'Source',
+    roomTotal: isVi ? 'Tong phong' : 'Room total',
+    surcharge: isVi ? 'Phu thu' : 'Surcharge',
+    discount: isVi ? 'Giam gia' : 'Discount',
+    service: isVi ? 'Dich vu' : 'Service',
+    advancePayment: isVi ? 'Dat truoc' : 'Advance payment',
+    adjustedTotal: isVi ? 'Tong dieu chinh' : 'Adjusted total',
+    remaining: isVi ? 'Con lai' : 'Remaining',
+    payment: isVi ? 'Thanh toan' : 'Payment',
+    formulaLabel: isVi ? 'Cong thuc:' : 'Formula:',
+    formulaDescription: isVi
+      ? 'Tong doanh thu = Tien mat + Chuyen khoan + The tin dung + Phieu Thu - Phieu Chi'
+      : 'Total revenue = Cash + Bank transfer + Credit card + Income voucher - Expense voucher',
+    notAvailable: 'N/A',
+    checkoutAction: isVi ? 'Thanh toan' : 'Payment',
+  }), [isVi]);
+  const filterPresetOptions = useMemo(() => ([
+    { key: 'today' as const, label: text.today },
+    { key: '7days' as const, label: text.sevenDays },
+    { key: '30days' as const, label: text.thirtyDays },
+    { key: 'month' as const, label: text.thisMonth },
+    { key: 'custom' as const, label: text.custom },
+  ]), [text]);
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat(isVi ? 'vi-VN' : 'en-US', {
+      style: 'currency',
+      currency: 'VND',
+      maximumFractionDigits: 0,
+    }).format(amount || 0);
+  };
+  const formatDateTime = (value?: string | Date) => {
+    if (!value) return '';
+    return new Date(value).toLocaleString(isVi ? 'vi-VN' : 'en-US', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+  const formatFilterDateLabel = (value: string) => {
+    const parsed = parseDateInput(value);
+    if (!parsed) return value;
+    return parsed.toLocaleDateString(isVi ? 'vi-VN' : 'en-US');
+  };
+  const getStatusLabel = (status?: string) => {
+    switch (status) {
+      case 'confirmed':
+        return text.statusConfirmed;
+      case 'pending':
+        return text.statusPending;
+      case 'rejected':
+        return text.statusRejected;
+      case 'cancelled':
+        return text.statusCancelled;
+      default:
+        return text.statusUnknown;
+    }
+  };
+  const getGuestSourceLabel = (room: any) => {
+    const source = room.source || room.guestSource || 'direct';
+    switch (source) {
+      case 'direct':
+        return text.direct;
+      case 'booking':
+        return text.booking;
+      case 'walkin':
+        return text.walkin;
+      default:
+        return source;
+    }
+  };
+  const getPaymentMethodLabel = (method: string) => {
+    switch (mapPaymentMethodGroup(method)) {
+      case 'cash':
+        return text.cash;
+      case 'bank_transfer':
+        return text.bankTransfer;
+      case 'card':
+        return text.card;
+      default:
+        return method || text.cash;
+    }
+  };
+  const getActionLabel = (action?: string) => {
+    const normalized = String(action || '').toLowerCase();
+    switch (normalized) {
+      case 'check_out':
+      case 'checkout':
+      case 'check-out':
+        return text.checkoutAction;
+      case 'check_in':
+      case 'checkin':
+      case 'check-in':
+        return text.checkin;
+      default:
+        return action || text.checkoutAction;
+    }
+  };
 
   const [staffModalVisible, setStaffModalVisible] = useState(false);
   const [staffSearch, setStaffSearch] = useState('');
@@ -259,12 +501,6 @@ export default function ShiftHandoverScreen() {
     enabled: !!selectedHotelId,
   });
 
-  const { data: revenueData, isLoading: revenueLoading, refetch: refetchRevenue } = useQuery({
-    queryKey: ['shiftHandover', 'revenue', selectedHotelId, appliedStartDateIso, appliedEndDateIso],
-    queryFn: () => shiftHandoverApi.getRevenue(selectedHotelId || '', appliedStartDateIso, appliedEndDateIso),
-    enabled: !!selectedHotelId,
-  });
-
   // Lấy payment history để tính tiền mặt, chuyển khoản, cà thẻ trong ca
   const { data: paymentHistoryData, isLoading: paymentHistoryLoading, refetch: refetchPaymentHistory } = useQuery({
     queryKey: ['paymentHistory', selectedHotelId, currentShiftStartIso, currentShiftEndIso],
@@ -276,6 +512,25 @@ export default function ShiftHandoverScreen() {
       endDate: currentShiftEndIso,
     }) : Promise.resolve([]),
     enabled: !!selectedHotelId,
+  });
+
+  const {
+    data: overviewPaymentHistoryData,
+    isLoading: overviewPaymentHistoryLoading,
+    refetch: refetchOverviewPaymentHistory,
+  } = useQuery({
+    queryKey: ['paymentHistory', 'overview', selectedHotelId, appliedStartDateIso, appliedEndDateIso],
+    queryFn: () =>
+      selectedHotelId
+        ? roomsApi.getEventsByHotel(selectedHotelId, {
+            types: ['checkout', 'checkin'],
+            limit: 1000,
+            skip: 0,
+            startDate: appliedStartDateIso,
+            endDate: appliedEndDateIso,
+          })
+        : Promise.resolve([]),
+    enabled: !!selectedHotelId && !!appliedStartDateIso && !!appliedEndDateIso,
   });
 
   // Lấy danh sách phiếu chi trong ca
@@ -302,6 +557,44 @@ export default function ShiftHandoverScreen() {
       limit: 1000
     }) : Promise.resolve({ data: [], total: 0, page: 1, limit: 1000, totalPages: 0 }),
     enabled: !!selectedHotelId,
+  });
+
+  const {
+    data: overviewExpensesData,
+    isLoading: overviewExpensesLoading,
+    refetch: refetchOverviewExpenses,
+  } = useQuery({
+    queryKey: ['expenses', 'overview', selectedHotelId, appliedStartDateIso, appliedEndDateIso],
+    queryFn: () =>
+      selectedHotelId
+        ? transactionsApi.getExpenses({
+            hotelId: selectedHotelId,
+            startDate: appliedStartDateIso,
+            endDate: appliedEndDateIso,
+            page: 1,
+            limit: 1000,
+          })
+        : Promise.resolve({ data: [], total: 0, page: 1, limit: 1000, totalPages: 0 }),
+    enabled: !!selectedHotelId && !!appliedStartDateIso && !!appliedEndDateIso,
+  });
+
+  const {
+    data: overviewIncomesData,
+    isLoading: overviewIncomesLoading,
+    refetch: refetchOverviewIncomes,
+  } = useQuery({
+    queryKey: ['incomes', 'overview', selectedHotelId, appliedStartDateIso, appliedEndDateIso],
+    queryFn: () =>
+      selectedHotelId
+        ? transactionsApi.getIncomes({
+            hotelId: selectedHotelId,
+            startDate: appliedStartDateIso,
+            endDate: appliedEndDateIso,
+            page: 1,
+            limit: 1000,
+          })
+        : Promise.resolve({ data: [], total: 0, page: 1, limit: 1000, totalPages: 0 }),
+    enabled: !!selectedHotelId && !!appliedStartDateIso && !!appliedEndDateIso,
   });
 
   const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useQuery<ShiftHandoverHistoryResponse>({
@@ -473,7 +766,7 @@ export default function ShiftHandoverScreen() {
         notes: notes.trim() || undefined,
       }),
     onSuccess: () => {
-      Alert.alert('Thành công', 'Đã giao ca thành công');
+      Alert.alert(text.success, text.handoverCreated);
       setCurrentShiftQueryTime(new Date().toISOString());
       setToUserPassword('');
       setSelectedToStaffId(null);
@@ -481,13 +774,15 @@ export default function ShiftHandoverScreen() {
       queryClient.invalidateQueries({ queryKey: ['shiftHandover'] });
       refetchPrevious();
       refetchHistory();
-      refetchRevenue();
       refetchPaymentHistory();
       refetchExpenses();
       refetchIncomes();
+      refetchOverviewPaymentHistory();
+      refetchOverviewExpenses();
+      refetchOverviewIncomes();
     },
     onError: (error: any) => {
-      Alert.alert('Lỗi', error?.message || 'Không thể giao ca');
+      Alert.alert(text.error, error?.message || text.handoverFailed);
     },
   });
 
@@ -502,7 +797,7 @@ export default function ShiftHandoverScreen() {
         notes: managerNotes.trim() || undefined,
       }),
     onSuccess: () => {
-      Alert.alert('Thành công', 'Đã giao tiền quản lý');
+      Alert.alert(text.success, text.managerHandoverCreated);
       setCurrentShiftQueryTime(new Date().toISOString());
       setManagerUsername('');
       setManagerPassword('');
@@ -510,31 +805,33 @@ export default function ShiftHandoverScreen() {
       setManagerNotes('');
       queryClient.invalidateQueries({ queryKey: ['shiftHandover'] });
       refetchPrevious();
-      refetchRevenue();
       refetchPaymentHistory();
       refetchExpenses();
       refetchIncomes();
+      refetchOverviewPaymentHistory();
+      refetchOverviewExpenses();
+      refetchOverviewIncomes();
     },
     onError: (error: any) => {
-      Alert.alert('Lỗi', error?.message || 'Không thể giao tiền quản lý');
+      Alert.alert(text.error, error?.message || text.managerHandoverFailed);
     },
   });
 
   const handleSubmit = () => {
     if (!selectedHotelId) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng chọn khách sạn');
+      Alert.alert(text.missingInfo, text.selectHotel);
       return;
     }
     if (!fromStaff?.id) {
-      Alert.alert('Thiếu thông tin', 'Không tìm thấy nhân viên giao ca');
+      Alert.alert(text.missingInfo, text.fromStaffMissing);
       return;
     }
     if (!selectedToStaffId) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng chọn nhân viên nhận ca');
+      Alert.alert(text.missingInfo, text.selectToStaff);
       return;
     }
     if (!toUserPassword) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập mật khẩu người nhận ca');
+      Alert.alert(text.missingInfo, text.enterReceiverPassword);
       return;
     }
     createMutation.mutate();
@@ -542,19 +839,19 @@ export default function ShiftHandoverScreen() {
 
   const handleManagerHandover = () => {
     if (!selectedHotelId) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng chọn khách sạn');
+      Alert.alert(text.missingInfo, text.selectHotel);
       return;
     }
     if (!fromStaff?.id) {
-      Alert.alert('Thiếu thông tin', 'Không tìm thấy nhân viên giao ca');
+      Alert.alert(text.missingInfo, text.fromStaffMissing);
       return;
     }
     if (!managerUsername || !managerPassword) {
-      Alert.alert('Thiếu thông tin', 'Vui lòng nhập tài khoản quản lý');
+      Alert.alert(text.missingInfo, text.enterManagerAccount);
       return;
     }
     if (parseCurrency(managerAmount) <= 0) {
-      Alert.alert('Thiếu thông tin', 'Số tiền giao quản lý phải lớn hơn 0');
+      Alert.alert(text.missingInfo, text.managerAmountPositive);
       return;
     }
     managerMutation.mutate();
@@ -564,11 +861,13 @@ export default function ShiftHandoverScreen() {
     setCurrentShiftQueryTime(new Date().toISOString());
     refetchStaffs();
     refetchPrevious();
-    refetchRevenue();
     refetchHistory();
     refetchPaymentHistory();
     refetchExpenses();
     refetchIncomes();
+    refetchOverviewPaymentHistory();
+    refetchOverviewExpenses();
+    refetchOverviewIncomes();
   };
 
   const handleApplyFilters = () => {
@@ -576,12 +875,12 @@ export default function ShiftHandoverScreen() {
     const end = parseDateInput(draftEndDate, true);
 
     if (!start || !end) {
-      Alert.alert('Bộ lọc không hợp lệ', 'Vui lòng nhập ngày theo định dạng YYYY-MM-DD');
+      Alert.alert(text.invalidFilter, text.invalidDateFormat);
       return;
     }
 
     if (start.getTime() > end.getTime()) {
-      Alert.alert('Bộ lọc không hợp lệ', 'Ngày bắt đầu không được lớn hơn ngày kết thúc');
+      Alert.alert(text.invalidFilter, text.invalidDateRange);
       return;
     }
 
@@ -678,16 +977,6 @@ export default function ShiftHandoverScreen() {
   const getRemainingAmount = (room: any) => room.remainingAmount || 0;
   const getCheckinTime = (room: any) => room.checkinTime || room.checkInTime;
 
-  const getGuestSourceLabel = (room: any) => {
-    const source = room.source || room.guestSource || 'direct';
-    switch (source) {
-      case 'direct': return 'Trực tiếp';
-      case 'booking': return 'Đặt phòng';
-      case 'walkin': return 'Khách vãng lai';
-      default: return source;
-    }
-  };
-
   const getGuestSourceColor = (room: any) => {
     const source = room.source || room.guestSource || 'direct';
     switch (source) {
@@ -738,35 +1027,36 @@ export default function ShiftHandoverScreen() {
     };
   };
 
-  const getPaymentMethodLabel = (method: string) => {
-    switch (method) {
-      case 'cash': return 'Tiền mặt';
-      case 'bank_transfer': return 'Chuyển khoản';
-      case 'card': return 'Cà thẻ';
-      default: return method || 'Tiền mặt';
-    }
-  };
-
-  const isLoading = staffsLoading || previousLoading || revenueLoading || historyLoading || paymentHistoryLoading || expensesLoading || incomesLoading;
+  const isLoading =
+    staffsLoading ||
+    previousLoading ||
+    historyLoading ||
+    paymentHistoryLoading ||
+    expensesLoading ||
+    incomesLoading ||
+    overviewPaymentHistoryLoading ||
+    overviewExpensesLoading ||
+    overviewIncomesLoading;
 
   const historyItems = historyData?.data || [];
   const totalPages = historyData?.pagination?.totalPages || 1;
-  const revenueOverview = {
-    cashTotal: Number(revenueData?.cashTotal || 0),
-    bankTransferTotal: Number(revenueData?.bankTransferTotal || 0),
-    cardTotal: Number(revenueData?.cardTotal || 0),
-    expenseTotal: Number(revenueData?.expenseTotal || 0),
-    incomeTotal: Number(revenueData?.incomeTotal || 0),
-    totalRevenue: Number(revenueData?.totalRevenue || 0),
-  };
+  const revenueOverview = useMemo(
+    () =>
+      buildRevenueOverview(
+        overviewPaymentHistoryData || [],
+        overviewExpensesData?.data || [],
+        overviewIncomesData?.data || []
+      ),
+    [overviewExpensesData?.data, overviewIncomesData?.data, overviewPaymentHistoryData]
+  );
   const activeFilterSummary = `${formatFilterDateLabel(appliedStartDate)} - ${formatFilterDateLabel(appliedEndDate)}`;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>Quản Lý Giao Ca</Text>
-          <Text style={styles.headerSubtitle}>Theo dõi và bàn giao ca làm việc</Text>
+          <Text style={styles.headerTitle}>{text.title}</Text>
+          <Text style={styles.headerSubtitle}>{text.subtitle}</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
@@ -783,11 +1073,11 @@ export default function ShiftHandoverScreen() {
         {/* Tổng quan doanh thu - Theo format hotelapp */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Tổng quan doanh thu</Text>
+            <Text style={styles.sectionTitle}>{text.revenueOverview}</Text>
             <View style={styles.sectionActions}>
               <TouchableOpacity style={styles.actionButton} onPress={() => {/* TODO: Export Excel */}}>
                 <Ionicons name="document-text" size={16} color="#1890ff" />
-                <Text style={styles.actionButtonText}>Xuất Excel</Text>
+                <Text style={styles.actionButtonText}>{text.exportExcel}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -799,37 +1089,37 @@ export default function ShiftHandoverScreen() {
 
           <View style={styles.revenueGrid}>
             <View style={styles.revenueCard}>
-              <Text style={styles.revenueLabel}>Tiền mặt</Text>
+              <Text style={styles.revenueLabel}>{text.cash}</Text>
               <Text style={[styles.revenueValue, { color: '#52c41a' }]}>
                 {formatCurrency(revenueOverview.cashTotal)}
               </Text>
             </View>
             <View style={styles.revenueCard}>
-              <Text style={styles.revenueLabel}>Chuyển khoản</Text>
+              <Text style={styles.revenueLabel}>{text.bankTransfer}</Text>
               <Text style={[styles.revenueValue, { color: '#1890ff' }]}>
                 {formatCurrency(revenueOverview.bankTransferTotal)}
               </Text>
             </View>
             <View style={styles.revenueCard}>
-              <Text style={styles.revenueLabel}>Cà thẻ</Text>
+              <Text style={styles.revenueLabel}>{text.card}</Text>
               <Text style={[styles.revenueValue, { color: '#722ed1' }]}>
                 {formatCurrency(revenueOverview.cardTotal)}
               </Text>
             </View>
             <View style={styles.revenueCard}>
-              <Text style={styles.revenueLabel}>Phiếu Chi</Text>
+              <Text style={styles.revenueLabel}>{text.expenseVoucher}</Text>
               <Text style={[styles.revenueValue, { color: '#f5222d' }]}>
                 {formatCurrency(revenueOverview.expenseTotal)}
               </Text>
             </View>
             <View style={styles.revenueCard}>
-              <Text style={styles.revenueLabel}>Phiếu Thu</Text>
+              <Text style={styles.revenueLabel}>{text.incomeVoucher}</Text>
               <Text style={[styles.revenueValue, { color: '#13c2c2' }]}>
                 {formatCurrency(revenueOverview.incomeTotal)}
               </Text>
             </View>
             <View style={styles.revenueCard}>
-              <Text style={styles.revenueLabel}>Tổng doanh thu</Text>
+              <Text style={styles.revenueLabel}>{text.totalRevenue}</Text>
               <Text style={[styles.revenueValue, { color: '#faad14', fontWeight: 'bold' }]}>
                 {formatCurrency(revenueOverview.totalRevenue)}
               </Text>
@@ -839,39 +1129,33 @@ export default function ShiftHandoverScreen() {
           <View style={styles.formulaNote}>
             <Ionicons name="information-circle" size={14} color="#1890ff" />
             <Text style={styles.formulaText}>
-              <Text style={{ fontWeight: 'bold' }}>Công thức:</Text> Tổng doanh thu = Tiền mặt + Chuyển khoản + Thẻ tín dụng + Phiếu Thu - Phiếu Chi
+              <Text style={{ fontWeight: 'bold' }}>{text.formulaLabel}</Text> {text.formulaDescription}
             </Text>
           </View>
         </View>
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Lịch sử giao ca</Text>
+            <Text style={styles.sectionTitle}>{text.history}</Text>
             <View style={styles.sectionActions}>
               <TouchableOpacity style={styles.actionButton} onPress={() => setFiltersVisible(prev => !prev)}>
                 <Ionicons name="filter" size={16} color="#1890ff" />
-                <Text style={styles.actionButtonText}>Lọc</Text>
+                <Text style={styles.actionButtonText}>{text.filter}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.actionButton} onPress={() => {/* TODO: Export History */}}>
                 <Ionicons name="document-text" size={16} color="#1890ff" />
-                <Text style={styles.actionButtonText}>Xuất Excel</Text>
+                <Text style={styles.actionButtonText}>{text.exportExcel}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.actionButton} onPress={() => {/* TODO: Export Revenue */}}>
                 <Ionicons name="cash" size={16} color="#1890ff" />
-                <Text style={styles.actionButtonText}>Xuất Doanh Thu</Text>
+                <Text style={styles.actionButtonText}>{text.exportRevenue}</Text>
               </TouchableOpacity>
             </View>
           </View>
           {filtersVisible ? (
             <View style={styles.filterPanel}>
               <View style={styles.filterPresetRow}>
-                {[
-                  { key: 'today', label: 'Hôm nay' },
-                  { key: '7days', label: '7 ngày' },
-                  { key: '30days', label: '30 ngày' },
-                  { key: 'month', label: 'Tháng này' },
-                  { key: 'custom', label: 'Tùy chọn' },
-                ].map((item) => {
+                {filterPresetOptions.map((item) => {
                   const isActive = filterPreset === item.key;
                   return (
                     <TouchableOpacity
@@ -889,7 +1173,7 @@ export default function ShiftHandoverScreen() {
 
               <View style={styles.filterInputsRow}>
                 <View style={styles.filterInputGroup}>
-                  <Text style={styles.filterInputLabel}>Từ ngày</Text>
+                  <Text style={styles.filterInputLabel}>{text.fromDate}</Text>
                   <TextInput
                     style={styles.filterInput}
                     value={draftStartDate}
@@ -899,7 +1183,7 @@ export default function ShiftHandoverScreen() {
                   />
                 </View>
                 <View style={styles.filterInputGroup}>
-                  <Text style={styles.filterInputLabel}>Đến ngày</Text>
+                  <Text style={styles.filterInputLabel}>{text.toDate}</Text>
                   <TextInput
                     style={styles.filterInput}
                     value={draftEndDate}
@@ -913,11 +1197,11 @@ export default function ShiftHandoverScreen() {
               <View style={styles.filterActionRow}>
                 <TouchableOpacity style={styles.secondaryFilterButton} onPress={handleResetFilters}>
                   <Ionicons name="refresh-outline" size={16} color="#1890ff" />
-                  <Text style={styles.secondaryFilterButtonText}>Đặt lại</Text>
+                  <Text style={styles.secondaryFilterButtonText}>{text.reset}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.primaryFilterButton} onPress={handleApplyFilters}>
                   <Ionicons name="search-outline" size={16} color="#FFF" />
-                  <Text style={styles.primaryFilterButtonText}>Áp dụng</Text>
+                  <Text style={styles.primaryFilterButtonText}>{text.apply}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -925,7 +1209,7 @@ export default function ShiftHandoverScreen() {
           {historyItems.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="time-outline" size={48} color="#C7C7CC" />
-              <Text style={styles.emptyText}>Chưa có lịch sử giao ca</Text>
+              <Text style={styles.emptyText}>{text.noHistory}</Text>
             </View>
           ) : (
             <View style={styles.historyList}>
@@ -936,7 +1220,7 @@ export default function ShiftHandoverScreen() {
                   <View key={item._id || `${item.fromStaffId}-${item.handoverTime}`} style={styles.historyCard}>
                     <View style={styles.historyHeader}>
                       <Text style={styles.historyTitle}>
-                        {fromName || 'Nhân viên'} → {toName || 'Nhân viên'}
+                        {fromName || text.staff} → {toName || text.staff}
                       </Text>
                       <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
                         <Text style={styles.statusText}>{getStatusLabel(item.status)}</Text>
@@ -944,7 +1228,7 @@ export default function ShiftHandoverScreen() {
                     </View>
                     <Text style={styles.historyTime}>{formatDateTime(item.handoverTime)}</Text>
                     <View style={styles.historyAmountRow}>
-              <Text style={styles.historyAmountLabel}>Số tiền giao ca</Text>
+              <Text style={styles.historyAmountLabel}>{text.handoverAmount}</Text>
               <Text style={styles.historyAmountValue}>
                 {formatCurrency(item.handoverAmount || 0)}
               </Text>
@@ -954,7 +1238,7 @@ export default function ShiftHandoverScreen() {
               onPress={() => handleViewDetail(item)}
             >
               <Ionicons name="eye" size={16} color="#3498DB" />
-              <Text style={styles.viewDetailText}>Xem chi tiết</Text>
+              <Text style={styles.viewDetailText}>{text.viewDetail}</Text>
             </TouchableOpacity>
                   </View>
                 );
@@ -971,7 +1255,7 @@ export default function ShiftHandoverScreen() {
               <Ionicons name="chevron-back" size={18} color="#FFF" />
             </TouchableOpacity>
             <Text style={styles.pageText}>
-              Trang {historyPage} / {totalPages}
+              {text.pageLabel} {historyPage} / {totalPages}
             </Text>
             <TouchableOpacity
               style={[styles.pageButton, historyPage >= totalPages && styles.buttonDisabled]}
@@ -993,7 +1277,7 @@ export default function ShiftHandoverScreen() {
         <Pressable style={styles.modalOverlay} onPress={() => setStaffModalVisible(false)}>
           <Pressable style={styles.modalContent} onPress={() => {}}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn nhân viên</Text>
+              <Text style={styles.modalTitle}>{text.selectStaff}</Text>
               <TouchableOpacity onPress={() => setStaffModalVisible(false)}>
                 <Ionicons name="close" size={22} color="#2C3E50" />
               </TouchableOpacity>
@@ -1002,7 +1286,7 @@ export default function ShiftHandoverScreen() {
               <Ionicons name="search" size={18} color="#7F8C8D" />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Tìm kiếm nhân viên..."
+                placeholder={text.searchStaffPlaceholder}
                 value={staffSearch}
                 onChangeText={setStaffSearch}
               />
@@ -1042,7 +1326,7 @@ export default function ShiftHandoverScreen() {
           <Pressable style={styles.modalBackdrop} onPress={handleCloseDetail} />
           <View style={[styles.modalContent, styles.detailModal]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { fontSize: 18 }]}>Chi tiết giao ca</Text>
+              <Text style={[styles.modalTitle, { fontSize: 18 }]}>{text.detailTitle}</Text>
               <TouchableOpacity onPress={handleCloseDetail} style={{ padding: 8 }}>
                 <Ionicons name="close" size={24} color="#2C3E50" />
               </TouchableOpacity>
@@ -1062,21 +1346,21 @@ export default function ShiftHandoverScreen() {
                       <>
                   {/* Thông tin cơ bản */}
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailSectionTitle}>Thông tin giao ca</Text>
+                    <Text style={styles.detailSectionTitle}>{text.handoverInfo}</Text>
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Thời gian:</Text>
+                      <Text style={styles.detailLabel}>{text.time}</Text>
                       <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatDateTime(selectedRecord.handoverTime)}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Từ:</Text>
-                      <Text style={[styles.detailValue, { fontSize: 11 }]}>{selectedRecord.fromStaffName || 'N/A'}</Text>
+                      <Text style={styles.detailLabel}>{text.from}</Text>
+                      <Text style={[styles.detailValue, { fontSize: 11 }]}>{selectedRecord.fromStaffName || text.notAvailable}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Đến:</Text>
-                      <Text style={[styles.detailValue, { fontSize: 11 }]}>{selectedRecord.toStaffName || 'N/A'}</Text>
+                      <Text style={styles.detailLabel}>{text.to}</Text>
+                      <Text style={[styles.detailValue, { fontSize: 11 }]}>{selectedRecord.toStaffName || text.notAvailable}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={styles.detailLabel}>Trạng thái:</Text>
+                      <Text style={styles.detailLabel}>{text.status}</Text>
                       <View style={[styles.statusBadge, { backgroundColor: getStatusColor(selectedRecord.status) }]}>
                         <Text style={styles.statusText}>{getStatusLabel(selectedRecord.status)}</Text>
                       </View>
@@ -1085,45 +1369,45 @@ export default function ShiftHandoverScreen() {
 
                   {/* Chi tiết tiền */}
                   <View style={styles.detailSection}>
-                    <Text style={styles.detailSectionTitle}>Chi tiết tiền</Text>
+                    <Text style={styles.detailSectionTitle}>{text.moneyDetails}</Text>
                     <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>Tiền ca trước:</Text>
+                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>{text.previousShiftCash}</Text>
                       <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatCurrency(selectedRecord.previousShiftAmount || 0)}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>Tiền mặt trong ca:</Text>
+                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>{text.shiftCash}</Text>
                       <Text style={[styles.detailValue, { fontSize: 11, color: '#2ECC71', fontWeight: '600' }]}>{formatCurrency(selectedRecord.cashInShift || 0)}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>Tiền giao quản lý:</Text>
+                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>{text.managerCash}</Text>
                       <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatCurrency(selectedRecord.managerHandoverAmount || 0)}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>Tiền mặt thu:</Text>
+                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>{text.collectedCash}</Text>
                       <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatCurrency(computedSummary.cash)}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>Chuyển khoản:</Text>
+                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>{text.bankTransfer}</Text>
                       <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatCurrency(computedSummary.bankTransfer)}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>Cà thẻ:</Text>
+                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>{text.card}</Text>
                       <Text style={[styles.detailValue, { fontSize: 11 }]}>{formatCurrency(computedSummary.card)}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>Phiếu chi:</Text>
+                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>{text.expenseVoucher}</Text>
                       <Text style={[styles.detailValue, { fontSize: 11, color: '#E74C3C' }]}>{formatCurrency(computedSummary.expense)}</Text>
                     </View>
                     <View style={styles.detailRow}>
-                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>Phiếu thu:</Text>
+                      <Text style={[styles.detailLabel, { fontSize: 11 }]}>{text.incomeVoucher}</Text>
                       <Text style={[styles.detailValue, { fontSize: 11, color: '#2ECC71' }]}>{formatCurrency(computedSummary.income)}</Text>
                     </View>
                     <View style={[styles.detailRow, { borderTopWidth: 1, borderTopColor: '#E9ECEF', marginTop: 4, paddingTop: 6 }]}>
-                      <Text style={[styles.detailLabel, { fontSize: 11, fontWeight: '600' }]}>Tổng doanh thu:</Text>
+                      <Text style={[styles.detailLabel, { fontSize: 11, fontWeight: '600' }]}>{text.totalRevenue}</Text>
                       <Text style={[styles.detailValue, styles.totalValue, { fontSize: 11 }]}>{formatCurrency(computedSummary.totalRevenue)}</Text>
                     </View>
                     <View style={[styles.detailRow, { marginTop: 2 }]}>
-                      <Text style={[styles.detailLabel, { fontSize: 11, fontWeight: '600' }]}>Số tiền giao ca:</Text>
+                      <Text style={[styles.detailLabel, { fontSize: 11, fontWeight: '600' }]}>{text.handoverAmount}</Text>
                       <Text style={[styles.detailValue, styles.totalValue, { fontSize: 11 }]}>{formatCurrency(selectedRecord.handoverAmount || 0)}</Text>
                     </View>
                   </View>
@@ -1131,7 +1415,7 @@ export default function ShiftHandoverScreen() {
                   {/* Ghi chú */}
                   {selectedRecord.notes && (
                     <View style={styles.detailSection}>
-                      <Text style={styles.detailSectionTitle}>Ghi chú</Text>
+                      <Text style={styles.detailSectionTitle}>{text.notes}</Text>
                       <Text style={styles.detailText}>{selectedRecord.notes}</Text>
                     </View>
                   )}
@@ -1140,20 +1424,20 @@ export default function ShiftHandoverScreen() {
                   {getExpenseDetails(selectedRecord).length > 0 && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailSectionTitle}>
-                        Chi tiết phiếu chi - Tổng: {formatCurrency(getTotalAmount(getExpenseDetails(selectedRecord)))}
+                        {text.expenseDetailsTotal} {formatCurrency(getTotalAmount(getExpenseDetails(selectedRecord)))}
                       </Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                         <View>
                 <View style={styles.tableHeader}>
-                  <Text style={[styles.tableHeaderText, { minWidth: 300 }]}>Nội dung</Text>
-                  <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Số tiền</Text>
-                  <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Phương thức</Text>
+                  <Text style={[styles.tableHeaderText, { minWidth: 300 }]}>{text.content}</Text>
+                  <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>{text.amount}</Text>
+                  <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>{text.method}</Text>
                 </View>
                 {getExpenseDetails(selectedRecord).map((expense, index) => (
                   <View key={index} style={styles.tableRow}>
-                    <Text style={[styles.tableCell, { minWidth: 300 }]}>{expense.description || expense.content || 'N/A'}</Text>
+                    <Text style={[styles.tableCell, { minWidth: 300 }]}>{expense.description || expense.content || text.notAvailable}</Text>
                     <Text style={[styles.tableCell, { minWidth: 100, textAlign: 'right' }]}>{formatCurrency(expense.amount || 0)}</Text>
-                    <Text style={[styles.tableCell, { minWidth: 100, textAlign: 'right' }]}>{expense.method || 'Tiền mặt'}</Text>
+                    <Text style={[styles.tableCell, { minWidth: 100, textAlign: 'right' }]}>{getPaymentMethodLabel(expense.method || 'cash')}</Text>
                   </View>
                 ))}
               </View>
@@ -1165,20 +1449,20 @@ export default function ShiftHandoverScreen() {
                   {getIncomeDetails(selectedRecord).length > 0 && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailSectionTitle}>
-                        Chi tiết phiếu thu - Tổng: {formatCurrency(getTotalAmount(getIncomeDetails(selectedRecord)))}
+                        {text.incomeDetailsTotal} {formatCurrency(getTotalAmount(getIncomeDetails(selectedRecord)))}
                       </Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={true}>
                         <View>
                 <View style={styles.tableHeader}>
-                  <Text style={[styles.tableHeaderText, { minWidth: 300 }]}>Nội dung</Text>
-                  <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Số tiền</Text>
-                  <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Phương thức</Text>
+                  <Text style={[styles.tableHeaderText, { minWidth: 300 }]}>{text.content}</Text>
+                  <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>{text.amount}</Text>
+                  <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>{text.method}</Text>
                 </View>
                 {getIncomeDetails(selectedRecord).map((income, index) => (
                   <View key={index} style={styles.tableRow}>
-                    <Text style={[styles.tableCell, { minWidth: 300 }]}>{income.description || income.content || 'N/A'}</Text>
+                    <Text style={[styles.tableCell, { minWidth: 300 }]}>{income.description || income.content || text.notAvailable}</Text>
                     <Text style={[styles.tableCell, { minWidth: 100, textAlign: 'right' }]}>{formatCurrency(income.amount || 0)}</Text>
-                    <Text style={[styles.tableCell, { minWidth: 100, textAlign: 'right' }]}>{income.method || 'Tiền mặt'}</Text>
+                    <Text style={[styles.tableCell, { minWidth: 100, textAlign: 'right' }]}>{getPaymentMethodLabel(income.method || 'cash')}</Text>
                   </View>
                 ))}
               </View>
@@ -1190,21 +1474,21 @@ export default function ShiftHandoverScreen() {
                   {getAdvancePayments(selectedRecord).length > 0 && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailSectionTitle}>
-                        Chi tiết đặt cọc - Tổng: {formatCurrency(getTotalAmount(getAdvancePayments(selectedRecord)))}
+                        {text.depositDetailsTotal} {formatCurrency(getTotalAmount(getAdvancePayments(selectedRecord)))}
                       </Text>
                       <ScrollView horizontal showsHorizontalScrollIndicator={true}>
                         <View>
                           <View style={styles.tableHeader}>
-                            <Text style={[styles.tableHeaderText, { minWidth: 120 }]}>Phòng</Text>
-                            <Text style={[styles.tableHeaderText, { minWidth: 160 }]}>Khách hàng</Text>
-                            <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>Đặt cọc</Text>
-                            <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>PT thanh toán</Text>
-                            <Text style={[styles.tableHeaderText, { minWidth: 140 }]}>Check-in</Text>
+                            <Text style={[styles.tableHeaderText, { minWidth: 120 }]}>{text.room}</Text>
+                            <Text style={[styles.tableHeaderText, { minWidth: 160 }]}>{text.customer}</Text>
+                            <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>{text.deposit}</Text>
+                            <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>{text.paymentMethodShort}</Text>
+                            <Text style={[styles.tableHeaderText, { minWidth: 140 }]}>{text.checkin}</Text>
                           </View>
                           {getAdvancePayments(selectedRecord).map((room, index) => (
                             <View key={index} style={styles.tableRow}>
-                              <Text style={[styles.tableCell, { minWidth: 120 }]}>{`Phòng ${room.roomNumber || 'N/A'}`}</Text>
-                              <Text style={[styles.tableCell, { minWidth: 160 }]}>{room.customerName || room.guestName || 'Khách lẻ'}</Text>
+                              <Text style={[styles.tableCell, { minWidth: 120 }]}>{`${text.room} ${room.roomNumber || text.notAvailable}`}</Text>
+                              <Text style={[styles.tableCell, { minWidth: 160 }]}>{room.customerName || room.guestName || text.guest}</Text>
                               <Text style={[styles.tableCell, { minWidth: 120, textAlign: 'right' }]}>
                                 {formatCurrency(Number(room.advancePayment || room.amount || 0))}
                               </Text>
@@ -1223,25 +1507,25 @@ export default function ShiftHandoverScreen() {
                   {getCustomerPayments(selectedRecord).length > 0 && (
                     <View style={styles.detailSection}>
                       <Text style={styles.detailSectionTitle}>
-                        Tổng doanh thu = Tiền mặt + Chuyển khoản + Thẻ tín dụng + Phiếu Thu - Phiếu Chi: {formatCurrency(computedSummary.totalRevenue)}
+                        {text.customerRevenueSummary} {formatCurrency(computedSummary.totalRevenue)}
                       </Text>
                       <View style={styles.tableContainer}>
                         <ScrollView horizontal showsHorizontalScrollIndicator={true} nestedScrollEnabled scrollEventThrottle={16}>
                           <View>
                             <View style={styles.tableHeader}>
-                              <Text style={[styles.tableHeaderText, { minWidth: 80 }]}>Phòng</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 100 }]}>Thao tác</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 120 }]}>Khách hàng</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 100 }]}>Nguồn</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Tổng phòng</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Phụ thu</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Giảm giá</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>Dịch vụ</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>Đặt trước</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>Tổng điều chỉnh</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>Còn lại</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>Thanh toán</Text>
-                              <Text style={[styles.tableHeaderText, { minWidth: 100 }]}>PT thanh toán</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 80 }]}>{text.room}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 100 }]}>{text.action}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 120 }]}>{text.customer}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 100 }]}>{text.source}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>{text.roomTotal}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>{text.surcharge}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>{text.discount}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 100, textAlign: 'right' }]}>{text.service}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>{text.advancePayment}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>{text.adjustedTotal}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>{text.remaining}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 120, textAlign: 'right' }]}>{text.payment}</Text>
+                              <Text style={[styles.tableHeaderText, { minWidth: 100 }]}>{text.paymentMethodShort}</Text>
                               <Text style={[styles.tableHeaderText, { minWidth: 140 }]}>Check-in</Text>
                               <Text style={[styles.tableHeaderText, { minWidth: 140 }]}>Check-out</Text>
                             </View>
@@ -1254,8 +1538,8 @@ export default function ShiftHandoverScreen() {
                             >
                               {getCustomerPayments(selectedRecord).map((room, index) => (
                                 <View key={index} style={styles.tableRow}>
-                                  <Text style={[styles.tableCell, { minWidth: 80 }]}>Phòng {room.roomNumber}</Text>
-                                  <Text style={[styles.tableCell, { minWidth: 100 }]}>{room.action || 'Thanh toán'}</Text>
+                                  <Text style={[styles.tableCell, { minWidth: 80 }]}>{text.room} {room.roomNumber}</Text>
+                                  <Text style={[styles.tableCell, { minWidth: 100 }]}>{getActionLabel(room.action)}</Text>
                                   <Text style={[styles.tableCell, { minWidth: 120 }]}>{room.customerName}</Text>
                                   <Text style={[styles.tableCell, { minWidth: 100 }]}>
                                     <Text style={[styles.sourceTag, { backgroundColor: getGuestSourceColor(room) }]}>
@@ -1271,7 +1555,7 @@ export default function ShiftHandoverScreen() {
                                   <Text style={[styles.tableCell, { minWidth: 120, textAlign: 'right' }]}>{formatCurrency(getRemainingAmount(room))}</Text>
                                   <Text style={[styles.tableCell, { minWidth: 120, textAlign: 'right', fontWeight: '600', color: '#2ECC71' }]}>{formatCurrency(room.amount || 0)}</Text>
                                   <Text style={[styles.tableCell, { minWidth: 100 }]}>
-                                    {getPaymentMethodLabel(room.paymentMethod)}
+                                    {getPaymentMethodLabel(room.paymentMethod || 'cash')}
                                   </Text>
                                   <Text style={[styles.tableCell, { minWidth: 140 }]}>{formatDateTime(getCheckinTime(room))}</Text>
                                   <Text style={[styles.tableCell, { minWidth: 140 }]}>{formatDateTime(room.timestamp)}</Text>

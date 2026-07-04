@@ -76,6 +76,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { isDark, colors } = useTheme();
   const { t, language } = useLanguage();
+  const isVi = language === 'vi';
   const [hotelModalVisible, setHotelModalVisible] = useState(false);
   const [notificationModalVisible, setNotificationModalVisible] = useState(false);
   const [notifTab, setNotifTab] = useState<'all' | 'system' | 'hotel'>('all');
@@ -87,6 +88,22 @@ export default function DashboardScreen() {
   const filteredHotels = hotels.filter(hotel => 
     hotel.name.toLowerCase().includes(hotelSearchText.toLowerCase())
   );
+  const text = useMemo(() => ({
+    booking: isVi ? 'Dat phong' : 'Bookings',
+    guests: isVi ? 'Khach hang' : 'Guests',
+    services: isVi ? 'Dich vu' : 'Services',
+    staffs: isVi ? 'Nhan vien' : 'Staffs',
+    loading: isVi ? 'Dang tai...' : 'Loading...',
+    selectHotel: isVi ? 'Chon khach san' : 'Select hotel',
+    noHotel: isVi ? 'Chua co khach san' : 'No hotel available',
+    occupied: isVi ? 'dang o' : 'occupied',
+    vacant: isVi ? 'trong' : 'vacant',
+    dirty: isVi ? 'ban' : 'dirty',
+    totalRevenue: isVi ? 'Tong doanh thu' : 'Total revenue',
+    checkInAction: 'Check-in',
+    checkOutAction: 'Check-out',
+    searchHotel: isVi ? 'Tim kiem khach san...' : 'Search hotels...',
+  }), [isVi]);
 
   const { data: rooms = [], isLoading: roomsLoading, refetch: refetchRooms } = useQuery({
     queryKey: ['rooms', selectedHotelId],
@@ -212,10 +229,10 @@ export default function DashboardScreen() {
   const todayCheckOuts = roomEvents.filter(e => e.type === 'checkout' && (e.checkoutTime ? isSameDay(e.checkoutTime, new Date()) : isSameDay(e.createdAt, new Date())));
 
   const quickAccessItems: QuickAccessItem[] = [
-    { id: 'bookings', title: 'Đặt phòng', icon: <ClipboardList size={22} color="#6366f1" />, route: '/(tabs)/bookings', color: '#6366f1', bgColor: '#eef2ff' },
-    { id: 'guests', title: 'Khách hàng', icon: <Users size={22} color="#10b981" />, route: '/(tabs)/guests', color: '#10b981', bgColor: '#ecfdf5' },
-    { id: 'services', title: 'Dịch vụ', icon: <Briefcase size={22} color="#f59e0b" />, route: '/(tabs)/services', color: '#f59e0b', bgColor: '#fef3c7' },
-    { id: 'staffs', title: 'Nhân viên', icon: <UserCog size={22} color="#ec4899" />, route: '/(tabs)/staffs', color: '#ec4899', bgColor: '#fce7f3' },
+    { id: 'bookings', title: text.booking, icon: <ClipboardList size={22} color="#6366f1" />, route: '/(tabs)/bookings', color: '#6366f1', bgColor: '#eef2ff' },
+    { id: 'guests', title: text.guests, icon: <Users size={22} color="#10b981" />, route: '/(tabs)/guests', color: '#10b981', bgColor: '#ecfdf5' },
+    { id: 'services', title: text.services, icon: <Briefcase size={22} color="#f59e0b" />, route: '/(tabs)/services', color: '#f59e0b', bgColor: '#fef3c7' },
+    { id: 'staffs', title: text.staffs, icon: <UserCog size={22} color="#ec4899" />, route: '/(tabs)/staffs', color: '#ec4899', bgColor: '#fce7f3' },
   ];
 
   const handleRefresh = async () => {
@@ -239,7 +256,7 @@ export default function DashboardScreen() {
     if (amount >= 1000000) {
       return `${(amount / 1000000).toFixed(1)}M`;
     }
-    return new Intl.NumberFormat('vi-VN', {
+    return new Intl.NumberFormat(isVi ? 'vi-VN' : 'en-US', {
       style: 'currency',
       currency: 'VND',
       maximumFractionDigits: 0,
@@ -247,7 +264,7 @@ export default function DashboardScreen() {
   };
 
   const formatFullCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
+    return new Intl.NumberFormat(isVi ? 'vi-VN' : 'en-US', {
       style: 'currency',
       currency: 'VND',
       maximumFractionDigits: 0,
@@ -255,8 +272,10 @@ export default function DashboardScreen() {
   };
 
   const dateObj = new Date();
-  const dateStr = dateObj.toLocaleDateString('vi-VN');
-  const dayNames = ['Chủ nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+  const dateStr = dateObj.toLocaleDateString(isVi ? 'vi-VN' : 'en-US');
+  const dayNames = isVi
+    ? ['Chu nhat', 'Thu Hai', 'Thu Ba', 'Thu Tu', 'Thu Nam', 'Thu Sau', 'Thu Bay']
+    : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const dayStr = dayNames[dateObj.getDay()];
 
   const handleSelectHotel = (hotelId: string) => {
@@ -265,7 +284,7 @@ export default function DashboardScreen() {
   };
 
   const handleQuickAccess = (route: string) => {
-    router.push(route as any);
+    router.navigate(route as any);
   };
 
   // Calculate growth based on revenue data (compare last day with previous day)
@@ -307,16 +326,16 @@ export default function DashboardScreen() {
                 onPress={() => setHotelModalVisible(true)}
               >
                 <Building2 size={18} color="#fff" />
-                <Text style={styles.hotelName} numberOfLines={1}>
-                  {selectedHotel?.name || (isLoading ? 'Đang tải...' : 'Chọn khách sạn')}
+                <Text style={styles.hotelName} numberOfLines={2}>
+                  {selectedHotel?.name || (isLoading ? text.loading : text.selectHotel)}
                 </Text>
                 <ChevronDown size={18} color="#fff" />
               </TouchableOpacity>
             ) : (
               <View style={styles.hotelSelector}>
                 <Building2 size={18} color="#fff" />
-                <Text style={styles.hotelName} numberOfLines={1}>
-                  {selectedHotel?.name || (hotels.length > 0 ? hotels[0].name : (isLoading ? 'Đang tải...' : 'Chưa có khách sạn'))}
+                <Text style={styles.hotelName} numberOfLines={2}>
+                  {selectedHotel?.name || (hotels.length > 0 ? hotels[0].name : (isLoading ? text.loading : text.noHotel))}
                 </Text>
               </View>
             )}
@@ -356,19 +375,19 @@ export default function DashboardScreen() {
             <View style={styles.occupancyStat}>
               <View style={[styles.statusDot, { backgroundColor: Colors.status.occupied }]} />
               <Text style={styles.occupancyStatText}>
-                {stats.occupiedRooms} đang ở
+                {stats.occupiedRooms} {text.occupied}
               </Text>
             </View>
             <View style={styles.occupancyStat}>
               <View style={[styles.statusDot, { backgroundColor: Colors.status.vacant }]} />
               <Text style={styles.occupancyStatText}>
-                {stats.vacantRooms} trống
+                {stats.vacantRooms} {text.vacant}
               </Text>
             </View>
             <View style={styles.occupancyStat}>
               <View style={[styles.statusDot, { backgroundColor: Colors.status.dirty }]} />
               <Text style={styles.occupancyStatText}>
-                {stats.dirtyRooms} bẩn
+                {stats.dirtyRooms} {text.dirty}
               </Text>
             </View>
           </View>
@@ -481,7 +500,7 @@ export default function DashboardScreen() {
               </Text>
               <View style={styles.revenueCompare}>
                 <Text style={styles.revenueCompareText}>
-                  Tổng doanh thu: {formatCurrency(totalRevenuePeriod)}
+                  {text.totalRevenue}: {formatCurrency(totalRevenuePeriod)}
                 </Text>
               </View>
             </LinearGradient>
@@ -528,7 +547,7 @@ export default function DashboardScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('checkInToday')}</Text>
             <TouchableOpacity 
               style={styles.seeAllBtn}
-              onPress={() => router.push('/(tabs)/bookings' as any)}
+                onPress={() => router.navigate('/(tabs)/bookings' as any)}
             >
               <Text style={[styles.seeAllText, { color: colors.tint }]}>{t('seeAll')}</Text>
               <ChevronRight size={16} color={colors.tint} />
@@ -557,7 +576,7 @@ export default function DashboardScreen() {
                   </View>
                 </View>
                 <TouchableOpacity style={[styles.checkInBtn, { backgroundColor: colors.tint }]}>
-                  <Text style={styles.checkInBtnText}>Check-in</Text>
+                  <Text style={styles.checkInBtnText}>{text.checkInAction}</Text>
                 </TouchableOpacity>
               </View>
             ))
@@ -574,7 +593,7 @@ export default function DashboardScreen() {
             <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('checkOutToday')}</Text>
             <TouchableOpacity 
               style={styles.seeAllBtn}
-              onPress={() => router.push('/(tabs)/bookings' as any)}
+                onPress={() => router.navigate('/(tabs)/bookings' as any)}
             >
               <Text style={[styles.seeAllText, { color: colors.tint }]}>{t('seeAll')}</Text>
               <ChevronRight size={16} color={colors.tint} />
@@ -593,7 +612,7 @@ export default function DashboardScreen() {
                   </View>
                 </View>
                 <TouchableOpacity style={[styles.checkInBtn, { backgroundColor: Colors.status.cleaning }]}>
-                  <Text style={styles.checkInBtnText}>Check-out</Text>
+                  <Text style={styles.checkInBtnText}>{text.checkOutAction}</Text>
                 </TouchableOpacity>
               </View>
             ))
@@ -616,62 +635,64 @@ export default function DashboardScreen() {
           style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}
           onPress={() => setHotelModalVisible(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>{t('selectHotel2')}</Text>
-            
-            <View style={[styles.searchContainer, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
-              <Search size={20} color={colors.textSecondary} />
-              <TextInput
-                style={[styles.searchInput, { color: colors.text }]}
-                placeholder="Tìm kiếm khách sạn..."
-                placeholderTextColor={colors.textSecondary}
-                value={hotelSearchText}
-                onChangeText={setHotelSearchText}
-              />
-              {hotelSearchText.length > 0 && (
-                <TouchableOpacity onPress={() => setHotelSearchText('')}>
-                  <X size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
+          <Pressable onPress={() => {}}>
+            <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{t('selectHotel2')}</Text>
+              
+              <View style={[styles.searchContainer, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
+                <Search size={20} color={colors.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: colors.text }]}
+                  placeholder={text.searchHotel}
+                  placeholderTextColor={colors.textSecondary}
+                  value={hotelSearchText}
+                  onChangeText={setHotelSearchText}
+                />
+                {hotelSearchText.length > 0 && (
+                  <TouchableOpacity onPress={() => setHotelSearchText('')}>
+                    <X size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
 
-            <ScrollView style={styles.hotelList}>
-              {filteredHotels.map((hotel) => (
-                <TouchableOpacity
-                  key={hotel.id}
-                  style={[
-                    styles.hotelItem,
-                    { backgroundColor: isDark ? '#1e293b' : '#f8fafc' },
-                    selectedHotelId === hotel.id && { backgroundColor: isDark ? '#064e3b' : '#ecfdf5', borderWidth: 1, borderColor: colors.tint }
-                  ]}
-                  onPress={() => handleSelectHotel(hotel.id)}
-                >
-                  <Building2 
-                    size={20} 
-                    color={selectedHotelId === hotel.id ? colors.tint : colors.textSecondary} 
-                  />
-                  <Text style={[
-                    styles.hotelItemText,
-                    { color: colors.text },
-                    selectedHotelId === hotel.id && { fontWeight: '600' as const, color: colors.tint }
-                  ]}>
-                    {hotel.name}
-                  </Text>
-                  {selectedHotelId === hotel.id && (
-                    <Check size={20} color={colors.tint} />
-                  )}
-                </TouchableOpacity>
-              ))}
-              {filteredHotels.length === 0 && (
-                <View style={styles.emptyHotels}>
-                  <AlertCircle size={24} color={colors.textSecondary} />
-                  <Text style={[styles.emptyHotelsText, { color: colors.textSecondary }]}>
-                    {t('noHotels')}
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
-          </View>
+              <ScrollView style={styles.hotelList}>
+                {filteredHotels.map((hotel) => (
+                  <TouchableOpacity
+                    key={hotel.id}
+                    style={[
+                      styles.hotelItem,
+                      { backgroundColor: isDark ? '#1e293b' : '#f8fafc' },
+                      selectedHotelId === hotel.id && { backgroundColor: isDark ? '#064e3b' : '#ecfdf5', borderWidth: 1, borderColor: colors.tint }
+                    ]}
+                    onPress={() => handleSelectHotel(hotel.id)}
+                  >
+                    <Building2 
+                      size={30} 
+                      color={selectedHotelId === hotel.id ? colors.tint : colors.textSecondary} 
+                    />
+                    <Text style={[
+                      styles.hotelItemText,
+                      { color: colors.text },
+                      selectedHotelId === hotel.id && { fontWeight: '600' as const, color: colors.tint }
+                    ]}>
+                      {hotel.name}
+                    </Text>
+                    {selectedHotelId === hotel.id && (
+                      <Check size={20} color={colors.tint} />
+                    )}
+                  </TouchableOpacity>
+                ))}
+                {filteredHotels.length === 0 && (
+                  <View style={styles.emptyHotels}>
+                    <AlertCircle size={24} color={colors.textSecondary} />
+                    <Text style={[styles.emptyHotelsText, { color: colors.textSecondary }]}>
+                      {t('noHotels')}
+                    </Text>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -746,7 +767,7 @@ export default function DashboardScreen() {
                         {notification.message}
                       </Text>
                       <Text style={[styles.notificationTime, { color: colors.textSecondary }]}>
-                        {new Date(notification.createdAt).toLocaleDateString('vi-VN')}
+                        {new Date(notification.createdAt).toLocaleDateString(isVi ? 'vi-VN' : 'en-US')}
                       </Text>
                     </View>
                   </View>
@@ -1247,9 +1268,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 20,
     padding: 20,
-    width: '100%',
-    maxWidth: 400,
-    maxHeight: '70%',
+    width: 600,
+    maxWidth: '100%',
+    maxHeight: '100%',
   },
   modalTitle: {
     fontSize: 20,

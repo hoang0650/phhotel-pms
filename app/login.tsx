@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,23 +10,28 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
+  Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Mail, Lock, Eye, EyeOff, Hotel } from 'lucide-react-native';
+import { Mail, Lock, Eye, EyeOff, ChevronDown } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import Colors from '@/constants/colors';
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { login, loginLoading } = useAuth();
+  const { language, setLanguage } = useLanguage();
 
   const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
   const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials';
+  const isVi = language === 'vi';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,6 +39,41 @@ export default function LoginScreen() {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [biometricReady, setBiometricReady] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
+  const [languageDropdownVisible, setLanguageDropdownVisible] = useState(false);
+
+  const text = useMemo(
+    () => ({
+      appTagline: isVi ? 'Hệ thống quản lý khách sạn' : 'Hotel management system',
+      formTitle: isVi ? 'Đăng nhập' : 'Login',
+      formSubtitle: isVi ? 'Chào mừng bạn quay trở lại' : 'Welcome back',
+      email: isVi ? 'Email' : 'Email',
+      emailPlaceholder: isVi ? 'Nhập email hoặc tên đăng nhập' : 'Enter email or username',
+      password: isVi ? 'Mật khẩu' : 'Password',
+      passwordPlaceholder: isVi ? 'Nhập mật khẩu' : 'Enter password',
+      forgotPassword: isVi ? 'Quên mật khẩu?' : 'Forgot password?',
+      login: isVi ? 'Đăng nhập' : 'Login',
+      biometricLogin: isVi ? 'Đăng nhập bằng Face ID' : 'Login with Face ID',
+      invalidCredential: isVi ? 'Email hoặc mật khẩu không đúng' : 'Incorrect email or password',
+      reviewLoginInfo: isVi ? 'Vui lòng kiểm tra lại thông tin đăng nhập' : 'Please check your login information',
+      loginFailed: isVi ? 'Đăng nhập thất bại' : 'Login failed',
+      notice: isVi ? 'Thông báo' : 'Notice',
+      noBiometricSupport: isVi ? 'Thiết bị chưa hỗ trợ sinh trắc học' : 'This device does not support biometrics',
+      noBiometricCredentials: isVi ? 'Chưa có thông tin đăng nhập sinh trắc học' : 'No biometric login credentials found',
+      invalidBiometricCredentials: isVi ? 'Thông tin sinh trắc học không hợp lệ' : 'Biometric credentials are invalid',
+      setupBiometricFirst: isVi ? 'Vui lòng cài đặt Face ID hoặc vân tay trước' : 'Please set up Face ID or fingerprint first',
+      biometricPrompt: isVi ? 'Xác thực sinh trắc học' : 'Biometric authentication',
+      cancel: isVi ? 'Hủy' : 'Cancel',
+      biometricLoginFailed: isVi ? 'Không thể đăng nhập bằng sinh trắc học' : 'Unable to log in with biometrics',
+      emailRequired: isVi ? 'Vui lòng nhập email hoặc tên đăng nhập' : 'Please enter email or username',
+      emailInvalid: isVi ? 'Email không hợp lệ' : 'Invalid email address',
+      passwordRequired: isVi ? 'Vui lòng nhập mật khẩu' : 'Please enter password',
+      passwordLength: isVi ? 'Mật khẩu phải có ít nhất 6 ký tự' : 'Password must be at least 6 characters',
+      languageLabel: isVi ? 'Ngôn ngữ' : 'Language',
+      vietnamese: 'Tiếng Việt',
+      english: 'English',
+    }),
+    [isVi]
+  );
 
   useEffect(() => {
     async function checkBiometrics() {
@@ -68,15 +108,15 @@ export default function LoginScreen() {
     const newErrors: { email?: string; password?: string } = {};
     
     if (!email.trim()) {
-      newErrors.email = 'Vui lòng nhập email hoặc tên đăng nhập';
+      newErrors.email = text.emailRequired;
     } else if (email.includes('@') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      newErrors.email = 'Email không hợp lệ';
+      newErrors.email = text.emailInvalid;
     }
     
     if (!password) {
-      newErrors.password = 'Vui lòng nhập mật khẩu';
+      newErrors.password = text.passwordRequired;
     } else if (password.length < 6) {
-      newErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự';
+      newErrors.password = text.passwordLength;
     }
 
     setErrors(newErrors);
@@ -92,48 +132,48 @@ export default function LoginScreen() {
     } catch (error) {
       const message =
         error instanceof Error && (error.message === 'UNAUTHORIZED' || /invalid|credentials/i.test(error.message))
-          ? 'Email hoặc mật khẩu không đúng'
+          ? text.invalidCredential
           : error instanceof Error
             ? error.message
-            : 'Vui lòng kiểm tra lại thông tin đăng nhập';
-      Alert.alert('Đăng nhập thất bại', message);
+            : text.reviewLoginInfo;
+      Alert.alert(text.loginFailed, message);
     }
   };
 
   const handleBiometricLogin = async () => {
     if (!isMobile) {
-      Alert.alert('Thông báo', 'Thiết bị chưa hỗ trợ sinh trắc học');
+      Alert.alert(text.notice, text.noBiometricSupport);
       return;
     }
     setBiometricLoading(true);
     try {
       const stored = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
       if (!stored) {
-        Alert.alert('Thông báo', 'Chưa có thông tin đăng nhập sinh trắc học');
+        Alert.alert(text.notice, text.noBiometricCredentials);
         setBiometricLoading(false);
         return;
       }
       const credentials = JSON.parse(stored) as { email: string; password: string };
       if (!credentials?.email || !credentials?.password) {
-        Alert.alert('Thông báo', 'Thông tin sinh trắc học không hợp lệ');
+        Alert.alert(text.notice, text.invalidBiometricCredentials);
         setBiometricLoading(false);
         return;
       }
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
       if (!hasHardware) {
-        Alert.alert('Thông báo', 'Thiết bị chưa hỗ trợ sinh trắc học');
+        Alert.alert(text.notice, text.noBiometricSupport);
         setBiometricLoading(false);
         return;
       }
       const isEnrolled = await LocalAuthentication.isEnrolledAsync();
       if (!isEnrolled) {
-        Alert.alert('Thông báo', 'Vui lòng cài đặt Face ID hoặc vân tay trước');
+        Alert.alert(text.notice, text.setupBiometricFirst);
         setBiometricLoading(false);
         return;
       }
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Xác thực sinh trắc học',
-        cancelLabel: 'Hủy',
+        promptMessage: text.biometricPrompt,
+        cancelLabel: text.cancel,
       });
       if (!result.success) {
         setBiometricLoading(false);
@@ -142,7 +182,7 @@ export default function LoginScreen() {
       await login({ email: credentials.email, password: credentials.password });
       router.replace('/(tabs)/(dashboard)');
     } catch (error) {
-      Alert.alert('Đăng nhập thất bại', 'Không thể đăng nhập bằng sinh trắc học');
+      Alert.alert(text.loginFailed, text.biometricLoginFailed);
     } finally {
       setBiometricLoading(false);
     }
@@ -167,25 +207,71 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          <View style={styles.languageRow}>
+            <View style={styles.languageDropdownWrapper}>
+              <TouchableOpacity
+                style={styles.languageButton}
+                onPress={() => setLanguageDropdownVisible((prev) => !prev)}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.languageButtonText}>
+                  {text.languageLabel}: {isVi ? text.vietnamese : text.english}
+                </Text>
+                <ChevronDown size={16} color="#0f766e" />
+              </TouchableOpacity>
+
+              {languageDropdownVisible && (
+                <View style={styles.languageDropdownMenu}>
+                  <Pressable
+                    style={styles.languageOption}
+                    onPress={() => {
+                      setLanguage('vi');
+                      setLanguageDropdownVisible(false);
+                    }}
+                  >
+                    <Text style={[styles.languageOptionText, language === 'vi' && styles.languageOptionTextActive]}>
+                      {text.vietnamese}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.languageOption}
+                    onPress={() => {
+                      setLanguage('en');
+                      setLanguageDropdownVisible(false);
+                    }}
+                  >
+                    <Text style={[styles.languageOptionText, language === 'en' && styles.languageOptionTextActive]}>
+                      {text.english}
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          </View>
+
           <View style={styles.logoContainer}>
             <View style={styles.logoCircle}>
-              <Hotel size={48} color="#0f766e" />
+              <Image
+                source={require('../assets/images/icon.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
             <Text style={styles.appName}>PHHotel PMS</Text>
-            <Text style={styles.appTagline}>Hệ thống quản lý khách sạn</Text>
+            <Text style={styles.appTagline}>{text.appTagline}</Text>
           </View>
 
           <View style={styles.formContainer}>
-            <Text style={styles.formTitle}>Đăng nhập</Text>
-            <Text style={styles.formSubtitle}>Chào mừng bạn quay trở lại</Text>
+            <Text style={styles.formTitle}>{text.formTitle}</Text>
+            <Text style={styles.formSubtitle}>{text.formSubtitle}</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
+              <Text style={styles.label}>{text.email}</Text>
               <View style={[styles.inputWrapper, errors.email && styles.inputError]}>
                 <Mail size={20} color={Colors.light.textSecondary} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Nhập email hoặc tên đăng nhập"
+                  placeholder={text.emailPlaceholder}
                   placeholderTextColor={Colors.light.textSecondary}
                   value={email}
                   onChangeText={(text) => {
@@ -201,12 +287,12 @@ export default function LoginScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Mật khẩu</Text>
+              <Text style={styles.label}>{text.password}</Text>
               <View style={[styles.inputWrapper, errors.password && styles.inputError]}>
                 <Lock size={20} color={Colors.light.textSecondary} />
                 <TextInput
                   style={styles.input}
-                  placeholder="Nhập mật khẩu"
+                  placeholder={text.passwordPlaceholder}
                   placeholderTextColor={Colors.light.textSecondary}
                   value={password}
                   onChangeText={(text) => {
@@ -230,7 +316,7 @@ export default function LoginScreen() {
               style={styles.forgotPassword}
               onPress={() => router.push('/forgot-password')}
             >
-              <Text style={styles.forgotPasswordText}>Quên mật khẩu?</Text>
+              <Text style={styles.forgotPasswordText}>{text.forgotPassword}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -241,7 +327,7 @@ export default function LoginScreen() {
               {loginLoading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.loginButtonText}>Đăng nhập</Text>
+                <Text style={styles.loginButtonText}>{text.login}</Text>
               )}
             </TouchableOpacity>
 
@@ -254,7 +340,7 @@ export default function LoginScreen() {
                 {biometricLoading ? (
                   <ActivityIndicator color="#0f766e" />
                 ) : (
-                  <Text style={styles.biometricButtonText}>Đăng nhập bằng Face ID</Text>
+                  <Text style={styles.biometricButtonText}>{text.biometricLogin}</Text>
                 )}
               </TouchableOpacity>
             )}
@@ -284,6 +370,60 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  languageRow: {
+    alignItems: 'flex-end',
+    marginBottom: 18,
+    zIndex: 20,
+  },
+  languageDropdownWrapper: {
+    position: 'relative',
+    width: 170,
+  },
+  languageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  languageButtonText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: '#0f766e',
+  },
+  languageDropdownMenu: {
+    position: 'absolute',
+    top: 48,
+    right: 0,
+    left: 0,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  languageOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  languageOptionText: {
+    fontSize: 14,
+    color: Colors.light.text,
+  },
+  languageOptionTextActive: {
+    color: '#0f766e',
+    fontWeight: '700' as const,
+  },
   logoContainer: {
     alignItems: 'center',
     marginBottom: 32,
@@ -300,6 +440,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     elevation: 8,
+  },
+  logoImage: {
+    width: 68,
+    height: 68,
   },
   appName: {
     fontSize: 28,

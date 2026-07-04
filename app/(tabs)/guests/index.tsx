@@ -31,6 +31,7 @@ import { bookingsApi, guestsApi, roomsApi } from '@/services/api';
 import { Booking, Guest, Room } from '@/types/hotel';
 import { useHotel } from '@/contexts/HotelContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { Modal } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { aiApi } from '@/services/api/ai';
@@ -67,6 +68,71 @@ export default function GuestsScreen() {
   const clearGuestDraft = useGuestDraftStore(s => s.clear);
   const router = useRouter();
   const { isDark, colors } = useTheme();
+  const { language } = useLanguage();
+  const isVi = language === 'vi';
+  const text = useMemo(() => ({
+    vietnam: isVi ? 'Viet Nam' : 'Vietnam',
+    frequentGuest: isVi ? 'Khach quen' : 'Frequent guest',
+    groupGuest: isVi ? 'Khach doan' : 'Group guest',
+    stayingGuest: isVi ? 'Khach luu' : 'Staying guest',
+    male: isVi ? 'Nam' : 'Male',
+    female: isVi ? 'Nu' : 'Female',
+    notice: isVi ? 'Thong bao' : 'Notice',
+    error: isVi ? 'Loi' : 'Error',
+    success: isVi ? 'Thanh cong' : 'Success',
+    selectHotelFirst: isVi ? 'Vui long chon khach san truoc' : 'Please select a hotel first',
+    selectRoom: isVi ? 'Vui long chon phong' : 'Please select a room',
+    cannotCreateAssign: isVi ? 'Khong the tao khach de assign' : 'Unable to create guest for assignment',
+    saveGuestSuccess: isVi ? 'Da luu khach vao phong' : 'Guest assigned to room successfully',
+    cannotAssignGuest: isVi ? 'Khong the assign khach vao phong' : 'Unable to assign guest to room',
+    loadingGuests: isVi ? 'Dang tai danh sach khach hang...' : 'Loading guests...',
+    title: isVi ? 'Khach hang' : 'Guests',
+    allHotels: isVi ? 'Tat ca' : 'All',
+    guests: isVi ? 'khach' : 'guests',
+    searchPlaceholder: isVi ? 'Tim ten, SDT hoac email...' : 'Search name, phone, or email...',
+    allLabel: isVi ? 'Tat ca' : 'All',
+    emptyData: isVi ? 'Chua co du lieu khach hang' : 'No guest data yet',
+    checkApi: isVi ? 'Kiem tra ket noi API' : 'Check API connection',
+    notFound: isVi ? 'Khong tim thay khach hang' : 'No guests found',
+    guestInfo: isVi ? 'Thong tin khach' : 'Guest details',
+    guestName: isVi ? 'Ten khach' : 'Guest name',
+    gender: isVi ? 'Gioi tinh' : 'Gender',
+    dob: isVi ? 'Ngay sinh' : 'Date of birth',
+    guestType: isVi ? 'Loai khach' : 'Guest type',
+    idNumber: isVi ? 'CMND/CCCD' : 'ID number',
+    phone: isVi ? 'So dien thoai' : 'Phone',
+    email: 'Email',
+    address: isVi ? 'Dia chi' : 'Address',
+    close: isVi ? 'Dong' : 'Close',
+    addGuest: isVi ? 'Them khach hang' : 'Add guest',
+    scanOne: isVi ? 'Scan 1 anh' : 'Scan 1 image',
+    scanTwo: isVi ? 'Scan 2 mat' : 'Scan 2 sides',
+    upload: isVi ? 'Upload: ' : 'Upload: ',
+    scan: isVi ? 'Scan: ' : 'Scan: ',
+    process: isVi ? 'Xu ly: ' : 'Process: ',
+    clearImages: isVi ? 'Xoa anh da chon' : 'Clear selected images',
+    frontSide: isVi ? 'Mat truoc' : 'Front side',
+    backSide: isVi ? 'Mat sau' : 'Back side',
+    replace: isVi ? 'Chon lai' : 'Replace',
+    fullName: isVi ? 'Ho va ten' : 'Full name',
+    phoneShort: isVi ? 'SDT' : 'Phone',
+    genderPlaceholder: isVi ? 'Nam/Nu' : 'Male/Female',
+    save: isVi ? 'Luu' : 'Save',
+    assignRooms: isVi ? 'Assign vao Rooms' : 'Assign to Rooms',
+    selectRoomTitle: isVi ? 'Chon phong' : 'Select room',
+    room: isVi ? 'Phong' : 'Room',
+    floor: isVi ? 'Tang' : 'Floor',
+    noVacantRoom: isVi ? 'Khong co phong trong' : 'No vacant rooms',
+    confirm: isVi ? 'Xac nhan' : 'Confirm',
+    stays: isVi ? 'Luot o' : 'Stays',
+    totalSpent: isVi ? 'Tong chi tieu' : 'Total spent',
+    scanSuccessOne: isVi ? 'Da nhan dien 1 mat' : '1 side scanned successfully',
+    scanSuccessTwo: isVi ? 'Da nhan dien 2 mat' : '2 sides scanned successfully',
+    scanErrorOne: isVi ? 'Khong the nhan dien anh nay' : 'Unable to scan this image',
+    scanErrorTwo: isVi ? 'Loi quet 2 mat' : 'Two-side scan failed',
+    processingOne: isVi ? 'Dang xu ly 1 anh...' : 'Processing 1 image...',
+    processingTwo: isVi ? 'Dang xu ly 2 anh...' : 'Processing 2 images...',
+  }), [isVi]);
 
   const clearOcrImages = () => {
     setOcrImages([]);
@@ -206,7 +272,7 @@ export default function GuestsScreen() {
   const vipCount = useMemo(() => computedGuests.filter((g) => g.vipStatus).length, [computedGuests]);
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
+    return new Intl.NumberFormat(isVi ? 'vi-VN' : 'en-US', {
       style: 'currency',
       currency: 'VND',
       maximumFractionDigits: 0,
@@ -223,16 +289,16 @@ export default function GuestsScreen() {
   };
 
   const getGuestTypeLabel = (type?: Guest['guestType']) => {
-    if (type === 'frequent') return 'Khách quen';
-    if (type === 'group') return 'Khách đoàn';
-    return 'Khách lưu';
+    if (type === 'frequent') return text.frequentGuest;
+    if (type === 'group') return text.groupGuest;
+    return text.stayingGuest;
   };
 
   const getGenderLabel = (gender?: string) => {
     if (!gender) return '-';
     const value = gender.toLowerCase();
-    if (value === 'male' || value === 'nam') return 'Nam';
-    if (value === 'female' || value === 'nữ' || value === 'nu') return 'Nữ';
+    if (value === 'male' || value === 'nam') return text.male;
+    if (value === 'female' || value === 'nữ' || value === 'nu') return text.female;
     return gender;
   };
 
@@ -269,7 +335,7 @@ export default function GuestsScreen() {
             </View>
             <View style={styles.nationalityRow}>
               <Globe size={12} color={colors.textSecondary} />
-              <Text style={[styles.nationalityText, { color: colors.textSecondary }]}>{guest.nationality || 'Việt Nam'}</Text>
+              <Text style={[styles.nationalityText, { color: colors.textSecondary }]}>{guest.nationality || text.vietnam}</Text>
             </View>
           </View>
           <ChevronRight size={20} color={colors.textSecondary} />
@@ -293,12 +359,12 @@ export default function GuestsScreen() {
         <View style={[styles.statsRow, { backgroundColor: colors.background }]}>
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: colors.text }]}>{guest.totalStays}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Lượt ở</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{text.stays}</Text>
           </View>
           <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: colors.text }]}>{formatCurrency(guest.totalSpent)}</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Tổng chi tiêu</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{text.totalSpent}</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -376,7 +442,7 @@ const extractOcrData = (res: any) => {
 // 2. Cập nhật Handle Scan 1 Ảnh
   const handleScanOneImage = async () => {
   setOcrLoading(true);
-  setOcrStatus('Đang xử lý 1 ảnh...');
+  setOcrStatus(text.processingOne);
     setOcrPhase('scan');
   try {
     const file = await pickSingleImage();
@@ -390,9 +456,9 @@ const extractOcrData = (res: any) => {
     setForm(prev => ({ ...prev, ...next }));
     setGuestDraft({ ...next }); // Cập nhật store
 
-    Alert.alert('Thành công', 'Đã nhận diện 1 mặt');
+    Alert.alert(text.success, text.scanSuccessOne);
   } catch (e: any) {
-    Alert.alert('Lỗi', 'Không thể nhận diện ảnh này');
+    Alert.alert(text.error, text.scanErrorOne);
   } finally {
     setOcrLoading(false);
   }
@@ -401,7 +467,7 @@ const extractOcrData = (res: any) => {
 // 3. Cập nhật Handle Scan 2 Ảnh
 const handleScanTwoImages = async () => {
   setOcrLoading(true);
-  setOcrStatus('Đang xử lý 2 ảnh...');
+  setOcrStatus(text.processingTwo);
     setOcrPhase('scan');
   try {
     const picked = await pickTwoImages();
@@ -415,9 +481,9 @@ const handleScanTwoImages = async () => {
     setForm(prev => ({ ...prev, ...next }));
     setGuestDraft({ ...next });
 
-    Alert.alert('Thành công', 'Đã nhận diện 2 mặt');
+    Alert.alert(text.success, text.scanSuccessTwo);
   } catch (e: any) {
-    Alert.alert('Lỗi', 'Lỗi quét 2 mặt');
+    Alert.alert(text.error, text.scanErrorTwo);
   } finally {
     setOcrLoading(false);
   }
@@ -557,7 +623,7 @@ const handleScanTwoImages = async () => {
 
   const handleSave = async () => {
     if (!effectiveHotelId) {
-      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn trước');
+      Alert.alert(text.notice, text.selectHotelFirst);
       return;
     }
     const payload = {
@@ -586,7 +652,7 @@ const handleScanTwoImages = async () => {
 
   const handleAssignDraft = () => {
     if (!effectiveHotelId) {
-      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn trước');
+      Alert.alert(text.notice, text.selectHotelFirst);
       return;
     }
     setAssignVisible(true);
@@ -599,11 +665,11 @@ const handleScanTwoImages = async () => {
 
   const handleConfirmAssign = async () => {
     if (!assignRoomId) {
-      Alert.alert('Thông báo', 'Vui lòng chọn phòng');
+      Alert.alert(text.notice, text.selectRoom);
       return;
     }
     if (!effectiveHotelId) {
-      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn trước');
+      Alert.alert(text.notice, text.selectHotelFirst);
       return;
     }
     try {
@@ -625,7 +691,7 @@ const handleScanTwoImages = async () => {
       };
       const created = await guestsApi.create(payload);
       if (!created || !created.id) {
-        Alert.alert('Lỗi', 'Không thể tạo khách để assign');
+        Alert.alert(text.error, text.cannotCreateAssign);
         return;
       }
       await guestsApi.assignRoom(created.id, assignRoomId, {
@@ -640,14 +706,14 @@ const handleScanTwoImages = async () => {
           guestSource: 'walkin',
         },
       });
-      Alert.alert('Thành công', 'Đã lưu khách vào phòng');
+      Alert.alert(text.success, text.saveGuestSuccess);
       resetCreateModal();
       setCreateVisible(false);
       closeAssignModal();
       refetch();
       refetchRooms();
     } catch (error: any) {
-      Alert.alert('Lỗi', error?.message || 'Không thể assign khách vào phòng');
+      Alert.alert(text.error, error?.message || text.cannotAssignGuest);
     }
   };
   
@@ -661,7 +727,7 @@ const handleScanTwoImages = async () => {
     return (
       <View style={[styles.container, styles.loadingContainer, { paddingTop: insets.top, backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.tint} />
-        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Đang tải danh sách khách hàng...</Text>
+        <Text style={[styles.loadingText, { color: colors.textSecondary }]}>{text.loadingGuests}</Text>
       </View>
     );
   }
@@ -670,8 +736,8 @@ const handleScanTwoImages = async () => {
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.background }]}>
       <LinearGradient colors={['#0f766e', '#14b8a6']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.header}>
         <View>
-          <Text style={[styles.title, { color: '#fff' }]}>Khách hàng</Text>
-          <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.8)' }]}>{selectedHotel?.name || 'Tất cả'} • {computedGuests.length} khách</Text>
+          <Text style={[styles.title, { color: '#fff' }]}>{text.title}</Text>
+          <Text style={[styles.subtitle, { color: 'rgba(255,255,255,0.8)' }]}>{selectedHotel?.name || text.allHotels} • {computedGuests.length} {text.guests}</Text>
         </View>
         <TouchableOpacity style={[styles.addButton, { backgroundColor: 'rgba(255,255,255,0.2)', shadowColor: 'transparent' }]} onPress={() => setCreateVisible(true)}>
           <Plus size={20} color="#fff" />
@@ -683,7 +749,7 @@ const handleScanTwoImages = async () => {
           <Search size={18} color={colors.textSecondary} />
           <TextInput
             style={[styles.searchInput, { color: colors.text }]}
-            placeholder="Tìm tên, SĐT hoặc email..."
+            placeholder={text.searchPlaceholder}
             value={searchQuery}
             onChangeText={setSearchQuery}
             placeholderTextColor={colors.textSecondary}
@@ -697,7 +763,7 @@ const handleScanTwoImages = async () => {
           onPress={() => setShowVipOnly(false)}
         >
           <Text style={[styles.filterChipText, { color: colors.textSecondary }, !showVipOnly && styles.filterChipTextActive]}>
-            Tất cả ({computedGuests.length})
+            {text.allLabel} ({computedGuests.length})
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -725,13 +791,13 @@ const handleScanTwoImages = async () => {
             {guests.length === 0 ? (
               <>
                 <AlertCircle size={48} color={colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Chưa có dữ liệu khách hàng</Text>
-                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>Kiểm tra kết nối API</Text>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{text.emptyData}</Text>
+                <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>{text.checkApi}</Text>
               </>
             ) : (
               <>
                 <User size={48} color={colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Không tìm thấy khách hàng</Text>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{text.notFound}</Text>
               </>
             )}
           </View>
@@ -741,31 +807,31 @@ const handleScanTwoImages = async () => {
         <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View style={[styles.modalCard, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Thông tin khách</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{text.guestInfo}</Text>
             </View>
             <View style={styles.detailList}>
               <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
-                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Tên khách</Text>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.guestName}</Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGuest?.name || '-'}</Text>
               </View>
               <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
-                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Giới tính</Text>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.gender}</Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>{getGenderLabel(selectedGuest?.gender)}</Text>
               </View>
               <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
-                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Ngày sinh</Text>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.dob}</Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>{formatDateDisplay(selectedGuest?.dateOfBirth)}</Text>
               </View>
               <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
-                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Loại khách</Text>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.guestType}</Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>{getGuestTypeLabel(selectedGuest?.guestType)}</Text>
               </View>
               <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
-                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>CMND/CCCD</Text>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.idNumber}</Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGuest?.idNumber || '-'}</Text>
               </View>
               <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
-                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Số điện thoại</Text>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.phone}</Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGuest?.phone || '-'}</Text>
               </View>
               <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
@@ -773,13 +839,13 @@ const handleScanTwoImages = async () => {
                 <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGuest?.email || '-'}</Text>
               </View>
               <View style={[styles.detailItem, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
-                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Địa chỉ</Text>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.address}</Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>{selectedGuest?.address || '-'}</Text>
               </View>
             </View>
             <View style={styles.modalFooter}>
               <TouchableOpacity style={[styles.footerBtn, { borderColor: colors.border }]} onPress={() => setDetailVisible(false)}>
-                <Text style={[styles.footerBtnText, { color: colors.textSecondary }]}>Đóng</Text>
+                <Text style={[styles.footerBtnText, { color: colors.textSecondary }]}>{text.close}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -789,22 +855,22 @@ const handleScanTwoImages = async () => {
         <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View style={[styles.modalCard, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Thêm khách hàng</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{text.addGuest}</Text>
               {ocrLoading && <ActivityIndicator size="small" color={colors.tint} />}
             </View>
             <View style={styles.modalActions}>
               <TouchableOpacity style={[styles.scanBtn, { backgroundColor: '#0ea5e9' }]} onPress={handleScanOneImage}>
-                <Text style={styles.scanBtnText}>Scan 1 ảnh</Text>
+                <Text style={styles.scanBtnText}>{text.scanOne}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.scanBtn, { backgroundColor: '#6366f1' }]} onPress={handleScanTwoImages}>
-                <Text style={styles.scanBtnText}>Scan 2 mặt</Text>
+                <Text style={styles.scanBtnText}>{text.scanTwo}</Text>
               </TouchableOpacity>
             </View>
             {!!ocrStatus && (
               <View style={styles.ocrStatusRow}>
                 <ActivityIndicator size="small" color={colors.textSecondary} />
                 <Text style={[styles.ocrStatusText, { color: colors.textSecondary }]}>
-                  {ocrPhase === 'upload' ? 'Upload: ' : ocrPhase === 'scan' ? 'Scan: ' : ocrPhase === 'process' ? 'Xử lý: ' : ''}
+                  {ocrPhase === 'upload' ? text.upload : ocrPhase === 'scan' ? text.scan : ocrPhase === 'process' ? text.process : ''}
                   {ocrStatus}
                 </Text>
               </View>
@@ -812,58 +878,58 @@ const handleScanTwoImages = async () => {
             {ocrImages.length > 0 && (
               <View style={styles.ocrPreviewRow}>
                 <TouchableOpacity style={styles.ocrClearButton} onPress={clearOcrImages}>
-                  <Text style={[styles.ocrClearText, { color: colors.textSecondary }]}>Xóa ảnh đã chọn</Text>
+                  <Text style={[styles.ocrClearText, { color: colors.textSecondary }]}>{text.clearImages}</Text>
                 </TouchableOpacity>
                 {ocrImages.map((uri, index) => (
                   <View key={`${uri}-${index}`} style={styles.ocrPreviewItem}>
                     <Image source={{ uri }} style={[styles.ocrPreviewImage, { backgroundColor: isDark ? colors.inputBackground : '#eef2f7' }]} />
                     {ocrImages.length > 1 && (
-                      <Text style={[styles.ocrPreviewLabel, { color: colors.textSecondary }]}>{index === 0 ? 'Mặt trước' : 'Mặt sau'}</Text>
+                      <Text style={[styles.ocrPreviewLabel, { color: colors.textSecondary }]}>{index === 0 ? text.frontSide : text.backSide}</Text>
                     )}
                     <TouchableOpacity style={[styles.ocrReplaceButton, { backgroundColor: isDark ? colors.inputBackground : '#eef2ff' }]} onPress={() => replaceOcrImageAt(index)}>
-                      <Text style={[styles.ocrReplaceText, { color: colors.tint }]}>Chọn lại</Text>
+                      <Text style={[styles.ocrReplaceText, { color: colors.tint }]}>{text.replace}</Text>
                     </TouchableOpacity>
                   </View>
                 ))}
               </View>
             )}
             <View style={styles.inputRow}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Họ và tên</Text>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{text.fullName}</Text>
               <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.fullName} onChangeText={(v) => setForm({ ...form, fullName: v })} placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>SĐT</Text>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{text.phoneShort}</Text>
               <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.phone} onChangeText={(v) => setForm({ ...form, phone: v })} keyboardType="phone-pad" placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>CMND/CCCD</Text>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{text.idNumber}</Text>
               <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.idNumber} onChangeText={(v) => setForm({ ...form, idNumber: v })} placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Giới tính</Text>
-              <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.gender} onChangeText={(v) => setForm({ ...form, gender: v })} placeholder="Nam/Nữ" placeholderTextColor={colors.textSecondary} />
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{text.gender}</Text>
+              <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.gender} onChangeText={(v) => setForm({ ...form, gender: v })} placeholder={text.genderPlaceholder} placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Ngày sinh</Text>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{text.dob}</Text>
               <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.dateOfBirth} onChangeText={(v) => setForm({ ...form, dateOfBirth: v })} placeholder="dd/MM/yyyy" placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Quốc tịch</Text>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{text.vietnam}</Text>
               <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.nationality} onChangeText={(v) => setForm({ ...form, nationality: v })} placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.inputRow}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Địa chỉ</Text>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{text.address}</Text>
               <TextInput style={[styles.input, { backgroundColor: colors.inputBackground, borderWidth: 1, borderColor: colors.inputBorder, color: colors.text }]} value={form.address} onChangeText={(v) => setForm({ ...form, address: v })} placeholderTextColor={colors.textSecondary} />
             </View>
             <View style={styles.modalFooter}>
               <TouchableOpacity style={[styles.footerBtn, { borderColor: colors.border }]} onPress={closeCreateModal}>
-                <Text style={[styles.footerBtnText, { color: colors.textSecondary }]}>Đóng</Text>
+                <Text style={[styles.footerBtnText, { color: colors.textSecondary }]}>{text.close}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: colors.tint }]} onPress={handleSave}>
-                <Text style={styles.footerPrimaryText}>Lưu</Text>
+                <Text style={styles.footerPrimaryText}>{text.save}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: '#13c2c2' }]} onPress={handleAssignDraft}>
-                <Text style={styles.footerPrimaryText}>Assign vào Rooms</Text>
+                <Text style={styles.footerPrimaryText}>{text.assignRooms}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -873,7 +939,7 @@ const handleScanTwoImages = async () => {
         <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View style={[styles.modalCard, styles.assignModalCard, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Chọn phòng</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{text.selectRoomTitle}</Text>
               {roomsLoading && <ActivityIndicator size="small" color={colors.tint} />}
             </View>
             <ScrollView style={styles.assignList} contentContainerStyle={styles.assignListContent}>
@@ -887,9 +953,9 @@ const handleScanTwoImages = async () => {
                       onPress={() => setAssignRoomId(room.id)}
                     >
                       <View>
-                        <Text style={[styles.assignRoomNumber, { color: colors.text }]}>Phòng {room.number}</Text>
+                        <Text style={[styles.assignRoomNumber, { color: colors.text }]}>{text.room} {room.number}</Text>
                         <Text style={[styles.assignRoomMeta, { color: colors.textSecondary }]}>
-                          {(room.roomType || room.type) ?? '-'} • Tầng {room.floor}
+                          {(room.roomType || room.type) ?? '-'} • {text.floor} {room.floor}
                         </Text>
                       </View>
                       {isSelected && <CheckCircle size={20} color={colors.tint} />}
@@ -899,16 +965,16 @@ const handleScanTwoImages = async () => {
               ) : (
                 <View style={styles.assignEmpty}>
                   <AlertCircle size={22} color={colors.textSecondary} />
-                  <Text style={[styles.assignEmptyText, { color: colors.textSecondary }]}>Không có phòng trống</Text>
+                  <Text style={[styles.assignEmptyText, { color: colors.textSecondary }]}>{text.noVacantRoom}</Text>
                 </View>
               )}
             </ScrollView>
             <View style={styles.modalFooter}>
               <TouchableOpacity style={[styles.footerBtn, { borderColor: colors.border }]} onPress={closeAssignModal}>
-                <Text style={[styles.footerBtnText, { color: colors.textSecondary }]}>Đóng</Text>
+                <Text style={[styles.footerBtnText, { color: colors.textSecondary }]}>{text.close}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.footerPrimary, { backgroundColor: colors.tint }]} onPress={handleConfirmAssign}>
-                <Text style={styles.footerPrimaryText}>Xác nhận</Text>
+                <Text style={styles.footerPrimaryText}>{text.confirm}</Text>
               </TouchableOpacity>
             </View>
           </View>

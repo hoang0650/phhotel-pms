@@ -7,6 +7,7 @@ import invoiceApi from '@/services/api/invoice';
 import { Invoice, InvoiceProduct, Service as InvoiceService } from '@/types/invoice';
 import { Ionicons } from '@expo/vector-icons';
 import { useHotel } from '@/contexts/HotelContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface EditableProduct {
   id?: string;
@@ -20,9 +21,86 @@ interface EditableProduct {
 export default function InvoiceEditorScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { language } = useLanguage();
   const { invoiceId } = useLocalSearchParams<{ invoiceId: string }>();
   const queryClient = useQueryClient();
   const { selectedHotel } = useHotel();
+  const isVi = language === 'vi';
+  const text = React.useMemo(() => ({
+    success: isVi ? 'Thành công' : 'Success',
+    error: isVi ? 'Lỗi' : 'Error',
+    updateSuccess: isVi ? 'Cập nhật hóa đơn thành công' : 'Invoice updated successfully',
+    updateFailed: isVi ? 'Không thể cập nhật hóa đơn:' : 'Unable to update invoice:',
+    walkInGuest: isVi ? 'Khách lẻ' : 'Walk-in guest',
+    other: isVi ? 'Khác' : 'Other',
+    cash: isVi ? 'Tiền mặt' : 'Cash',
+    bankTransfer: isVi ? 'Chuyển khoản' : 'Bank transfer',
+    card: isVi ? 'Thẻ' : 'Card',
+    hourly: isVi ? 'Theo giờ' : 'Hourly',
+    paid: isVi ? 'Đã thanh toán' : 'Paid',
+    pending: isVi ? 'Chưa thanh toán' : 'Pending',
+    partial: isVi ? 'Thanh toán một phần' : 'Partially paid',
+    cancelled: isVi ? 'Đã hủy' : 'Cancelled',
+    includedInRoomCharge: isVi ? 'Đã tính vào tiền phòng' : 'Included in room charge',
+    noAddress: isVi ? 'Chưa có địa chỉ' : 'No address',
+    newProduct: isVi ? 'Sản phẩm mới' : 'New item',
+    customerNameRequired: isVi ? 'Vui lòng nhập tên khách hàng' : 'Please enter customer name',
+    loading: isVi ? 'Đang tải...' : 'Loading...',
+    notFound: isVi ? 'Không tìm thấy hóa đơn' : 'Invoice not found',
+    editInvoice: isVi ? 'Chỉnh sửa hóa đơn' : 'Edit invoice',
+    invoiceDetail: isVi ? 'Chi tiết hóa đơn' : 'Invoice details',
+    hotel: isVi ? 'Khách sạn' : 'Hotel',
+    noPhone: isVi ? 'Chưa có số điện thoại' : 'No phone number',
+    numberPrefix: isVi ? 'Số' : 'No',
+    phonePrefix: isVi ? 'ĐT' : 'Tel',
+    invoiceTitle: isVi ? 'HOÁ ĐƠN THANH TOÁN' : 'PAYMENT INVOICE',
+    customerInfo: isVi ? 'Thông tin khách hàng' : 'Customer information',
+    bookingCode: isVi ? 'Mã đặt phòng' : 'Booking code',
+    customerName: isVi ? 'Tên khách hàng *' : 'Customer name *',
+    enterCustomerName: isVi ? 'Nhập tên khách hàng' : 'Enter customer name',
+    room: isVi ? 'Phòng' : 'Room',
+    staff: isVi ? 'Nhân viên' : 'Staff',
+    noInfo: isVi ? 'Không có thông tin' : 'No information',
+    checkIn: isVi ? 'Ngày đến' : 'Check-in',
+    checkOut: isVi ? 'Ngày đi' : 'Check-out',
+    customerPhone: isVi ? 'SĐT khách hàng' : 'Customer phone',
+    enterPhone: isVi ? 'Nhập số điện thoại' : 'Enter phone number',
+    idNumber: isVi ? 'CCCD/CMND' : 'ID number',
+    enterIdNumber: isVi ? 'Nhập CCCD/CMND' : 'Enter ID number',
+    taxCode: isVi ? 'Mã số thuế' : 'Tax code',
+    enterTaxCode: isVi ? 'Nhập mã số thuế' : 'Enter tax code',
+    guestSource: isVi ? 'Nguồn khách' : 'Guest source',
+    paymentMethod: isVi ? 'Phương thức thanh toán' : 'Payment method',
+    address: isVi ? 'Địa chỉ' : 'Address',
+    enterAddress: isVi ? 'Nhập địa chỉ' : 'Enter address',
+    notes: isVi ? 'Ghi chú' : 'Notes',
+    enterNotes: isVi ? 'Nhập ghi chú' : 'Enter notes',
+    stayDuration: isVi ? 'Thời gian lưu trú:' : 'Length of stay:',
+    customer: isVi ? 'Khách hàng:' : 'Customer:',
+    roomType: isVi ? 'Loại phòng:' : 'Room type:',
+    orderDate: isVi ? 'Ngày đơn:' : 'Order date:',
+    productsServices: isVi ? 'Sản phẩm/Dịch vụ' : 'Products/Services',
+    addProductService: isVi ? 'Thêm sản phẩm/dịch vụ' : 'Add product/service',
+    itemName: isVi ? 'Tên hàng' : 'Item',
+    quantityShort: isVi ? 'SL' : 'Qty',
+    unitPrice: isVi ? 'Đơn giá' : 'Unit price',
+    amount: isVi ? 'Thành tiền' : 'Amount',
+    paymentSummary: isVi ? 'Tổng hợp thanh toán' : 'Payment summary',
+    roomAmount: isVi ? 'Tiền phòng:' : 'Room charge:',
+    serviceAmount: isVi ? 'Tiền dịch vụ:' : 'Service charge:',
+    surcharge: isVi ? 'Phụ thu:' : 'Surcharge:',
+    total: isVi ? 'Tổng cộng:' : 'Total:',
+    discount: isVi ? 'Giảm giá:' : 'Discount:',
+    advancePayment: isVi ? 'Đặt trước:' : 'Advance payment:',
+    amountDue: isVi ? 'Còn phải trả:' : 'Amount due:',
+    refundAmount: isVi ? 'Khách được hoàn:' : 'Refund amount:',
+    saving: isVi ? 'Đang lưu...' : 'Saving...',
+    saveChanges: isVi ? 'Lưu thay đổi' : 'Save changes',
+    thankYou1: isVi ? 'Cảm ơn quý khách đã sử dụng dịch vụ!' : 'Thank you for using our service!',
+    thankYou2: isVi ? 'Chúc quý khách một ngày tốt lành!' : 'Have a wonderful day!',
+    printDate: isVi ? 'Ngày in:' : 'Printed on:',
+    noTaxCode: isVi ? 'Không có' : 'Not available',
+  }), [isVi]);
   
   const [isEditMode, setIsEditMode] = useState(false);
   const [editableProducts, setEditableProducts] = useState<EditableProduct[]>([]);
@@ -43,8 +121,8 @@ export default function InvoiceEditorScreen() {
   const [checkInInput, setCheckInInput] = useState('');
   const [checkOutInput, setCheckOutInput] = useState('');
   const guestSourceOptions = [
-    { label: 'Khách lẻ', value: 'walkin' },
-    { label: 'Booking', value: 'booking' },
+    { label: text.walkInGuest, value: 'walkin' },
+    { label: isVi ? 'Booking' : 'Booking', value: 'booking' },
     { label: 'Agoda', value: 'agoda' },
     { label: 'Traveloka', value: 'traveloka' },
     { label: 'Expedia', value: 'expedia' },
@@ -52,12 +130,12 @@ export default function InvoiceEditorScreen() {
     { label: 'G2J', value: 'g2j' },
     { label: 'Fanpage', value: 'fanpage' },
     { label: 'Zalo', value: 'zalo' },
-    { label: 'Khác', value: 'other' },
+    { label: text.other, value: 'other' },
   ];
   const paymentMethodOptions = [
-    { label: 'Tiền mặt', value: 'cash' },
-    { label: 'Chuyển khoản', value: 'bank_transfer' },
-    { label: 'Thẻ', value: 'card' },
+    { label: text.cash, value: 'cash' },
+    { label: text.bankTransfer, value: 'bank_transfer' },
+    { label: text.card, value: 'card' },
   ];
   const parseDateInput = (s: string) => {
     const parts = s.split(/[\/\-\.]/).map(p => p.trim());
@@ -85,13 +163,13 @@ export default function InvoiceEditorScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      Alert.alert('Thành công', 'Cập nhật hóa đơn thành công');
+      Alert.alert(text.success, text.updateSuccess);
       setIsEditMode(false);
     },
     onError: (error) => {
-      Alert.alert('Lỗi', 'Không thể cập nhật hóa đơn: ' + error.message);
+      Alert.alert(text.error, `${text.updateFailed} ${error.message}`);
     },
-  });
+  }, [invoiceId, queryClient, text.error, text.success, text.updateFailed, text.updateSuccess]);
 
   // Initialize form data when invoice loads
   useEffect(() => {
@@ -108,8 +186,8 @@ export default function InvoiceEditorScreen() {
         checkInTime: invoice.checkInTime ? new Date(invoice.checkInTime) : new Date(),
         checkOutTime: invoice.checkOutTime ? new Date(invoice.checkOutTime) : new Date(),
       });
-      setCheckInInput((invoice.checkInTime ? new Date(invoice.checkInTime) : new Date()).toLocaleDateString('vi-VN'));
-      setCheckOutInput((invoice.checkOutTime ? new Date(invoice.checkOutTime) : new Date()).toLocaleDateString('vi-VN'));
+      setCheckInInput((invoice.checkInTime ? new Date(invoice.checkInTime) : new Date()).toLocaleDateString(isVi ? 'vi-VN' : 'en-US'));
+      setCheckOutInput((invoice.checkOutTime ? new Date(invoice.checkOutTime) : new Date()).toLocaleDateString(isVi ? 'vi-VN' : 'en-US'));
 
       // Initialize editable products
       const products: EditableProduct[] = [];
@@ -117,7 +195,7 @@ export default function InvoiceEditorScreen() {
       // Add room charge if no products
       if ((!invoice.products || invoice.products.length === 0) && invoice.roomAmount) {
         products.push({
-          name: `Tiền phòng ${invoice.roomNumber || ''}`,
+          name: isVi ? `Tiền phòng ${invoice.roomNumber || ''}` : `Room charge ${invoice.roomNumber || ''}`,
           quantity: 1,
           price: invoice.roomAmount,
           totalPrice: invoice.roomAmount,
@@ -155,7 +233,7 @@ export default function InvoiceEditorScreen() {
       
       setEditableProducts(products);
     }
-  }, [invoice]);
+  }, [invoice, isVi]);
 
   // Helper function to check if service is in products
   const isServiceInProducts = (service: InvoiceService, products?: InvoiceProduct[]): boolean => {
@@ -165,7 +243,12 @@ export default function InvoiceEditorScreen() {
 
   // Format currency
   const formatCurrency = (amount: number): string => {
-    return amount.toLocaleString('vi-VN') + ' ₫';
+    if (isVi) return amount.toLocaleString('vi-VN') + ' ₫';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'VND',
+      maximumFractionDigits: 0,
+    }).format(amount);
   };
 
   // Calculate totals
@@ -185,7 +268,7 @@ export default function InvoiceEditorScreen() {
     if (!date) return '';
     const d = typeof date === 'string' ? new Date(date) : date;
     try {
-      return d.toLocaleDateString('vi-VN', {
+      return d.toLocaleDateString(isVi ? 'vi-VN' : 'en-US', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -206,20 +289,20 @@ export default function InvoiceEditorScreen() {
     const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
     const minutes = totalMinutes % 60;
     const parts: string[] = [];
-    if (days > 0) parts.push(`${days} ngày`);
-    if (hours > 0) parts.push(`${hours} giờ`);
-    if (minutes > 0 || (days === 0 && hours === 0)) parts.push(`${minutes} phút`);
-    return parts.length ? parts.join(' ') : '0 phút';
+    if (days > 0) parts.push(`${days} ${isVi ? 'ngày' : days === 1 ? 'day' : 'days'}`);
+    if (hours > 0) parts.push(`${hours} ${isVi ? 'giờ' : hours === 1 ? 'hour' : 'hours'}`);
+    if (minutes > 0 || (days === 0 && hours === 0)) parts.push(`${minutes} ${isVi ? 'phút' : minutes === 1 ? 'minute' : 'minutes'}`);
+    return parts.length ? parts.join(' ') : `0 ${isVi ? 'phút' : 'minutes'}`;
   };
 
   const getPaymentStatusLabel = (status?: string) => {
-    if (!status) return 'Đã thanh toán';
+    if (!status) return text.paid;
     const map: Record<string, string> = {
-      paid: 'Đã thanh toán',
-      pending: 'Chưa thanh toán',
-      partial: 'Thanh toán một phần',
-      cancelled: 'Đã hủy',
-      included_in_room_charge: 'Đã tính vào tiền phòng',
+      paid: text.paid,
+      pending: text.pending,
+      partial: text.partial,
+      cancelled: text.cancelled,
+      included_in_room_charge: text.includedInRoomCharge,
     };
     return map[status.toLowerCase()] || status;
   };
@@ -237,16 +320,16 @@ export default function InvoiceEditorScreen() {
   };
 
   const getPaymentMethodLabel = (method?: string) => {
-    if (!method) return 'Tiền mặt';
+    if (!method) return text.cash;
     const map: Record<string, string> = {
-      cash: 'Tiền mặt',
-      card: 'Thẻ tín dụng',
-      bank_transfer: 'Chuyển khoản',
-      transfer: 'Chuyển khoản',
-      banking: 'Chuyển khoản',
+      cash: text.cash,
+      card: isVi ? 'Thẻ tín dụng' : 'Credit card',
+      bank_transfer: text.bankTransfer,
+      transfer: text.bankTransfer,
+      banking: text.bankTransfer,
       qr: 'QR Code',
-      visa: 'Thẻ VISA',
-      momo: 'Ví MoMo',
+      visa: isVi ? 'Thẻ VISA' : 'VISA card',
+      momo: isVi ? 'Ví MoMo' : 'MoMo wallet',
       zalopay: 'ZaloPay',
       vnpay: 'VNPay',
     };
@@ -254,14 +337,14 @@ export default function InvoiceEditorScreen() {
   };
 
   const formatBusinessAddress = (address: any): string => {
-    if (!address) return 'Chưa có địa chỉ';
+    if (!address) return text.noAddress;
     if (typeof address === 'string') return address;
     if (typeof address === 'object') {
       const { street, city, state, country, postalCode } = address as Record<string, string>;
       const parts = [street, city, state, country, postalCode].filter(Boolean);
-      return parts.length ? parts.join(', ') : 'Chưa có địa chỉ';
+      return parts.length ? parts.join(', ') : text.noAddress;
     }
-    return 'Chưa có địa chỉ';
+    return text.noAddress;
   };
 
   // Update product total
@@ -275,7 +358,7 @@ export default function InvoiceEditorScreen() {
   // Add new product
   const addProduct = () => {
     const newProduct: EditableProduct = {
-      name: 'Sản phẩm mới',
+      name: text.newProduct,
       quantity: 1,
       price: 0,
       totalPrice: 0,
@@ -292,7 +375,7 @@ export default function InvoiceEditorScreen() {
   // Handle form submission
   const handleSave = () => {
     if (!formData.customerName.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên khách hàng');
+      Alert.alert(text.error, text.customerNameRequired);
       return;
     }
 
@@ -334,6 +417,7 @@ export default function InvoiceEditorScreen() {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         <Text style={{ color: colors.text }}>Đang tải...</Text>
+        <Text style={{ color: colors.text }}>{text.loading}</Text>
       </View>
     );
   }
@@ -341,7 +425,7 @@ export default function InvoiceEditorScreen() {
   if (!invoice) {
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <Text style={{ color: colors.text }}>Không tìm thấy hóa đơn</Text>
+        <Text style={{ color: colors.text }}>{text.notFound}</Text>
       </View>
     );
   }
@@ -354,7 +438,7 @@ export default function InvoiceEditorScreen() {
             <Ionicons name="arrow-back" size={24} color={colors.text} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.text }]}>
-            {isEditMode ? 'Chỉnh sửa hóa đơn' : 'Chi tiết hóa đơn'}
+            {isEditMode ? text.editInvoice : text.invoiceDetail}
           </Text>
         </View>
         <TouchableOpacity onPress={() => setIsEditMode(!isEditMode)}>
@@ -365,18 +449,18 @@ export default function InvoiceEditorScreen() {
       <View style={[styles.invoiceHeader, { backgroundColor: colors.card }]}>
         <View style={styles.businessInfo}>
           <Text style={[styles.businessName, { color: colors.text }]}>
-            {invoice.businessName || selectedHotel?.name || 'Khách sạn'}
+            {invoice.businessName || selectedHotel?.name || text.hotel}
           </Text>
           <Text style={[styles.businessAddress, { color: colors.text }]}>
             {formatBusinessAddress(invoice.business_address || selectedHotel?.address)}
           </Text>
           <Text style={[styles.businessPhone, { color: colors.text }]}>
-            ĐT: {invoice.phoneNumber || selectedHotel?.phone || 'Chưa có số điện thoại'}
+            {text.phonePrefix}: {invoice.phoneNumber || selectedHotel?.phone || text.noPhone}
           </Text>
         </View>
         <View style={styles.invoiceInfo}>
           <Text style={[styles.invoiceNumber, { color: colors.primary }]}>
-            Số: {invoice.invoiceNumber || invoice.bookingId || 'N/A'}
+            {text.numberPrefix}: {invoice.invoiceNumber || invoice.bookingId || 'N/A'}
           </Text>
           <Text style={[styles.invoiceDate, { color: colors.textSecondary }]}>
             {formatDate(invoice.date)}
@@ -390,50 +474,50 @@ export default function InvoiceEditorScreen() {
       </View>
 
       {/* Invoice Title */}
-      <Text style={[styles.invoiceTitle, { color: colors.text }]}>HOÁ ĐƠN THANH TOÁN</Text>
+      <Text style={[styles.invoiceTitle, { color: colors.text }]}>{text.invoiceTitle}</Text>
 
       {/* Customer Info */}
       <View style={[styles.section, { backgroundColor: colors.card }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Thông tin khách hàng</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{text.customerInfo}</Text>
         
         {isEditMode ? (
           <View style={styles.formContainer}>
             <View style={styles.formRow}>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>Mã đặt phòng</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.bookingCode}</Text>
                 <Text style={[styles.readOnlyValue, { color: colors.text }]}>
                   {invoice.bookingId || 'N/A'}
                 </Text>
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>Tên khách hàng *</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.customerName}</Text>
                 <TextInput
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   value={formData.customerName}
                   onChangeText={(text) => setFormData({...formData, customerName: text})}
-                  placeholder="Nhập tên khách hàng"
+                  placeholder={text.enterCustomerName}
                 />
               </View>
             </View>
 
             <View style={styles.formRow}>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>Phòng</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.room}</Text>
                 <Text style={[styles.readOnlyValue, { color: colors.text }]}>
                   {invoice.roomNumber || 'N/A'}
                 </Text>
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>Nhân viên</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.staff}</Text>
                 <Text style={[styles.readOnlyValue, { color: colors.text }]}>
-                  {invoice.staffName || 'Không có thông tin'}
+                  {invoice.staffName || text.noInfo}
                 </Text>
               </View>
             </View>
 
             <View style={styles.formRow}>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>Ngày đến</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.checkIn}</Text>
                 <TextInput
                   style={[styles.dateInput, { color: colors.text, borderColor: colors.border }]}
                   value={checkInInput}
@@ -446,7 +530,7 @@ export default function InvoiceEditorScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>Ngày đi</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.checkOut}</Text>
                 <TextInput
                   style={[styles.dateInput, { color: colors.text, borderColor: colors.border }]}
                   value={checkOutInput}
@@ -462,38 +546,38 @@ export default function InvoiceEditorScreen() {
 
             <View style={styles.formRow}>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>SĐT khách hàng</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.customerPhone}</Text>
                 <TextInput
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   value={formData.customerPhone}
                   onChangeText={(text) => setFormData({...formData, customerPhone: text})}
-                  placeholder="Nhập số điện thoại"
+                  placeholder={text.enterPhone}
                   keyboardType="phone-pad"
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>CCCD/CMND</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.idNumber}</Text>
                 <TextInput
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   value={formData.customerIdNumber}
                   onChangeText={(text) => setFormData({...formData, customerIdNumber: text})}
-                  placeholder="Nhập CCCD/CMND"
+                  placeholder={text.enterIdNumber}
                 />
               </View>
             </View>
 
             <View style={styles.formRow}>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>Mã số thuế</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.taxCode}</Text>
                 <TextInput
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   value={formData.taxCode}
                   onChangeText={(text) => setFormData({...formData, taxCode: text})}
-                  placeholder="Nhập mã số thuế"
+                  placeholder={text.enterTaxCode}
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>Nguồn khách</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.guestSource}</Text>
                 <View style={styles.optionRow}>
                   {guestSourceOptions.map(opt => (
                     <TouchableOpacity
@@ -514,7 +598,7 @@ export default function InvoiceEditorScreen() {
 
             <View style={styles.formRow}>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>Phương thức thanh toán</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.paymentMethod}</Text>
                 <View style={styles.optionRow}>
                   {paymentMethodOptions.map(opt => (
                     <TouchableOpacity
@@ -532,24 +616,24 @@ export default function InvoiceEditorScreen() {
                 </View>
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>Địa chỉ</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.address}</Text>
                 <TextInput
                   style={[styles.input, { color: colors.text, borderColor: colors.border }]}
                   value={formData.customerAddress}
                   onChangeText={(text) => setFormData({...formData, customerAddress: text})}
-                  placeholder="Nhập địa chỉ"
+                  placeholder={text.enterAddress}
                 />
               </View>
             </View>
 
             <View style={styles.formRow}>
               <View style={styles.formField}>
-                <Text style={[styles.label, { color: colors.text }]}>Ghi chú</Text>
+                <Text style={[styles.label, { color: colors.text }]}>{text.notes}</Text>
                 <TextInput
                   style={[styles.textArea, { color: colors.text, borderColor: colors.border }]}
                   value={formData.notes}
                   onChangeText={(text) => setFormData({...formData, notes: text})}
-                  placeholder="Nhập ghi chú"
+                  placeholder={text.enterNotes}
                   multiline
                   numberOfLines={3}
                 />
@@ -561,86 +645,86 @@ export default function InvoiceEditorScreen() {
             <View style={styles.gridRow}>
               <View style={styles.gridCol}>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Mã đặt phòng:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.bookingCode}:</Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>{invoice.bookingId || 'N/A'}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Phòng:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.room}:</Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>{invoice.roomNumber || 'N/A'}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Ngày đến:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.checkIn}:</Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>{formatDate(formData.checkInTime)}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Ngày đi:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.checkOut}:</Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>{formatDate(formData.checkOutTime)}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Thời gian lưu trú:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.stayDuration}</Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>{getDurationText()}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>SĐT khách hàng:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.customerPhone}:</Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>{formData.customerPhone || 'N/A'}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Mã số thuế:</Text>
-                  <Text style={[styles.detailValue, { color: colors.text }]}>{formData.taxCode || 'Không có'}</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.taxCode}:</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>{formData.taxCode || text.noTaxCode}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Địa chỉ:</Text>
-                  <Text style={[styles.detailValue, { color: colors.text }]}>{formData.customerAddress || 'Không có'}</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.address}:</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>{formData.customerAddress || text.noTaxCode}</Text>
                 </View>
               </View>
               <View style={styles.gridCol}>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Khách hàng:</Text>
-                  <Text style={[styles.detailValue, { color: colors.text }]}>{formData.customerName || 'Khách lẻ'}</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.customer}:</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>{formData.customerName || text.walkInGuest}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Nhân viên:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.staff}:</Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>{invoice.staffName || 'N/A'}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Phương thức thanh toán:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.paymentMethod}:</Text>
                   <View style={[styles.chip, { borderColor: colors.success }]}>
                     <Text style={[styles.chipText, { color: colors.success }]}>{getPaymentMethodLabel(formData.paymentMethod)}</Text>
                   </View>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>CCCD/CMND:</Text>
-                  <Text style={[styles.detailValue, { color: colors.text }]}>{formData.customerIdNumber || 'Không có'}</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.idNumber}:</Text>
+                  <Text style={[styles.detailValue, { color: colors.text }]}>{formData.customerIdNumber || text.noTaxCode}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Nguồn khách:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.guestSource}:</Text>
                   <View style={[styles.chip, { borderColor: colors.primary }]}>
                     <Text style={[styles.chipText, { color: colors.primary }]}>
-                      {getPaymentMethodLabel(undefined) && (formData.guestSource === 'walkin' ? 'Khách lẻ' :
-                       formData.guestSource === 'booking' ? 'Booking' :
+                      {getPaymentMethodLabel(undefined) && (formData.guestSource === 'walkin' ? text.walkInGuest :
+                       formData.guestSource === 'booking' ? (isVi ? 'Booking' : 'Booking') :
                        formData.guestSource === 'agoda' ? 'Agoda' :
                        formData.guestSource === 'traveloka' ? 'Traveloka' :
                        formData.guestSource === 'expedia' ? 'Expedia' :
                        formData.guestSource === 'trip' ? 'Trip.com' :
                        formData.guestSource === 'g2j' ? 'G2J' :
                        formData.guestSource === 'fanpage' ? 'Fanpage' :
-                       formData.guestSource === 'zalo' ? 'Zalo' : 'Khác')}
+                       formData.guestSource === 'zalo' ? 'Zalo' : text.other)}
                     </Text>
                   </View>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Loại phòng:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.roomType}:</Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>{invoice.roomType || 'N/A'}</Text>
                 </View>
                 <View style={styles.detailRow}>
-                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Ngày đơn:</Text>
+                  <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.orderDate}:</Text>
                   <Text style={[styles.detailValue, { color: colors.text }]}>{formatDate(invoice.date)}</Text>
                 </View>
               </View>
             </View>
             {formData.notes ? (
               <View style={[styles.detailRow, { marginTop: 8 }]}>
-                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Ghi chú:</Text>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.notes}:</Text>
                 <Text style={[styles.detailValue, { color: colors.text }]}>{formData.notes}</Text>
               </View>
             ) : null}
@@ -650,21 +734,21 @@ export default function InvoiceEditorScreen() {
 
       {/* Products/Services Section */}
       <View style={[styles.section, { backgroundColor: colors.card }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Sản phẩm/Dịch vụ</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{text.productsServices}</Text>
         
         {isEditMode && (
           <TouchableOpacity style={[styles.addButton, { backgroundColor: colors.primary }]} onPress={addProduct}>
             <Ionicons name="add" size={20} color="white" />
-            <Text style={styles.addButtonText}>Thêm sản phẩm/dịch vụ</Text>
+            <Text style={styles.addButtonText}>{text.addProductService}</Text>
           </TouchableOpacity>
         )}
 
         <View style={styles.tableContainer}>
           <View style={[styles.tableHeader, { backgroundColor: colors.border + '30' }]}>
-            <Text style={[styles.tableHeaderText, { color: colors.text, flex: 3 }]}>Tên hàng</Text>
-            <Text style={[styles.tableHeaderText, { color: colors.text, flex: 1, textAlign: 'center' }]}>SL</Text>
-            <Text style={[styles.tableHeaderText, { color: colors.text, flex: 2, textAlign: 'right' }]}>Đơn giá</Text>
-            <Text style={[styles.tableHeaderText, { color: colors.text, flex: 2, textAlign: 'right' }]}>Thành tiền</Text>
+            <Text style={[styles.tableHeaderText, { color: colors.text, flex: 3 }]}>{text.itemName}</Text>
+            <Text style={[styles.tableHeaderText, { color: colors.text, flex: 1, textAlign: 'center' }]}>{text.quantityShort}</Text>
+            <Text style={[styles.tableHeaderText, { color: colors.text, flex: 2, textAlign: 'right' }]}>{text.unitPrice}</Text>
+            <Text style={[styles.tableHeaderText, { color: colors.text, flex: 2, textAlign: 'right' }]}>{text.amount}</Text>
             {isEditMode && <Text style={[styles.tableHeaderText, { color: colors.text, flex: 1 }]}></Text>}
           </View>
 
@@ -743,50 +827,50 @@ export default function InvoiceEditorScreen() {
 
       {/* Payment Summary */}
       <View style={[styles.section, { backgroundColor: colors.card }]}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Tổng hợp thanh toán</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>{text.paymentSummary}</Text>
         
         <View style={styles.summaryContainer}>
           <View style={styles.summaryRow}>
-            <Text style={[styles.summaryLabel, { color: colors.text }]}>Tiền phòng:</Text>
+            <Text style={[styles.summaryLabel, { color: colors.text }]}>{text.roomAmount}</Text>
             <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(subtotal)}</Text>
           </View>
           
           {serviceTotal > 0 && (
             <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.text }]}>Tiền dịch vụ:</Text>
+              <Text style={[styles.summaryLabel, { color: colors.text }]}>{text.serviceAmount}</Text>
               <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(serviceTotal)}</Text>
             </View>
           )}
           
           {invoice?.additionalCharges && invoice.additionalCharges > 0 && (
             <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.text }]}>Phụ thu:</Text>
+              <Text style={[styles.summaryLabel, { color: colors.text }]}>{text.surcharge}</Text>
               <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(invoice.additionalCharges)}</Text>
             </View>
           )}
           
           <View style={[styles.summaryRow, styles.totalRow, { borderTopColor: colors.border }]}>
-            <Text style={[styles.summaryLabel, { color: colors.text, fontWeight: 'bold' }]}>Tổng cộng:</Text>
+            <Text style={[styles.summaryLabel, { color: colors.text, fontWeight: 'bold' }]}>{text.total}</Text>
             <Text style={[styles.summaryValue, { color: colors.text, fontWeight: 'bold' }]}>{formatCurrency(totalAmount)}</Text>
           </View>
           
           {invoice?.discount && invoice.discount > 0 && (
             <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.text }]}>Giảm giá:</Text>
+              <Text style={[styles.summaryLabel, { color: colors.text }]}>{text.discount}</Text>
               <Text style={[styles.summaryValue, { color: colors.danger }]}>-{formatCurrency(invoice.discount)}</Text>
             </View>
           )}
           
           {invoice?.advancePayment && invoice.advancePayment > 0 && (
             <View style={styles.summaryRow}>
-              <Text style={[styles.summaryLabel, { color: colors.text }]}>Đặt trước:</Text>
+              <Text style={[styles.summaryLabel, { color: colors.text }]}>{text.advancePayment}</Text>
               <Text style={[styles.summaryValue, { color: colors.text }]}>-{formatCurrency(invoice.advancePayment)}</Text>
             </View>
           )}
           
           <View style={[styles.summaryRow, styles.finalTotalRow, { borderTopColor: colors.primary }]}>
             <Text style={[styles.summaryLabel, { color: colors.text, fontWeight: 'bold', fontSize: 16 }]}>
-              {finalTotalAmount >= 0 ? 'Còn phải trả:' : 'Khách được hoàn:'}
+              {finalTotalAmount >= 0 ? text.amountDue : text.refundAmount}
             </Text>
             <Text style={[styles.summaryValue, { 
               color: finalTotalAmount >= 0 ? colors.danger : colors.success, 
@@ -809,7 +893,7 @@ export default function InvoiceEditorScreen() {
           >
             <Ionicons name="save" size={20} color="white" />
             <Text style={styles.saveButtonText}>
-              {updateMutation.isPending ? 'Đang lưu...' : 'Lưu thay đổi'}
+              {updateMutation.isPending ? text.saving : text.saveChanges}
             </Text>
           </TouchableOpacity>
         </View>
@@ -817,10 +901,10 @@ export default function InvoiceEditorScreen() {
 
       {/* Thank You */}
       <View style={[styles.thankYouSection, { backgroundColor: colors.card }]}>
-        <Text style={[styles.thankYouText, { color: colors.text }]}>Cảm ơn quý khách đã sử dụng dịch vụ!</Text>
-        <Text style={[styles.thankYouText, { color: colors.text }]}>Chúc quý khách một ngày tốt lành!</Text>
+        <Text style={[styles.thankYouText, { color: colors.text }]}>{text.thankYou1}</Text>
+        <Text style={[styles.thankYouText, { color: colors.text }]}>{text.thankYou2}</Text>
         <Text style={[styles.printDate, { color: colors.text + '80' }]}>
-          Ngày in: {new Date().toLocaleDateString('vi-VN')} {new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+          {text.printDate} {new Date().toLocaleDateString(isVi ? 'vi-VN' : 'en-US')} {new Date().toLocaleTimeString(isVi ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
         </Text>
       </View>
     </ScrollView>

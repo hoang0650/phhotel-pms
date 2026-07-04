@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -12,323 +12,455 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import {
-  TrendingUp,
-  TrendingDown,
   DollarSign,
-  BedDouble,
-  Users,
-  Briefcase,
-  Calendar,
-  ChevronDown,
-  BarChart3,
-  PieChart,
-  CreditCard,
+  ShoppingCart,
+  TrendingUp,
   Landmark,
+  Settings,
+  BarChart3,
+  Percent,
+  CalendarRange,
+  BedDouble,
+  Briefcase,
+  Receipt,
   Wallet,
-  MinusCircle,
-  CheckCircle,
+  Wrench,
+  Megaphone,
+  Package,
+  Zap,
 } from 'lucide-react-native';
+import {
+  differenceInCalendarDays,
+  endOfMonth,
+  endOfWeek,
+  endOfYear,
+  format,
+  startOfMonth,
+  startOfWeek,
+  startOfYear,
+} from 'date-fns';
 import { useHotel } from '@/contexts/HotelContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { revenueApi, roomsApi, bookingsApi } from '@/services/api';
-import { shiftHandoverApi } from '@/services/api/shiftHandover';
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, differenceInCalendarDays } from 'date-fns';
-import { ShiftHandover } from '@/types/shift-handover';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiClient } from '@/services/api/client';
+import { API_ENDPOINTS } from '@/services/api/config';
 
 type PeriodType = 'day' | 'week' | 'month' | 'year';
 
-// Helper function to map payment methods, similar to backend
-const mapPaymentMethod = (method?: string): 'cash' | 'bank_transfer' | 'card' => {
-  const m = (method || 'cash').toLowerCase();
-  if (['transfer', 'banking', 'bank', 'bank_transfer', 'qr', 'vnpay'].includes(m)) {
-    return 'bank_transfer';
+type FinancialConfig = {
+  depreciationRate?: number;
+  loanPercentage?: number;
+  interestRate?: number;
+  taxRate?: number;
+  wacc?: number;
+  projectionYears?: number;
+};
+
+type FinancialSummaryData = {
+  totalRevenue: number;
+  totalCosts: number;
+  profit: number;
+  initialInvestment: number;
+  monthlyProfit: number;
+  paybackPeriod: number;
+  paybackPeriodDays: number;
+  depreciation?: number;
+  interest?: number;
+  profitBeforeTax?: number;
+  tax?: number;
+  profitAfterTax?: number;
+  npv?: number;
+  irr?: number;
+  breakdown: {
+    revenue: {
+      roomRevenue?: number;
+      roomRevenueDaily?: number;
+      roomRevenueMonthly?: number;
+      roomRevenueYearly?: number;
+      serviceRevenue?: number;
+      cafeRevenue?: number;
+      otherServiceRevenue?: number;
+      receiptRevenue?: number;
+      otherRevenue?: number;
+    };
+    costs: {
+      expenses?: number;
+      receiptExpenses?: number;
+      salary?: number;
+      marketing?: number;
+      maintenance?: number;
+      training?: number;
+      serviceCost?: number;
+      utilities?: number;
+      supplies?: number;
+      other?: number;
+    };
+  };
+  period?: {
+    startDate?: string;
+    endDate?: string;
+  };
+  financialConfig?: FinancialConfig;
+};
+
+type FinancialSummaryResponse = {
+  message: string;
+  data: FinancialSummaryData;
+};
+
+const getRangeForPeriod = (period: PeriodType) => {
+  const today = new Date();
+  switch (period) {
+    case 'day':
+      return { startDate: today, endDate: today };
+    case 'week':
+      return { startDate: startOfWeek(today, { weekStartsOn: 1 }), endDate: endOfWeek(today, { weekStartsOn: 1 }) };
+    case 'month':
+      return { startDate: startOfMonth(today), endDate: endOfMonth(today) };
+    case 'year':
+      return { startDate: startOfYear(today), endDate: endOfYear(today) };
+    default:
+      return { startDate: today, endDate: today };
   }
-  if (['card', 'credit_card', 'virtual_card', 'visa'].includes(m)) {
-    return 'card';
+};
+
+const getConfigValue = (value: number | undefined, fallback: number) =>
+  Number.isFinite(Number(value)) ? Number(value) : fallback;
+
+const calculateNpv = (discountRate: number, cashFlows: number[]) => {
+  let total = 0;
+  for (let t = 0; t < cashFlows.length; t += 1) {
+    total += cashFlows[t] / Math.pow(1 + discountRate, t);
   }
-  return 'cash';
+  return total;
+};
+
+const calculateIrr = (cashFlows: number[]) => {
+  const hasPositive = cashFlows.some((value) => value > 0);
+  const hasNegative = cashFlows.some((value) => value < 0);
+  if (!hasPositive || !hasNegative) return Number.NaN;
+
+  const npvAt = (rate: number) => calculateNpv(rate, cashFlows);
+
+  let low = -0.9999;
+  let high = 10;
+  let npvLow = npvAt(low);
+  let npvHigh = npvAt(high);
+
+  let expand = 0;
+  while (npvLow * npvHigh > 0 && expand < 20) {
+    high *= 2;
+    npvHigh = npvAt(high);
+    expand += 1;
+  }
+
+  if (npvLow * npvHigh > 0) return Number.NaN;
+
+  for (let i = 0; i < 120; i += 1) {
+    const mid = (low + high) / 2;
+    const npvMid = npvAt(mid);
+    if (Math.abs(npvMid) < 1e-7) {
+      return mid;
+    }
+
+    if (npvLow * npvMid <= 0) {
+      high = mid;
+      npvHigh = npvMid;
+    } else {
+      low = mid;
+      npvLow = npvMid;
+    }
+  }
+
+  return (low + high) / 2;
+};
+
+const normalizeFinancialSummary = (
+  rawSummary: FinancialSummaryData,
+  initialInvestment: number,
+  startDate: Date,
+  endDate: Date
+): FinancialSummaryData => {
+  const revenue = {
+    roomRevenue: Number(rawSummary?.breakdown?.revenue?.roomRevenue || 0),
+    roomRevenueDaily: Number(rawSummary?.breakdown?.revenue?.roomRevenueDaily || 0),
+    roomRevenueMonthly: Number(rawSummary?.breakdown?.revenue?.roomRevenueMonthly || 0),
+    roomRevenueYearly: Number(rawSummary?.breakdown?.revenue?.roomRevenueYearly || 0),
+    serviceRevenue: Number(rawSummary?.breakdown?.revenue?.serviceRevenue || 0),
+    cafeRevenue: Number(rawSummary?.breakdown?.revenue?.cafeRevenue || 0),
+    otherServiceRevenue: Number(rawSummary?.breakdown?.revenue?.otherServiceRevenue || 0),
+    receiptRevenue: Number(rawSummary?.breakdown?.revenue?.receiptRevenue || 0),
+    otherRevenue: Number(rawSummary?.breakdown?.revenue?.otherRevenue || 0),
+  };
+
+  const costs = {
+    expenses: Number(rawSummary?.breakdown?.costs?.expenses || 0),
+    receiptExpenses: Number(
+      rawSummary?.breakdown?.costs?.receiptExpenses ?? rawSummary?.breakdown?.costs?.expenses ?? 0
+    ),
+    salary: Number(rawSummary?.breakdown?.costs?.salary || 0),
+    marketing: Number(rawSummary?.breakdown?.costs?.marketing || 0),
+    maintenance: Number(rawSummary?.breakdown?.costs?.maintenance || 0),
+    training: Number(rawSummary?.breakdown?.costs?.training || 0),
+    serviceCost: Number(rawSummary?.breakdown?.costs?.serviceCost || 0),
+    utilities: Number(rawSummary?.breakdown?.costs?.utilities || 0),
+    supplies: Number(rawSummary?.breakdown?.costs?.supplies || 0),
+    other: Number(rawSummary?.breakdown?.costs?.other || 0),
+  };
+
+  const calculatedServiceRevenue = revenue.cafeRevenue + revenue.otherServiceRevenue;
+  if (Math.abs(revenue.serviceRevenue - calculatedServiceRevenue) > 0.01) {
+    revenue.serviceRevenue = calculatedServiceRevenue;
+  }
+
+  const totalRevenue =
+    revenue.roomRevenue +
+    revenue.serviceRevenue +
+    revenue.receiptRevenue +
+    revenue.otherRevenue;
+  const totalCosts = Number(rawSummary?.totalCosts ?? costs.expenses ?? 0);
+  const profit = totalRevenue - totalCosts;
+
+  const normalizedSummary: FinancialSummaryData = {
+    ...rawSummary,
+    totalRevenue,
+    totalCosts,
+    profit,
+    initialInvestment: Number(initialInvestment || 0),
+    breakdown: {
+      revenue,
+      costs,
+    },
+  };
+
+  const config = normalizedSummary.financialConfig || {};
+  const depreciationRate = getConfigValue(config.depreciationRate, 10) / 100;
+  const loanPercentage = getConfigValue(config.loanPercentage, 70) / 100;
+  const interestRate = getConfigValue(config.interestRate, 8) / 100;
+  const taxRate = getConfigValue(config.taxRate, 20) / 100;
+  const wacc = getConfigValue(config.wacc, 9) / 100;
+  const projectionYears = Math.max(1, getConfigValue(config.projectionYears, 10));
+
+  const days = Math.max(1, differenceInCalendarDays(endDate, startDate) + 1);
+  const daysPerYear = 365.2425;
+  const yearFraction = Math.max(1 / daysPerYear, days / daysPerYear);
+  const annualizedOperatingProfit = profit / yearFraction;
+  const loanAmount = normalizedSummary.initialInvestment * Math.min(Math.max(loanPercentage, 0), 1);
+  const depreciationAnnual = normalizedSummary.initialInvestment * Math.min(Math.max(depreciationRate, 0), 1);
+  const interestAnnual = loanAmount * Math.min(Math.max(interestRate, 0), 10);
+  const profitBeforeTaxAnnual = annualizedOperatingProfit - depreciationAnnual - interestAnnual;
+  const taxAnnual = profitBeforeTaxAnnual > 0 ? profitBeforeTaxAnnual * Math.min(Math.max(taxRate, 0), 1) : 0;
+  const profitAfterTaxAnnual = profitBeforeTaxAnnual - taxAnnual;
+  const freeCashFlowAnnual = profitAfterTaxAnnual + depreciationAnnual;
+
+  normalizedSummary.depreciation = depreciationAnnual;
+  normalizedSummary.interest = interestAnnual;
+  normalizedSummary.profitBeforeTax = profitBeforeTaxAnnual;
+  normalizedSummary.tax = taxAnnual;
+  normalizedSummary.profitAfterTax = profitAfterTaxAnnual;
+  normalizedSummary.monthlyProfit = profitAfterTaxAnnual / 12;
+
+  if (normalizedSummary.initialInvestment > 0 && freeCashFlowAnnual > 0) {
+    const paybackYears = normalizedSummary.initialInvestment / freeCashFlowAnnual;
+    normalizedSummary.paybackPeriod = paybackYears * 12;
+    normalizedSummary.paybackPeriodDays = paybackYears * daysPerYear;
+  } else {
+    normalizedSummary.paybackPeriod = 0;
+    normalizedSummary.paybackPeriodDays = 0;
+  }
+
+  if (normalizedSummary.initialInvestment > 0 && Number.isFinite(wacc) && wacc > -0.99 && projectionYears > 0) {
+    const cashFlows: number[] = [-normalizedSummary.initialInvestment];
+    for (let i = 1; i <= projectionYears; i += 1) {
+      cashFlows.push(freeCashFlowAnnual);
+    }
+    const npvValue = calculateNpv(wacc, cashFlows);
+    normalizedSummary.npv = Number.isFinite(npvValue) ? npvValue / 1_000_000 : undefined;
+
+    const irrValue = calculateIrr(cashFlows);
+    normalizedSummary.irr = Number.isFinite(irrValue) ? irrValue * 100 : undefined;
+  } else {
+    normalizedSummary.npv = undefined;
+    normalizedSummary.irr = undefined;
+  }
+
+  return normalizedSummary;
 };
 
 export default function ReportScreen() {
   const insets = useSafeAreaInsets();
   const { selectedHotel, selectedHotelId } = useHotel();
   const { isDark, colors } = useTheme();
-  const [period, setPeriod] = useState<PeriodType>('day');
+  const { language } = useLanguage();
+  const { user } = useAuth();
+  const [period, setPeriod] = useState<PeriodType>('month');
+  const isVi = language === 'vi';
+  const canAccess = user?.role === 'superadmin' || user?.role === 'business';
 
-  const { data: revenueData, isLoading, refetch } = useQuery({
-    queryKey: ['revenue', selectedHotelId, period],
+  const text = useMemo(() => ({
+    title: isVi ? 'Bao cao tai chinh' : 'Financial Summary',
+    subtitle: isVi ? 'Tong hop doanh thu, chi phi va hieu qua dau tu' : 'Revenue, cost, and investment efficiency summary',
+    today: isVi ? 'Hom nay' : 'Today',
+    thisWeek: isVi ? 'Tuan nay' : 'This week',
+    thisMonth: isVi ? 'Thang nay' : 'This month',
+    thisYear: isVi ? 'Nam nay' : 'This year',
+    selectedHotel: isVi ? 'Khach san da chon' : 'Selected hotel',
+    noHotelSelected: isVi ? 'Chua chon khach san' : 'No hotel selected',
+    noAccess: isVi ? 'Ban khong co quyen xem bao cao tai chinh tong hop' : 'You do not have access to this financial summary',
+    noAccessDesc: isVi ? 'Chi superadmin va business moi xem duoc man nay' : 'Only superadmin and business roles can access this screen',
+    chooseHotel: isVi ? 'Vui long chon khach san de xem bao cao' : 'Please select a hotel to view the report',
+    totalRevenue: isVi ? 'Tong doanh thu' : 'Total revenue',
+    totalCosts: isVi ? 'Tong chi phi' : 'Total costs',
+    profit: isVi ? 'Loi nhuan' : 'Profit',
+    initialInvestment: isVi ? 'Von dau tu ban dau' : 'Initial investment',
+    financialConfig: isVi ? 'Cau hinh tai chinh' : 'Financial configuration',
+    perYear: isVi ? 'moi nam' : 'per year',
+    years: isVi ? 'nam' : 'years',
+    depreciation: isVi ? 'Khau hao' : 'Depreciation',
+    loanPercentage: isVi ? 'Ty le vay' : 'Loan percentage',
+    interestRate: isVi ? 'Lai suat' : 'Interest rate',
+    taxRate: isVi ? 'Thue suat' : 'Tax rate',
+    wacc: 'WACC',
+    projectionYears: isVi ? 'So nam du phong' : 'Projection years',
+    detailedInfo: isVi ? 'Thong tin tai chinh chi tiet' : 'Detailed financial info',
+    depreciationAmount: isVi ? 'Tien khau hao' : 'Depreciation amount',
+    interestAmount: isVi ? 'Tien lai vay' : 'Interest amount',
+    profitBeforeTax: isVi ? 'Loi nhuan truoc thue' : 'Profit before tax',
+    taxAmount: isVi ? 'Tien thue' : 'Tax amount',
+    profitAfterTax: isVi ? 'Loi nhuan sau thue' : 'Profit after tax',
+    efficiency: isVi ? 'Danh gia hieu qua' : 'Efficiency evaluation',
+    npv: 'NPV',
+    irr: 'IRR',
+    millionVnd: isVi ? 'trieu VND' : 'million VND',
+    payback: isVi ? 'Thoi gian hoan von' : 'Payback period',
+    avgMonthlyProfit: isVi ? 'Loi nhuan trung binh/thang' : 'Average monthly profit',
+    paybackTime: isVi ? 'Thoi gian hoan von' : 'Payback time',
+    months: isVi ? 'thang' : 'months',
+    days: isVi ? 'ngay' : 'days',
+    undetermined: isVi ? 'Khong xac dinh' : 'Undetermined',
+    negativeProfitWarning: isVi ? 'Loi nhuan am, khong the tinh duoc thoi gian hoan von' : 'Negative profit, payback period cannot be determined',
+    revenueBreakdown: isVi ? 'Chi tiet doanh thu' : 'Revenue breakdown',
+    costBreakdown: isVi ? 'Chi tiet chi phi' : 'Cost breakdown',
+    roomRevenue: isVi ? 'Doanh thu phong' : 'Room revenue',
+    serviceRevenue: isVi ? 'Doanh thu dich vu' : 'Service revenue',
+    cafeRevenue: isVi ? 'Doanh thu cafe' : 'Cafe revenue',
+    otherServiceRevenue: isVi ? 'Doanh thu dich vu khac' : 'Other service revenue',
+    receiptRevenue: isVi ? 'Phieu thu' : 'Receipt revenue',
+    otherRevenue: isVi ? 'Doanh thu khac' : 'Other revenue',
+    totalExpense: isVi ? 'Tong chi' : 'Total expense',
+    receiptExpenses: isVi ? 'Tong chi tu phieu chi' : 'Receipt expenses',
+    salaryCost: isVi ? 'Chi phi luong' : 'Salary cost',
+    marketingCost: isVi ? 'Chi phi marketing' : 'Marketing cost',
+    maintenanceCost: isVi ? 'Chi phi bao tri' : 'Maintenance cost',
+    trainingCost: isVi ? 'Chi phi dao tao' : 'Training cost',
+    serviceCost: isVi ? 'Chi phi dich vu' : 'Service cost',
+    utilitiesCost: isVi ? 'Chi phi dien nuoc' : 'Utilities cost',
+    suppliesCost: isVi ? 'Chi phi vat tu' : 'Supplies cost',
+    otherCost: isVi ? 'Chi phi khac' : 'Other cost',
+    loading: isVi ? 'Dang tai bao cao...' : 'Loading report...',
+    noData: isVi ? 'Chua co du lieu bao cao' : 'No report data yet',
+    range: isVi ? 'Khoang thoi gian' : 'Date range',
+  }), [isVi]);
+
+  const periodOptions = useMemo(() => ([
+    { key: 'day' as const, label: text.today },
+    { key: 'week' as const, label: text.thisWeek },
+    { key: 'month' as const, label: text.thisMonth },
+    { key: 'year' as const, label: text.thisYear },
+  ]), [text]);
+
+  const range = useMemo(() => getRangeForPeriod(period), [period]);
+  const startDate = format(range.startDate, 'yyyy-MM-dd');
+  const endDate = format(range.endDate, 'yyyy-MM-dd');
+
+  const { data: financialSummary, isLoading, refetch } = useQuery({
+    queryKey: ['financial-summary', selectedHotelId, startDate, endDate],
     queryFn: async () => {
-      const today = new Date();
-      let startDate, endDate;
-
-      switch (period) {
-        case 'day':
-          startDate = subDays(today, 6);
-          endDate = today;
-          break;
-        case 'week':
-          startDate = subDays(today, 27);
-          endDate = today;
-          break;
-        case 'month':
-          startDate = subDays(today, 364);
-          endDate = today;
-          break;
-        case 'year':
-           startDate = subDays(today, 364);
-           endDate = today;
-          break;
-        default:
-          startDate = subDays(today, 6);
-          endDate = today;
-      }
-      
-      return revenueApi.getRevenueByPeriod({
+      const query = new URLSearchParams({
         hotelId: selectedHotelId || '',
-        period: period,
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: today.toISOString().split('T')[0]
+        startDate,
+        endDate,
       });
-    },
-    enabled: !!selectedHotelId,
-  });
-  
-  const { data: breakdownRange } = useQuery({
-    queryKey: ['revenueBreakdownRange', selectedHotelId, period],
-    queryFn: async () => {
-      const today = new Date();
-      let startDate, endDate;
-      switch (period) {
-        case 'day':
-          startDate = subDays(today, 6);
-          endDate = today;
-          break;
-        case 'week':
-          startDate = subDays(today, 27);
-          endDate = today;
-          break;
-        case 'month':
-          startDate = subDays(today, 364);
-          endDate = today;
-          break;
-        case 'year':
-          startDate = subDays(today, 364);
-          endDate = today;
-          break;
-        default:
-          startDate = subDays(today, 6);
-          endDate = today;
+      const response = await apiClient.get<FinancialSummaryResponse>(`${API_ENDPOINTS.FINANCIAL.SUMMARY}?${query.toString()}`);
+      const rawSummary = response?.data;
+      if (!rawSummary) {
+        return null;
       }
-      return revenueApi.getRevenueByRange(
-        selectedHotelId || '',
-        startDate.toISOString().split('T')[0],
-        endDate.toISOString().split('T')[0]
-      );
+
+      const selectedHotelInvestment = Number((selectedHotel as any)?.initialInvestment);
+      const initialInvestment = Number.isFinite(selectedHotelInvestment)
+        ? selectedHotelInvestment
+        : Number(rawSummary.initialInvestment || 0);
+
+      return normalizeFinancialSummary(rawSummary, initialInvestment, range.startDate, range.endDate);
     },
-    enabled: !!selectedHotelId,
+    enabled: canAccess && !!selectedHotelId,
   });
-  
-  const { data: weeklyData, refetch: refetchWeeklyData } = useQuery({
-    queryKey: ['revenueWeekly', selectedHotelId],
-    queryFn: async () => {
-      const today = new Date();
-      const startDate = subDays(today, 27);
-      return revenueApi.getRevenueByPeriod({
-        hotelId: selectedHotelId || '',
-        period: 'week',
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: today.toISOString().split('T')[0],
-      });
-    },
-    enabled: !!selectedHotelId,
-  });
-  
-  const { data: monthlyData, refetch: refetchMonthlyData } = useQuery({
-    queryKey: ['revenueMonthly', selectedHotelId],
-    queryFn: async () => {
-      const today = new Date();
-      const startDate = subDays(today, 364);
-      return revenueApi.getRevenueByPeriod({
-        hotelId: selectedHotelId || '',
-        period: 'month',
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: today.toISOString().split('T')[0],
-      });
-    },
-    enabled: !!selectedHotelId,
-  });
-  
-  const { data: paymentBreakdown } = useQuery({
-    queryKey: ['revenuePaymentBreakdown', selectedHotelId, period],
-    queryFn: async () => {
-      const today = new Date();
-      let startDate, endDate;
-      switch (period) {
-        case 'day':
-          startDate = subDays(today, 6);
-          endDate = today;
-          break;
-        case 'week':
-          startDate = subDays(today, 27);
-          endDate = today;
-          break;
-        case 'month':
-          startDate = subDays(today, 364);
-          endDate = today;
-          break;
-        case 'year':
-          startDate = subDays(today, 364);
-          endDate = today;
-          break;
-        default:
-          startDate = subDays(today, 6);
-          endDate = today;
-      }
-      return shiftHandoverApi.getRevenue(
-        selectedHotelId || '',
-        startDate.toISOString().split('T')[0],
-        endDate.toISOString().split('T')[0]
-      );
-    },
-    enabled: !!selectedHotelId,
-  });
-
-  const totalRevenue = revenueData?.totalRevenue || 0;
-  const totalExpense = revenueData?.totalExpense || 0;
-  const profit = totalRevenue - totalExpense;
-
-  const { data: rooms = [] } = useQuery({
-    queryKey: ['rooms', selectedHotelId],
-    queryFn: () => roomsApi.getAll(selectedHotelId || ''),
-    enabled: !!selectedHotelId,
-  });
-
-  const { data: bookings = [] } = useQuery({
-    queryKey: ['bookings', selectedHotelId],
-    queryFn: () => (selectedHotelId ? bookingsApi.getByHotel(selectedHotelId) : bookingsApi.getAll()),
-    enabled: !!selectedHotelId,
-  });
-
-  const computedStats = useMemo(() => {
-    const today = new Date();
-    let startDate: Date;
-    let endDate: Date = today;
-    switch (period) {
-      case 'day':
-        startDate = subDays(today, 6);
-        break;
-      case 'week':
-        startDate = subDays(today, 27);
-        break;
-      case 'month':
-      case 'year':
-        startDate = subDays(today, 364);
-        break;
-      default:
-        startDate = subDays(today, 6);
-    }
-
-    const startStr = startDate.toISOString().split('T')[0];
-    const endStr = endDate.toISOString().split('T')[0];
-    const daysInRange = Math.max(1, differenceInCalendarDays(endDate, startDate) + 1);
-
-    const bookingsInRange = bookings.filter(b => {
-      const ci = new Date(b.checkIn);
-      const co = new Date(b.checkOut);
-      // overlap check: booking intersects [startDate, endDate]
-      return ci <= endDate && co >= startDate;
-    });
-
-    const totalBookings = bookingsInRange.length;
-
-    const uniqueGuests = new Set<string>();
-    let fallbackGuestCount = 0;
-    bookingsInRange.forEach(b => {
-      if (b.guestId) uniqueGuests.add(b.guestId);
-      fallbackGuestCount += (Number(b.adults || 0) + Number(b.children || 0));
-    });
-    const totalGuests = uniqueGuests.size > 0 ? uniqueGuests.size : fallbackGuestCount;
-
-    let occupiedNights = 0;
-    let paidAmountSum = 0;
-    bookingsInRange.forEach(b => {
-      const ci = new Date(b.checkIn);
-      const co = new Date(b.checkOut);
-      const overlapStart = ci > startDate ? ci : startDate;
-      const overlapEnd = co < endDate ? co : endDate;
-      if (overlapEnd >= overlapStart) {
-        const nights = Math.max(1, differenceInCalendarDays(overlapEnd, overlapStart));
-        occupiedNights += nights;
-        paidAmountSum += Number(b.paidAmount || 0);
-      }
-    });
-
-    const totalRooms = rooms.length || 0;
-    const occupancyRate = totalRooms > 0 && daysInRange > 0
-      ? Math.round((occupiedNights / (totalRooms * daysInRange)) * 100)
-      : 0;
-
-    const averageRoomRate = occupiedNights > 0
-      ? Math.round(paidAmountSum / occupiedNights)
-      : Math.round((paidAmountSum || 0) / Math.max(1, totalBookings));
-
-    return { totalBookings, totalGuests, occupancyRate, averageRoomRate };
-  }, [bookings, rooms, period]);
-
 
   const handleRefresh = async () => {
-    await Promise.all([refetch(), refetchWeeklyData(), refetchMonthlyData()]);
+    await refetch();
   };
 
-  const formatCurrency = (amount: number) => {
-    if (amount >= 1000000000) {
-      return `${(amount / 1000000000).toFixed(1)}B`;
-    }
-    if (amount >= 1000000) {
-      return `${(amount / 1000000).toFixed(1)}M`;
-    }
-    return new Intl.NumberFormat('vi-VN', {
+  const formatCurrency = (amount: number | undefined) => {
+    const safeAmount = Number(amount || 0);
+    return new Intl.NumberFormat(isVi ? 'vi-VN' : 'en-US', {
       style: 'currency',
       currency: 'VND',
       maximumFractionDigits: 0,
-    }).format(amount);
+    }).format(safeAmount);
   };
 
-  const revenueGrowth = useMemo(() => {
-    if (!revenueData?.revenueData || revenueData.revenueData.length < 2) return 0;
-    const lastValue = revenueData.revenueData[revenueData.revenueData.length - 1];
-    const prevValue = revenueData.revenueData[revenueData.revenueData.length - 2];
-    if (prevValue === 0) return lastValue > 0 ? 100 : 0;
-    return Math.round(((lastValue - prevValue) / prevValue) * 100);
-  }, [revenueData]);
-  
-  const isPositiveGrowth = revenueGrowth >= 0;
+  const formatNumber = (value: number | undefined) => {
+    const safeValue = Number(value || 0);
+    return new Intl.NumberFormat(isVi ? 'vi-VN' : 'en-US', {
+      maximumFractionDigits: 1,
+    }).format(safeValue);
+  };
 
-  const maxChartValue = useMemo(() => 
-    revenueData?.revenueData ? Math.max(...revenueData.revenueData, 1) : 1
-  , [revenueData]);
+  const formatPercent = (value: number | undefined) => `${formatNumber(value)}%`;
 
-  const periodOptions: { key: PeriodType; label: string }[] = [
-    { key: 'day', label: 'Ngày' },
-    { key: 'week', label: 'Tuần' },
-    { key: 'month', label: 'Tháng' },
-    { key: 'year', label: 'Năm' },
-  ];
+  const summary = financialSummary || null;
+  const config = summary?.financialConfig || {};
+  const revenueBreakdown = summary?.breakdown?.revenue || {};
+  const costBreakdown = summary?.breakdown?.costs || {};
+  const rangeLabel = `${format(range.startDate, 'dd/MM/yyyy')} - ${format(range.endDate, 'dd/MM/yyyy')}`;
 
-  const todayRevenue = useMemo(() => {
-    if (!revenueData?.revenueData || period !== 'day') return 0;
-    return revenueData.revenueData[revenueData.revenueData.length - 1] || 0;
-  }, [revenueData, period]);
+  if (!canAccess) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <LinearGradient
+          colors={isDark ? ['#0f766e', '#14b8a6'] : ['#14b8a6', '#0d9488']}
+          style={[styles.header, { paddingTop: insets.top + 12 }]}
+        >
+          <Text style={styles.headerTitle}>{text.title}</Text>
+          <Text style={styles.headerSubtitle}>{text.subtitle}</Text>
+        </LinearGradient>
+        <View style={styles.centerState}>
+          <Text style={[styles.centerTitle, { color: colors.text }]}>{text.noAccess}</Text>
+          <Text style={[styles.centerSubtitle, { color: colors.textSecondary }]}>{text.noAccessDesc}</Text>
+        </View>
+      </View>
+    );
+  }
 
-  const weeklyRevenue = useMemo(() => {
-    if (!weeklyData?.revenueData || weeklyData.revenueData.length === 0) return 0;
-    return weeklyData.revenueData[weeklyData.revenueData.length - 1] || 0;
-  }, [weeklyData]);
-
-  const monthlyRevenue = useMemo(() => {
-    if (!monthlyData?.revenueData || monthlyData.revenueData.length === 0) return 0;
-    return monthlyData.revenueData[monthlyData.revenueData.length - 1] || 0;
-  }, [monthlyData]);
+  if (!selectedHotelId) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <LinearGradient
+          colors={isDark ? ['#0f766e', '#14b8a6'] : ['#14b8a6', '#0d9488']}
+          style={[styles.header, { paddingTop: insets.top + 12 }]}
+        >
+          <Text style={styles.headerTitle}>{text.title}</Text>
+          <Text style={styles.headerSubtitle}>{text.subtitle}</Text>
+        </LinearGradient>
+        <View style={styles.centerState}>
+          <Text style={[styles.centerTitle, { color: colors.text }]}>{text.noHotelSelected}</Text>
+          <Text style={[styles.centerSubtitle, { color: colors.textSecondary }]}>{text.chooseHotel}</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -336,265 +468,325 @@ export default function ReportScreen() {
         colors={isDark ? ['#0f766e', '#14b8a6'] : ['#14b8a6', '#0d9488']}
         style={[styles.header, { paddingTop: insets.top + 12 }]}
       >
-        <View style={styles.headerContent}>
-          <View>
-            <Text style={styles.headerTitle}>Báo cáo</Text>
-            <Text style={styles.hotelName}>{selectedHotel?.name || 'Tất cả khách sạn'}</Text>
-          </View>
-          <View style={[styles.growthBadge, { backgroundColor: isPositiveGrowth ? '#10b98120' : '#ef444420'}]}>
-            {isPositiveGrowth ? (
-              <TrendingUp size={16} color="#10b981" />
-            ) : (
-              <TrendingDown size={16} color="#ef4444" />
-            )}
-            <Text style={[styles.growthText, { color: isPositiveGrowth ? '#10b981' : '#ef4444' }]}>
-              {isPositiveGrowth ? '+' : ''}{revenueGrowth.toFixed(1)}%
-            </Text>
-          </View>
-        </View>
+        <Text style={styles.headerTitle}>{text.title}</Text>
+        <Text style={styles.headerSubtitle}>{selectedHotel?.name || text.selectedHotel}</Text>
       </LinearGradient>
 
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={handleRefresh} tintColor={colors.tint} />
-        }
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={handleRefresh} tintColor={colors.tint} />}
       >
-        {isLoading && !revenueData ? (
+        <View style={[styles.periodSelector, { backgroundColor: colors.cardBackground }]}>
+          {periodOptions.map((option) => (
+            <TouchableOpacity
+              key={option.key}
+              style={[
+                styles.periodOption,
+                period === option.key && [styles.periodOptionActive, { backgroundColor: colors.tint }],
+              ]}
+              onPress={() => setPeriod(option.key)}
+            >
+              <Text
+                style={[
+                  styles.periodOptionText,
+                  { color: period === option.key ? '#FFFFFF' : colors.textSecondary },
+                ]}
+              >
+                {option.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={styles.rangeBadge}>
+          <CalendarRange size={16} color="#1890ff" />
+          <Text style={styles.rangeBadgeText}>{text.range}: {rangeLabel}</Text>
+        </View>
+
+        {isLoading && !summary ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.tint} />
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>{text.loading}</Text>
+          </View>
+        ) : !summary ? (
+          <View style={[styles.emptyCard, { backgroundColor: colors.cardBackground }]}>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{text.noData}</Text>
           </View>
         ) : (
           <>
-            <View style={[styles.periodSelector, { backgroundColor: colors.cardBackground }]}>
-              {periodOptions.map((option) => (
-                <TouchableOpacity
-                  key={option.key}
-                  style={[
-                    styles.periodOption,
-                    period === option.key && [styles.periodOptionActive, { backgroundColor: colors.tint }],
-                  ]}
-                  onPress={() => setPeriod(option.key)}
-                >
-                  <Text
-                    style={[
-                      styles.periodOptionText,
-                      { color: colors.textSecondary },
-                      period === option.key && styles.periodOptionTextActive,
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <View style={styles.summaryCards}>
-              <LinearGradient
-                colors={isDark ? ['#0f766e', '#0d9488'] : ['#14b8a6', '#0d9488']}
-                style={styles.mainRevenueCard}
-              >
-                <View style={styles.mainRevenueIcon}>
-                  <DollarSign size={24} color="#fff" />
+            <View style={styles.summaryGrid}>
+              <View style={[styles.summaryCard, { backgroundColor: colors.cardBackground }]}>
+                <View style={[styles.summaryIconBox, { backgroundColor: isDark ? '#133B35' : '#E6FFFB' }]}>
+                  <DollarSign size={20} color="#14b8a6" />
                 </View>
-                <Text style={styles.mainRevenueLabel}>Tổng doanh thu</Text>
-                <Text style={styles.mainRevenueValue}>
-                  {formatCurrency(totalRevenue)}
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{text.totalRevenue}</Text>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(summary.totalRevenue)}</Text>
+              </View>
+
+              <View style={[styles.summaryCard, { backgroundColor: colors.cardBackground }]}>
+                <View style={[styles.summaryIconBox, { backgroundColor: isDark ? '#3B1D1D' : '#FEF2F2' }]}>
+                  <ShoppingCart size={20} color="#ef4444" />
+                </View>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{text.totalCosts}</Text>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(summary.totalCosts)}</Text>
+              </View>
+
+              <View style={[styles.summaryCard, { backgroundColor: colors.cardBackground }]}>
+                <View style={[styles.summaryIconBox, { backgroundColor: isDark ? '#1F3A25' : '#F0FDF4' }]}>
+                  <TrendingUp size={20} color={summary.profit >= 0 ? '#22c55e' : '#ef4444'} />
+                </View>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{text.profit}</Text>
+                <Text style={[styles.summaryValue, summary.profit < 0 ? styles.negativeValue : styles.positiveValue]}>
+                  {formatCurrency(summary.profit)}
                 </Text>
-              </LinearGradient>
+              </View>
 
-              <View style={styles.secondaryCards}>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => setPeriod('week')}
-                  style={[styles.secondaryCard, { backgroundColor: colors.cardBackground }]}
-                >
-                  <Calendar size={20} color="#6366f1" />
-                  <Text style={[styles.secondaryLabel, { color: colors.textSecondary }]}>Tuần này</Text>
-                  <Text style={[styles.secondaryValue, { color: colors.text }]}>
-                    {formatCurrency(weeklyRevenue)}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => setPeriod('month')}
-                  style={[styles.secondaryCard, { backgroundColor: colors.cardBackground }]}
-                >
-                  <Calendar size={20} color="#f59e0b" />
-                  <Text style={[styles.secondaryLabel, { color: colors.textSecondary }]}>Tháng này</Text>
-                  <Text style={[styles.secondaryValue, { color: colors.text }]}>
-                    {formatCurrency(monthlyRevenue)}
-                  </Text>
-                </TouchableOpacity>
-                <View style={[styles.secondaryCard, { backgroundColor: colors.cardBackground }]}>
-                  <MinusCircle size={20} color="#ef4444" />
-                  <Text style={[styles.secondaryLabel, { color: colors.textSecondary }]}>Tổng chi phí</Text>
-                  <Text style={[styles.secondaryValue, { color: colors.text }]}>
-                    {formatCurrency(totalExpense)}
+              <View style={[styles.summaryCard, { backgroundColor: colors.cardBackground }]}>
+                <View style={[styles.summaryIconBox, { backgroundColor: isDark ? '#1E293B' : '#EFF6FF' }]}>
+                  <Landmark size={20} color="#3b82f6" />
+                </View>
+                <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{text.initialInvestment}</Text>
+                <Text style={[styles.summaryValue, { color: colors.text }]}>{formatCurrency(summary.initialInvestment)}</Text>
+              </View>
+            </View>
+
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground }]}>
+              <View style={styles.sectionHeader}>
+                <Settings size={18} color="#6366f1" />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>{text.financialConfig}</Text>
+              </View>
+              <View style={styles.infoGrid}>
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.depreciation}</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{formatPercent(getConfigValue(config.depreciationRate, 10))} {text.perYear}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.loanPercentage}</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{formatPercent(getConfigValue(config.loanPercentage, 70))}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.interestRate}</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{formatPercent(getConfigValue(config.interestRate, 8))} {text.perYear}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.taxRate}</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{formatPercent(getConfigValue(config.taxRate, 20))}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.wacc}</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{formatPercent(getConfigValue(config.wacc, 9))}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.projectionYears}</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{formatNumber(getConfigValue(config.projectionYears, 10))} {text.years}</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground }]}>
+              <View style={styles.sectionHeader}>
+                <BarChart3 size={18} color="#14b8a6" />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>{text.detailedInfo}</Text>
+              </View>
+              <View style={styles.infoGrid}>
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.depreciationAmount}</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(summary.depreciation)}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.interestAmount}</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(summary.interest)}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.profitBeforeTax}</Text>
+                  <Text style={[styles.infoValue, summary.profitBeforeTax && summary.profitBeforeTax < 0 ? styles.negativeValue : { color: colors.text }]}>
+                    {formatCurrency(summary.profitBeforeTax)}
                   </Text>
                 </View>
-                <View style={[styles.secondaryCard, { backgroundColor: colors.cardBackground }]}>
-                  <CheckCircle size={20} color={profit >= 0 ? '#22c55e' : '#ef4444'} />
-                  <Text style={[styles.secondaryLabel, { color: colors.textSecondary }]}>Lợi nhuận</Text>
-                  <Text style={[styles.secondaryValue, { color: colors.text }]}>
-                    {formatCurrency(profit)}
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.taxAmount}</Text>
+                  <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(summary.tax)}</Text>
+                </View>
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.profitAfterTax}</Text>
+                  <Text style={[styles.infoValue, summary.profitAfterTax && summary.profitAfterTax < 0 ? styles.negativeValue : styles.positiveValue]}>
+                    {formatCurrency(summary.profitAfterTax)}
                   </Text>
                 </View>
               </View>
             </View>
 
-            <View style={styles.breakdownSection}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Phân loại doanh thu</Text>
-              <View style={styles.breakdownCards}>
-                <View style={[styles.breakdownCard, { backgroundColor: colors.cardBackground }]}>
-                  <View style={[styles.breakdownIcon, { backgroundColor: isDark ? '#052e16' : '#ecfdf5' }]}>
-                    <BedDouble size={20} color="#0d9488" />
+            <View style={styles.dualRow}>
+              <View style={[styles.sectionCard, styles.halfCard, { backgroundColor: colors.cardBackground }]}>
+                <View style={styles.sectionHeader}>
+                  <Percent size={18} color="#8b5cf6" />
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>{text.efficiency}</Text>
+                </View>
+                <View style={styles.metricBox}>
+                  <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>{text.npv}</Text>
+                  <Text style={[styles.metricValue, summary.npv && summary.npv < 0 ? styles.negativeValue : styles.positiveValue]}>
+                    {formatNumber(summary.npv)} {text.millionVnd}
+                  </Text>
+                </View>
+                <View style={styles.metricBox}>
+                  <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>{text.irr}</Text>
+                  <Text style={[styles.metricValue, { color: colors.text }]}>{formatPercent(summary.irr)}</Text>
+                </View>
+              </View>
+
+              <View style={[styles.sectionCard, styles.halfCard, { backgroundColor: colors.cardBackground }]}>
+                <View style={styles.sectionHeader}>
+                  <CalendarRange size={18} color="#f59e0b" />
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>{text.payback}</Text>
+                </View>
+                <View style={styles.metricBox}>
+                  <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>{text.avgMonthlyProfit}</Text>
+                  <Text style={[styles.metricValue, { color: colors.text }]}>{formatCurrency(summary.monthlyProfit)}</Text>
+                </View>
+                <View style={styles.metricBox}>
+                  <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>{text.paybackTime}</Text>
+                  <Text style={[styles.metricValue, { color: colors.text }]}>
+                    {summary.paybackPeriod > 0
+                      ? `${formatNumber(summary.paybackPeriod)} ${text.months} (${formatNumber(summary.paybackPeriodDays)} ${text.days})`
+                      : text.undetermined}
+                  </Text>
+                </View>
+                {summary.monthlyProfit <= 0 ? (
+                  <View style={styles.warningBox}>
+                    <Text style={styles.warningText}>{text.negativeProfitWarning}</Text>
                   </View>
-                  <View style={styles.breakdownInfo}>
-                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Doanh thu phòng</Text>
-                    <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                      {formatCurrency(breakdownRange?.roomRevenue || 0)}
-                    </Text>
+                ) : null}
+              </View>
+            </View>
+
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground }]}>
+              <View style={styles.sectionHeader}>
+                <Receipt size={18} color="#14b8a6" />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>{text.revenueBreakdown}</Text>
+              </View>
+              <View style={styles.infoGrid}>
+                <View style={styles.breakdownItem}>
+                  <BedDouble size={16} color="#14b8a6" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.roomRevenue}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(revenueBreakdown.roomRevenue)}</Text>
                   </View>
                 </View>
-                <View style={[styles.breakdownCard, { backgroundColor: colors.cardBackground }]}>
-                  <View style={[styles.breakdownIcon, { backgroundColor: isDark ? '#422006' : '#fef3c7' }]}>
-                    <Briefcase size={20} color="#f59e0b" />
+                <View style={styles.breakdownItem}>
+                  <Briefcase size={16} color="#f59e0b" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.serviceRevenue}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(revenueBreakdown.serviceRevenue)}</Text>
                   </View>
-                  <View style={styles.breakdownInfo}>
-                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Doanh thu dịch vụ</Text>
-                    <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                      {formatCurrency(breakdownRange?.serviceRevenue || 0)}
-                    </Text>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <Receipt size={16} color="#3b82f6" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.receiptRevenue}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(revenueBreakdown.receiptRevenue)}</Text>
+                  </View>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <Wallet size={16} color="#8b5cf6" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.otherRevenue}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(revenueBreakdown.otherRevenue)}</Text>
+                  </View>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <Briefcase size={16} color="#c084fc" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.cafeRevenue}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(revenueBreakdown.cafeRevenue)}</Text>
+                  </View>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <Briefcase size={16} color="#fb7185" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.otherServiceRevenue}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(revenueBreakdown.otherServiceRevenue)}</Text>
                   </View>
                 </View>
               </View>
             </View>
 
-            <View style={styles.breakdownSection}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Doanh thu theo thanh toán</Text>
-              <View style={styles.breakdownCards}>
-                <View style={[styles.breakdownCard, { backgroundColor: colors.cardBackground }]}>
-                  <View style={[styles.breakdownIcon, { backgroundColor: isDark ? '#1f2937' : '#f3f4f6' }]}>
-                    <Wallet size={20} color="#4b5563" />
-                  </View>
-                  <View style={styles.breakdownInfo}>
-                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Tiền mặt</Text>
-                    <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                      {formatCurrency(paymentBreakdown?.cashTotal || 0)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={[styles.breakdownCard, { backgroundColor: colors.cardBackground }]}>
-                  <View style={[styles.breakdownIcon, { backgroundColor: isDark ? '#1e293b' : '#e0e7ff' }]}>
-                    <Landmark size={20} color="#4f46e5" />
-                  </View>
-                  <View style={styles.breakdownInfo}>
-                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Chuyển khoản</Text>
-                    <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                      {formatCurrency(paymentBreakdown?.bankTransferTotal || 0)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={[styles.breakdownCard, { backgroundColor: colors.cardBackground }]}>
-                  <View style={[styles.breakdownIcon, { backgroundColor: isDark ? '#312e81' : '#eef2ff' }]}>
-                    <CreditCard size={20} color="#6366f1" />
-                  </View>
-                  <View style={styles.breakdownInfo}>
-                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Thẻ</Text>
-                    <Text style={[styles.breakdownValue, { color: colors.text }]}>
-                      {formatCurrency(paymentBreakdown?.cardTotal || 0)}
-                    </Text>
-                  </View>
-                </View>
+            <View style={[styles.sectionCard, { backgroundColor: colors.cardBackground }]}>
+              <View style={styles.sectionHeader}>
+                <ShoppingCart size={18} color="#ef4444" />
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>{text.costBreakdown}</Text>
               </View>
-            </View>
-
-            
-
-            <View style={styles.chartSection}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Biểu đồ doanh thu</Text>
-              
-              {revenueData?.revenueData && revenueData.revenueData.length > 0 ? (
-                <View style={[styles.chartContainer, { backgroundColor: colors.cardBackground }]}>
-                  <View style={styles.chart}>
-                    {revenueData.revenueData.map((value, index) => {
-                      let label = '';
-                      const rawLabel = revenueData.labels?.[index];
-                      if (rawLabel) {
-                        const parts = String(rawLabel).split('-');
-                        if (period === 'day') {
-                          if (parts.length === 3) {
-                            label = `${parts[2]}/${parts[1]}`;
-                          } else {
-                            const d = new Date(rawLabel);
-                            label = !isNaN(d.getTime())
-                              ? `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
-                              : String(rawLabel);
-                          }
-                        } else if (period === 'week') {
-                          label = `W${index + 1}`;
-                        } else if (period === 'month') {
-                          if (parts.length >= 2) {
-                            label = `T${parts[1]}`;
-                          } else {
-                            const d = new Date(rawLabel);
-                            label = !isNaN(d.getTime())
-                              ? `T${String(d.getMonth() + 1).padStart(2, '0')}`
-                              : String(rawLabel);
-                          }
-                        } else if (period === 'year') {
-                          label = parts[0] || String(rawLabel);
-                        }
-                      }
-
-                      return (
-                        <View key={index} style={styles.chartBar}>
-                          <View style={[styles.chartBarContainer, { backgroundColor: isDark ? colors.border : '#f0f9ff' }]}>
-                            <View
-                              style={[
-                                styles.chartBarFill,
-                                { height: `${(value / maxChartValue) * 100}%`, backgroundColor: colors.tint },
-                              ]}
-                            />
-                          </View>
-                          <Text style={[styles.chartValue, { color: colors.text }]}>
-                            {formatCurrency(value)}
-                          </Text>
-                          <Text style={[styles.chartLabel, { color: colors.textSecondary }]}>
-                            {label}
-                          </Text>
-                        </View>
-                      );
-                    })}
+              <View style={styles.infoGrid}>
+                <View style={styles.breakdownItem}>
+                  <Receipt size={16} color="#ef4444" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.totalExpense}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(costBreakdown.expenses)}</Text>
                   </View>
                 </View>
-              ) : (
-                <View style={[styles.emptyChart, { backgroundColor: colors.cardBackground }]}>
-                  <Text style={[styles.emptyChartText, { color: colors.textSecondary }]}>Chưa có dữ liệu</Text>
+                <View style={styles.breakdownItem}>
+                  <Receipt size={16} color="#dc2626" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.receiptExpenses}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(costBreakdown.receiptExpenses)}</Text>
+                  </View>
                 </View>
-              )}
-            </View>
-
-            <View style={styles.statsSection}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Thống kê tổng quan</Text>
-              <View style={styles.statsGrid}>
-                <View style={[styles.statItem, { backgroundColor: colors.cardBackground }]}>
-                  <Text style={[styles.statValue, { color: colors.text }]}>{computedStats.totalBookings || 0}</Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Đặt phòng</Text>
+                <View style={styles.breakdownItem}>
+                  <Wallet size={16} color="#0ea5e9" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.salaryCost}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(costBreakdown.salary)}</Text>
+                  </View>
                 </View>
-                <View style={[styles.statItem, { backgroundColor: colors.cardBackground }]}>
-                  <Text style={[styles.statValue, { color: colors.text }]}>{computedStats.totalGuests || 0}</Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Khách hàng</Text>
+                <View style={styles.breakdownItem}>
+                  <Megaphone size={16} color="#f59e0b" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.marketingCost}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(costBreakdown.marketing)}</Text>
+                  </View>
                 </View>
-                <View style={[styles.statItem, { backgroundColor: colors.cardBackground }]}>
-                  <Text style={[styles.statValue, { color: colors.text }]}>{computedStats.occupancyRate || 0}%</Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Tỷ lệ lấp đầy</Text>
+                <View style={styles.breakdownItem}>
+                  <Wrench size={16} color="#8b5cf6" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.maintenanceCost}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(costBreakdown.maintenance)}</Text>
+                  </View>
                 </View>
-                <View style={[styles.statItem, { backgroundColor: colors.cardBackground }]}>
-                  <Text style={[styles.statValue, { color: colors.text }]}>{formatCurrency(computedStats.averageRoomRate || 0)}</Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Giá TB/đêm</Text>
+                <View style={styles.breakdownItem}>
+                  <Package size={16} color="#14b8a6" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.suppliesCost}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(costBreakdown.supplies)}</Text>
+                  </View>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <Zap size={16} color="#22c55e" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.utilitiesCost}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(costBreakdown.utilities)}</Text>
+                  </View>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <Briefcase size={16} color="#64748b" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.serviceCost}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(costBreakdown.serviceCost)}</Text>
+                  </View>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <BarChart3 size={16} color="#94a3b8" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.trainingCost}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(costBreakdown.training)}</Text>
+                  </View>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <ShoppingCart size={16} color="#64748b" />
+                  <View style={styles.breakdownTextWrap}>
+                    <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>{text.otherCost}</Text>
+                    <Text style={[styles.infoValue, { color: colors.text }]}>{formatCurrency(costBreakdown.other)}</Text>
+                  </View>
                 </View>
               </View>
             </View>
@@ -613,236 +805,204 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 20,
   },
-  headerContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
   headerTitle: {
     fontSize: 24,
     fontWeight: '700' as const,
-    color: '#fff',
+    color: '#FFFFFF',
   },
-  hotelName: {
+  headerSubtitle: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.8)',
-    marginTop: 2,
-  },
-  growthBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 4,
-  },
-  growthText: {
-    fontSize: 14,
-    fontWeight: '600' as const,
+    marginTop: 4,
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 16,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 100,
-  },
-  summaryCards: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  mainRevenueCard: {
-    flex: 1.2,
+  contentContainer: {
     padding: 16,
-    borderRadius: 16,
-    minHeight: 140,
-  },
-  mainRevenueIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  mainRevenueLabel: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
-  },
-  mainRevenueValue: {
-    fontSize: 22,
-    fontWeight: '700' as const,
-    color: '#fff',
-    marginTop: 4,
-  },
-  secondaryCards: {
-    flex: 1,
-    gap: 12,
-  },
-  secondaryCard: {
-    flex: 1,
-    borderRadius: 12,
-    padding: 12,
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  secondaryLabel: {
-    fontSize: 11,
-    marginTop: 6,
-  },
-  secondaryValue: {
-    fontSize: 15,
-    fontWeight: '700' as const,
-    marginTop: 2,
-  },
-  breakdownSection: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    marginBottom: 12,
-  },
-  breakdownCards: {
-    gap: 10,
-  },
-  breakdownCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 14,
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  breakdownIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  breakdownInfo: {
-    flex: 1,
-  },
-  breakdownLabel: {
-    fontSize: 13,
-  },
-  breakdownValue: {
-    fontSize: 17,
-    fontWeight: '600' as const,
-    marginTop: 2,
+    paddingBottom: 96,
+    gap: 16,
   },
   periodSelector: {
     flexDirection: 'row',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 4,
-    marginBottom: 20,
   },
   periodOption: {
     flex: 1,
+    borderRadius: 10,
     paddingVertical: 10,
     alignItems: 'center',
-    borderRadius: 8,
   },
-  periodOptionActive: {
-  },
+  periodOptionActive: {},
   periodOptionText: {
     fontSize: 13,
+    fontWeight: '600' as const,
+  },
+  rangeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: '#F0F8FF',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  rangeBadgeText: {
+    fontSize: 12,
+    color: '#1890ff',
     fontWeight: '500' as const,
   },
-  periodOptionTextActive: {
-    color: '#fff',
-  },
-  chartSection: {
-    marginBottom: 20,
-  },
-  chartContainer: {
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  chart: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 120,
-    gap: 8,
-  },
-  chartBar: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  chartBarContainer: {
-    width: '100%',
-    height: 100,
-    borderRadius: 4,
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-  },
-  chartBarFill: {
-    width: '100%',
-    borderRadius: 4,
-  },
-  chartLabel: {
-    fontSize: 10,
-    marginTop: 6,
-  },
-  chartValue: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-    marginTop: 6,
-  },
-  emptyChart: {
-    borderRadius: 16,
-    padding: 40,
+  loadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 60,
   },
-  emptyChartText: {
+  loadingText: {
+    marginTop: 12,
     fontSize: 14,
   },
-  statsSection: {
-    marginBottom: 20,
+  emptyCard: {
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
   },
-  statsGrid: {
+  emptyText: {
+    fontSize: 14,
+  },
+  centerState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  centerTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    textAlign: 'center',
+  },
+  centerSubtitle: {
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  summaryGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 12,
   },
-  statItem: {
+  summaryCard: {
     width: '48%',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 4,
     elevation: 2,
   },
-  statValue: {
-    fontSize: 20,
+  summaryIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  summaryLabel: {
+    fontSize: 12,
+  },
+  summaryValue: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    marginTop: 6,
+  },
+  positiveValue: {
+    color: '#22c55e',
+  },
+  negativeValue: {
+    color: '#ef4444',
+  },
+  sectionCard: {
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 14,
+  },
+  sectionTitle: {
+    fontSize: 16,
     fontWeight: '700' as const,
   },
-  statLabel: {
+  infoGrid: {
+    gap: 12,
+  },
+  infoItem: {
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#F8FAFC',
+  },
+  infoLabel: {
     fontSize: 12,
+  },
+  infoValue: {
+    fontSize: 14,
+    fontWeight: '600' as const,
     marginTop: 4,
+  },
+  dualRow: {
+    gap: 16,
+  },
+  halfCard: {
+    width: '100%',
+  },
+  metricBox: {
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#F8FAFC',
+    marginBottom: 10,
+  },
+  metricLabel: {
+    fontSize: 12,
+  },
+  metricValue: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    marginTop: 4,
+  },
+  warningBox: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 4,
+  },
+  warningText: {
+    color: '#92400E',
+    fontSize: 12,
+    fontWeight: '500' as const,
+  },
+  breakdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: '#F8FAFC',
+  },
+  breakdownTextWrap: {
+    flex: 1,
   },
 });

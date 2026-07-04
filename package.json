@@ -8,9 +8,12 @@
     "start-web-dev": "cross-env DEBUG=expo* npx.cmd expo start --web --clear",
     "build:web": "npx.cmd expo export -p web",
     "build:zalo": "npx.cmd expo export -p web",
-    "build:ios": "npx.cmd eas-cli build --platform ios --profile production",
-    "build:ios:preview": "npx.cmd eas-cli build --platform ios --profile preview",
-    "submit:ios": "npx.cmd eas-cli submit --platform ios --profile production",
+    "build:android": "npx.cmd --yes eas-cli@latest build --platform android --profile production",
+    "build:android:preview": "npx.cmd --yes eas-cli@latest build --platform android --profile preview",
+    "build:ios": "npx.cmd --yes eas-cli@latest build --platform ios --profile production",
+    "build:ios:preview": "npx.cmd --yes eas-cli@latest build --platform ios --profile preview",
+    "submit:android": "npx.cmd --yes eas-cli@latest submit --platform android --profile production --latest",
+    "submit:ios": "npx.cmd --yes eas-cli@latest submit --platform ios --profile production",
     "serve:web": "npx.cmd expo serve",
     "lint": "npx.cmd expo lint"
   },
@@ -58,6 +61,7 @@
     "@babel/core": "^7.25.2",
     "@expo/ngrok": "^4.1.0",
     "@types/react": "~19.1.10",
+    "eas-cli": "^20.5.1",
     "eslint": "^9.31.0",
     "eslint-config-expo": "~10.0.0",
     "typescript": "~5.9.2"

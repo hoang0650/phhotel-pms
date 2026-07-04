@@ -16,7 +16,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { roomsApi } from '@/services/api/rooms';
 import { transactionsApi } from '@/services/api/transactions';
 import { format } from 'date-fns';
-import { vi } from 'date-fns/locale';
+import { enUS, vi } from 'date-fns/locale';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface Expense {
   _id?: string;
@@ -57,6 +58,8 @@ interface Income {
 export default function IncomeExpenseManagementScreen() {
   const { selectedHotelId, hotels, selectHotel, canSelectMultipleHotels, isLoading: hotelsLoading } = useHotel();
   const { user } = useAuth();
+  const { language } = useLanguage();
+  const isVi = language === 'vi';
   const [hotelModalVisible, setHotelModalVisible] = useState(false);
   
   // State for room revenue
@@ -99,59 +102,124 @@ export default function IncomeExpenseManagementScreen() {
   const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'all'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'expense' | 'income'>('all');
   const [methodFilter, setMethodFilter] = useState<'all' | 'cash' | 'bank_transfer' | 'card' | 'other'>('all');
+  const text = useMemo(() => ({
+    cash: isVi ? 'Tiền mặt' : 'Cash',
+    bankTransfer: isVi ? 'Chuyển khoản' : 'Bank transfer',
+    card: isVi ? 'Thẻ' : 'Card',
+    virtualCard: isVi ? 'Thẻ ảo' : 'Virtual card',
+    other: isVi ? 'Khác' : 'Other',
+    supplies: isVi ? 'Vật tư' : 'Supplies',
+    utilities: isVi ? 'Tiện ích' : 'Utilities',
+    salary: isVi ? 'Lương' : 'Salary',
+    maintenance: isVi ? 'Bảo trì' : 'Maintenance',
+    marketing: 'Marketing',
+    service: isVi ? 'Dịch vụ' : 'Service',
+    rental: isVi ? 'Thuê' : 'Rental',
+    error: isVi ? 'Lỗi' : 'Error',
+    success: isVi ? 'Thành công' : 'Success',
+    confirm: isVi ? 'Xác nhận' : 'Confirm',
+    cancel: isVi ? 'Hủy' : 'Cancel',
+    delete: isVi ? 'Xóa' : 'Delete',
+    chooseHotel: isVi ? 'Chọn khách sạn' : 'Select hotel',
+    fillRequired: isVi ? 'Vui lòng điền đầy đủ thông tin bắt buộc' : 'Please fill in all required fields',
+    loadExpenseFailed: isVi ? 'Không thể tải danh sách chi tiêu' : 'Unable to load expenses',
+    loadIncomeFailed: isVi ? 'Không thể tải danh sách thu nhập' : 'Unable to load incomes',
+    createExpenseSuccess: isVi ? 'Tạo phiếu chi thành công' : 'Expense voucher created successfully',
+    createExpenseFailed: isVi ? 'Không thể tạo phiếu chi' : 'Unable to create expense voucher',
+    createIncomeSuccess: isVi ? 'Tạo phiếu thu thành công' : 'Income voucher created successfully',
+    createIncomeFailed: isVi ? 'Không thể tạo phiếu thu' : 'Unable to create income voucher',
+    deleteExpenseConfirm: isVi ? 'Bạn có chắc chắn muốn xóa phiếu chi này?' : 'Do you want to delete this expense voucher?',
+    deleteIncomeConfirm: isVi ? 'Bạn có chắc chắn muốn xóa phiếu thu này?' : 'Do you want to delete this income voucher?',
+    deleteExpenseSuccess: isVi ? 'Xóa phiếu chi thành công' : 'Expense voucher deleted',
+    deleteExpenseFailed: isVi ? 'Không thể xóa phiếu chi' : 'Unable to delete expense voucher',
+    deleteIncomeSuccess: isVi ? 'Xóa phiếu thu thành công' : 'Income voucher deleted',
+    deleteIncomeFailed: isVi ? 'Không thể xóa phiếu thu' : 'Unable to delete income voucher',
+    loading: isVi ? 'Đang tải...' : 'Loading...',
+    title: isVi ? 'Quản lý thu chi' : 'Income & Expense Management',
+    roomRevenue: isVi ? 'Doanh thu phòng' : 'Room revenue',
+    incomeVoucher: isVi ? 'Phiếu thu' : 'Income voucher',
+    expenseVoucher: isVi ? 'Phiếu chi' : 'Expense voucher',
+    netProfit: isVi ? 'Lãi/Lỗ (Thực thu)' : 'Net profit/loss',
+    createIncome: isVi ? 'Tạo phiếu thu' : 'Create income voucher',
+    createExpense: isVi ? 'Tạo phiếu chi' : 'Create expense voucher',
+    searchPlaceholder: isVi ? 'Tìm kiếm theo mô tả, ghi chú, người nhận...' : 'Search by description, notes, recipient...',
+    all: isVi ? 'Tất cả' : 'All',
+    allPaymentMethods: isVi ? 'Tất cả PTTT' : 'All payment methods',
+    recipient: isVi ? 'Người nhận' : 'Recipient',
+    payer: isVi ? 'Người nộp' : 'Payer',
+    noTransactions: isVi ? 'Không có giao dịch nào' : 'No transactions found',
+    expenseModalTitle: isVi ? 'Tạo phiếu chi' : 'Create expense voucher',
+    incomeModalTitle: isVi ? 'Tạo phiếu thu' : 'Create income voucher',
+    amount: isVi ? 'Số tiền' : 'Amount',
+    paymentMethod: isVi ? 'Phương thức thanh toán' : 'Payment method',
+    expenseCategory: isVi ? 'Loại chi phí' : 'Expense category',
+    incomeCategory: isVi ? 'Loại thu nhập' : 'Income category',
+    description: isVi ? 'Mô tả' : 'Description',
+    notes: isVi ? 'Ghi chú' : 'Notes',
+    enterAmount: isVi ? 'Nhập số tiền' : 'Enter amount',
+    enterDescription: isVi ? 'Nhập mô tả' : 'Enter description',
+    enterRecipient: isVi ? 'Nhập người nhận' : 'Enter recipient',
+    enterPayer: isVi ? 'Nhập người nộp' : 'Enter payer',
+    enterNotes: isVi ? 'Nhập ghi chú' : 'Enter notes',
+    expenseList: isVi ? 'Danh sách phiếu chi' : 'Expense vouchers',
+    incomeList: isVi ? 'Danh sách phiếu thu' : 'Income vouchers',
+    noExpense: isVi ? 'Không có phiếu chi' : 'No expense vouchers',
+    noIncome: isVi ? 'Không có phiếu thu' : 'No income vouchers',
+    shiftHandedOver: isVi ? 'Đã giao ca' : 'Shift handed over',
+  }), [isVi]);
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
+    return new Intl.NumberFormat(isVi ? 'vi-VN' : 'en-US', {
       style: 'currency',
       currency: 'VND',
     }).format(amount);
   };
 
   const formatDate = (date: Date | string) => {
-    return format(new Date(date), 'dd/MM/yyyy HH:mm', { locale: vi });
+    return format(new Date(date), 'dd/MM/yyyy HH:mm', { locale: isVi ? vi : enUS });
   };
 
   const getMethodText = (method: string) => {
     switch (method) {
       case 'cash':
-        return 'Tiền mặt';
+        return text.cash;
       case 'bank_transfer':
-        return 'Chuyển khoản';
+        return text.bankTransfer;
       case 'card':
       case 'credit_card':
-        return 'Thẻ';
+        return text.card;
       case 'virtual_card':
-        return 'Thẻ ảo';
+        return text.virtualCard;
       default:
-        return 'Khác';
+        return text.other;
     }
   };
 
   const getExpenseCategoryText = (category: string) => {
     switch (category) {
       case 'supplies':
-        return 'Vật tư';
+        return text.supplies;
       case 'utilities':
-        return 'Tiện ích';
+        return text.utilities;
       case 'salary':
-        return 'Lương';
+        return text.salary;
       case 'maintenance':
-        return 'Bảo trì';
+        return text.maintenance;
       case 'marketing':
-        return 'Marketing';
+        return text.marketing;
       default:
-        return 'Khác';
+        return text.other;
     }
   };
 
   const getIncomeCategoryText = (category: string) => {
     switch (category) {
       case 'service':
-        return 'Dịch vụ';
+        return text.service;
       case 'rental':
-        return 'Thuê';
+        return text.rental;
       default:
-        return 'Khác';
+        return text.other;
     }
   };
 
@@ -185,11 +253,11 @@ export default function IncomeExpenseManagementScreen() {
       setExpenses(response.data || []);
     } catch (error) {
       console.warn('Error loading expenses:', error);
-      Alert.alert('Lỗi', 'Không thể tải danh sách chi tiêu');
+      Alert.alert(text.error, text.loadExpenseFailed);
     } finally {
       setExpenseLoading(false);
     }
-  }, [selectedHotelId, canSelectMultipleHotels, dateFilter]);
+  }, [selectedHotelId, canSelectMultipleHotels, dateFilter, text.error, text.loadExpenseFailed]);
 
   const loadIncomes = useCallback(async () => {
     if (!selectedHotelId && canSelectMultipleHotels) {
@@ -221,11 +289,11 @@ export default function IncomeExpenseManagementScreen() {
       setIncomes(response.data || []);
     } catch (error) {
       console.warn('Error loading incomes:', error);
-      Alert.alert('Lỗi', 'Không thể tải danh sách thu nhập');
+      Alert.alert(text.error, text.loadIncomeFailed);
     } finally {
       setIncomeLoading(false);
     }
-  }, [selectedHotelId, canSelectMultipleHotels, dateFilter]);
+  }, [selectedHotelId, canSelectMultipleHotels, dateFilter, text.error, text.loadIncomeFailed]);
 
   useEffect(() => {
     loadExpenses();
@@ -234,12 +302,12 @@ export default function IncomeExpenseManagementScreen() {
 
   const submitExpense = async () => {
     if (!selectedHotelId) {
-      Alert.alert('Lỗi', 'Vui lòng chọn khách sạn');
+      Alert.alert(text.error, text.chooseHotel);
       return;
     }
     
     if (!expenseForm.amount || !expenseForm.description) {
-      Alert.alert('Lỗi', 'Vui lòng điền đầy đủ thông tin bắt buộc');
+      Alert.alert(text.error, text.fillRequired);
       return;
     }
 
@@ -255,24 +323,24 @@ export default function IncomeExpenseManagementScreen() {
       };
       
       await transactionsApi.createExpense(expenseData);
-      Alert.alert('Thành công', 'Tạo phiếu chi thành công');
+      Alert.alert(text.success, text.createExpenseSuccess);
       setIsExpenseModalVisible(false);
       resetExpenseForm();
       loadExpenses();
     } catch (error) {
       console.warn('Error creating expense:', error);
-      Alert.alert('Lỗi', 'Không thể tạo phiếu chi');
+      Alert.alert(text.error, text.createExpenseFailed);
     }
   };
 
   const submitIncome = async () => {
     if (!selectedHotelId) {
-      Alert.alert('Lỗi', 'Vui lòng chọn khách sạn');
+      Alert.alert(text.error, text.chooseHotel);
       return;
     }
     
     if (!incomeForm.amount || !incomeForm.description) {
-      Alert.alert('Lỗi', 'Vui lòng điền đầy đủ thông tin bắt buộc');
+      Alert.alert(text.error, text.fillRequired);
       return;
     }
 
@@ -288,33 +356,33 @@ export default function IncomeExpenseManagementScreen() {
       };
       
       await transactionsApi.createIncome(incomeData);
-      Alert.alert('Thành công', 'Tạo phiếu thu thành công');
+      Alert.alert(text.success, text.createIncomeSuccess);
       setIsIncomeModalVisible(false);
       resetIncomeForm();
       loadIncomes();
     } catch (error) {
       console.warn('Error creating income:', error);
-      Alert.alert('Lỗi', 'Không thể tạo phiếu thu');
+      Alert.alert(text.error, text.createIncomeFailed);
     }
   };
 
   const deleteExpense = async (expenseId: string) => {
     Alert.alert(
-      'Xác nhận',
-      'Bạn có chắc chắn muốn xóa phiếu chi này?',
+      text.confirm,
+      text.deleteExpenseConfirm,
       [
-        { text: 'Hủy', style: 'cancel' },
+        { text: text.cancel, style: 'cancel' },
         {
-          text: 'Xóa',
+          text: text.delete,
           style: 'destructive',
           onPress: async () => {
             try {
               await transactionsApi.deleteExpense(expenseId);
-              Alert.alert('Thành công', 'Xóa phiếu chi thành công');
+              Alert.alert(text.success, text.deleteExpenseSuccess);
               loadExpenses();
             } catch (error) {
               console.warn('Error deleting expense:', error);
-              Alert.alert('Lỗi', 'Không thể xóa phiếu chi');
+              Alert.alert(text.error, text.deleteExpenseFailed);
             }
           },
         },
@@ -324,21 +392,21 @@ export default function IncomeExpenseManagementScreen() {
 
   const deleteIncome = async (incomeId: string) => {
     Alert.alert(
-      'Xác nhận',
-      'Bạn có chắc chắn muốn xóa phiếu thu này?',
+      text.confirm,
+      text.deleteIncomeConfirm,
       [
-        { text: 'Hủy', style: 'cancel' },
+        { text: text.cancel, style: 'cancel' },
         {
-          text: 'Xóa',
+          text: text.delete,
           style: 'destructive',
           onPress: async () => {
             try {
               await transactionsApi.deleteIncome(incomeId);
-              Alert.alert('Thành công', 'Xóa phiếu thu thành công');
+              Alert.alert(text.success, text.deleteIncomeSuccess);
               loadIncomes();
             } catch (error) {
               console.warn('Error deleting income:', error);
-              Alert.alert('Lỗi', 'Không thể xóa phiếu thu');
+              Alert.alert(text.error, text.deleteIncomeFailed);
             }
           },
         },
@@ -370,7 +438,7 @@ export default function IncomeExpenseManagementScreen() {
   
   const openExpenseModal = useCallback(() => {
     if (!selectedHotelId) {
-      Alert.alert('Lỗi', 'Vui lòng chọn khách sạn');
+      Alert.alert(text.error, text.chooseHotel);
       return;
     }
     setExpenseForm({
@@ -383,11 +451,11 @@ export default function IncomeExpenseManagementScreen() {
     });
     setIsExpenseModalVisible(true);
     loadExpenses();
-  }, [selectedHotelId, loadExpenses]);
+  }, [selectedHotelId, loadExpenses, text.chooseHotel, text.error]);
   
   const openIncomeModal = useCallback(() => {
     if (!selectedHotelId) {
-      Alert.alert('Lỗi', 'Vui lòng chọn khách sạn');
+      Alert.alert(text.error, text.chooseHotel);
       return;
     }
     setIncomeForm({
@@ -400,7 +468,7 @@ export default function IncomeExpenseManagementScreen() {
     });
     setIsIncomeModalVisible(true);
     loadIncomes();
-  }, [selectedHotelId, loadIncomes]);
+  }, [selectedHotelId, loadIncomes, text.chooseHotel, text.error]);
 
   const filteredData = useMemo(() => {
     let data = [];
@@ -449,7 +517,7 @@ export default function IncomeExpenseManagementScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1890ff" />
-        <Text>Đang tải...</Text>
+        <Text>{text.loading}</Text>
       </View>
     );
   }
@@ -458,7 +526,7 @@ export default function IncomeExpenseManagementScreen() {
     <ScrollView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Quản lý thu chi</Text>
+        <Text style={styles.headerTitle}>{text.title}</Text>
         <TouchableOpacity
           style={styles.hotelSelector}
           onPress={() => {
@@ -469,7 +537,7 @@ export default function IncomeExpenseManagementScreen() {
         >
           <Ionicons name="business" size={16} color="#666" />
           <Text style={styles.hotelSelectorText}>
-            {hotels.find(h => h.id === selectedHotelId)?.name || 'Chọn khách sạn'}
+            {hotels.find(h => h.id === selectedHotelId)?.name || text.chooseHotel}
           </Text>
           <Ionicons name="chevron-down" size={16} color="#666" />
         </TouchableOpacity>
@@ -480,7 +548,7 @@ export default function IncomeExpenseManagementScreen() {
         <View style={[styles.summaryCard, styles.roomRevenueCard]}>
           <Ionicons name="bed" size={24} color="#722ed1" />
           <View style={styles.summaryText}>
-            <Text style={styles.summaryLabel}>Doanh thu phòng</Text>
+            <Text style={styles.summaryLabel}>{text.roomRevenue}</Text>
             <Text style={styles.summaryAmount}>+{formatCurrency(roomRevenue)}</Text>
           </View>
         </View>
@@ -488,7 +556,7 @@ export default function IncomeExpenseManagementScreen() {
         <View style={[styles.summaryCard, styles.incomeCard]}>
           <Ionicons name="trending-up" size={24} color="#52c41a" />
           <View style={styles.summaryText}>
-            <Text style={styles.summaryLabel}>Phiếu thu</Text>
+            <Text style={styles.summaryLabel}>{text.incomeVoucher}</Text>
             <Text style={styles.summaryAmount}>+{formatCurrency(totalIncome)}</Text>
           </View>
         </View>
@@ -496,7 +564,7 @@ export default function IncomeExpenseManagementScreen() {
         <View style={[styles.summaryCard, styles.expenseCard]}>
           <Ionicons name="trending-down" size={24} color="#ff4d4f" />
           <View style={styles.summaryText}>
-            <Text style={styles.summaryLabel}>Phiếu chi</Text>
+            <Text style={styles.summaryLabel}>{text.expenseVoucher}</Text>
             <Text style={styles.summaryAmount}>-{formatCurrency(totalExpense)}</Text>
           </View>
         </View>
@@ -504,7 +572,7 @@ export default function IncomeExpenseManagementScreen() {
         <View style={[styles.summaryCard, netBalance >= 0 ? styles.profitCard : styles.lossCard]}>
           <Ionicons name="wallet" size={24} color={netBalance >= 0 ? '#1890ff' : '#ff4d4f'} />
           <View style={styles.summaryText}>
-            <Text style={styles.summaryLabel}>Lãi/Lỗ (Thực thu)</Text>
+            <Text style={styles.summaryLabel}>{text.netProfit}</Text>
             <Text style={styles.summaryAmount}>
               {netBalance >= 0 ? '+' : ''}{formatCurrency(netBalance)}
             </Text>
@@ -519,7 +587,7 @@ export default function IncomeExpenseManagementScreen() {
           onPress={openIncomeModal}
         >
           <Ionicons name="add-circle" size={20} color="#fff" />
-          <Text style={styles.actionButtonText}>Tạo phiếu thu</Text>
+          <Text style={styles.actionButtonText}>{text.createIncome}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -527,7 +595,7 @@ export default function IncomeExpenseManagementScreen() {
           onPress={openExpenseModal}
         >
           <Ionicons name="remove-circle" size={20} color="#fff" />
-          <Text style={styles.actionButtonText}>Tạo phiếu chi</Text>
+          <Text style={styles.actionButtonText}>{text.createExpense}</Text>
         </TouchableOpacity>
       </View>
 
@@ -535,7 +603,7 @@ export default function IncomeExpenseManagementScreen() {
       <View style={styles.filterContainer}>
         <TextInput
           style={styles.searchInput}
-          placeholder="Tìm kiếm theo mô tả, ghi chú, người nhận..."
+          placeholder={text.searchPlaceholder}
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
@@ -546,7 +614,7 @@ export default function IncomeExpenseManagementScreen() {
             onPress={() => setTypeFilter('all')}
           >
             <Text style={[styles.filterButtonText, typeFilter === 'all' && styles.filterButtonTextActive]}>
-              Tất cả
+              {text.all}
             </Text>
           </TouchableOpacity>
           
@@ -555,7 +623,7 @@ export default function IncomeExpenseManagementScreen() {
             onPress={() => setTypeFilter('income')}
           >
             <Text style={[styles.filterButtonText, typeFilter === 'income' && styles.filterButtonTextActive]}>
-              Phiếu thu
+              {text.incomeVoucher}
             </Text>
           </TouchableOpacity>
           
@@ -564,7 +632,7 @@ export default function IncomeExpenseManagementScreen() {
             onPress={() => setTypeFilter('expense')}
           >
             <Text style={[styles.filterButtonText, typeFilter === 'expense' && styles.filterButtonTextActive]}>
-              Phiếu chi
+              {text.expenseVoucher}
             </Text>
           </TouchableOpacity>
         </View>
@@ -575,7 +643,7 @@ export default function IncomeExpenseManagementScreen() {
             onPress={() => setMethodFilter('all')}
           >
             <Text style={[styles.filterButtonText, methodFilter === 'all' && styles.filterButtonTextActive]}>
-              Tất cả PTTT
+              {text.allPaymentMethods}
             </Text>
           </TouchableOpacity>
           
@@ -584,7 +652,7 @@ export default function IncomeExpenseManagementScreen() {
             onPress={() => setMethodFilter('cash')}
           >
             <Text style={[styles.filterButtonText, methodFilter === 'cash' && styles.filterButtonTextActive]}>
-              Tiền mặt
+              {text.cash}
             </Text>
           </TouchableOpacity>
           
@@ -593,7 +661,7 @@ export default function IncomeExpenseManagementScreen() {
             onPress={() => setMethodFilter('bank_transfer')}
           >
             <Text style={[styles.filterButtonText, methodFilter === 'bank_transfer' && styles.filterButtonTextActive]}>
-              Chuyển khoản
+              {text.bankTransfer}
             </Text>
           </TouchableOpacity>
           
@@ -602,7 +670,7 @@ export default function IncomeExpenseManagementScreen() {
             onPress={() => setMethodFilter('card')}
           >
             <Text style={[styles.filterButtonText, methodFilter === 'card' && styles.filterButtonTextActive]}>
-              Thẻ
+              {text.card}
             </Text>
           </TouchableOpacity>
         </View>
@@ -615,7 +683,7 @@ export default function IncomeExpenseManagementScreen() {
             <View style={styles.transactionHeader}>
               <View style={[styles.transactionTypeBadge, item.type === 'income' ? styles.incomeBadge : styles.expenseBadge]}>
                 <Text style={styles.transactionTypeText}>
-                  {item.type === 'income' ? 'THU' : 'CHI'}
+                  {item.type === 'income' ? (isVi ? 'THU' : 'IN') : (isVi ? 'CHI' : 'OUT')}
                 </Text>
               </View>
               <Text style={styles.transactionDate}>{formatDate(item.createdAt || '')}</Text>
@@ -640,10 +708,10 @@ export default function IncomeExpenseManagementScreen() {
                   {item.type === 'income' ? '+' : '-'}{formatCurrency(item.amount)}
                 </Text>
                 {(item as Expense).recipient && (
-                  <Text style={styles.transactionRecipient}>Người nhận: {(item as Expense).recipient}</Text>
+                  <Text style={styles.transactionRecipient}>{text.recipient}: {(item as Expense).recipient}</Text>
                 )}
                 {(item as Income).payer && (
-                  <Text style={styles.transactionPayer}>Người nộp: {(item as Income).payer}</Text>
+                  <Text style={styles.transactionPayer}>{text.payer}: {(item as Income).payer}</Text>
                 )}
               </View>
             </View>
@@ -655,11 +723,11 @@ export default function IncomeExpenseManagementScreen() {
                   onPress={() => item.type === 'expense' ? deleteExpense(item._id!) : deleteIncome(item._id!)}
                 >
                   <Ionicons name="trash" size={16} color="#ff4d4f" />
-                  <Text style={styles.deleteButtonText}>Xóa</Text>
+                  <Text style={styles.deleteButtonText}>{text.delete}</Text>
                 </TouchableOpacity>
               )}
               {item.shiftHandoverId && (
-                <Text style={styles.shiftHandoveredText}>Đã giao ca</Text>
+                <Text style={styles.shiftHandoveredText}>{text.shiftHandedOver}</Text>
               )}
             </View>
           </View>
@@ -668,7 +736,7 @@ export default function IncomeExpenseManagementScreen() {
         {filteredData.length === 0 && (
           <View style={styles.emptyContainer}>
             <Ionicons name="document-text" size={48} color="#ccc" />
-            <Text style={styles.emptyText}>Không có giao dịch nào</Text>
+            <Text style={styles.emptyText}>{text.noTransactions}</Text>
           </View>
         )}
       </View>
@@ -682,7 +750,7 @@ export default function IncomeExpenseManagementScreen() {
       >
         <ScrollView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Tạo phiếu chi</Text>
+            <Text style={styles.modalTitle}>{text.expenseModalTitle}</Text>
             <TouchableOpacity onPress={() => setIsExpenseModalVisible(false)}>
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
@@ -690,10 +758,10 @@ export default function IncomeExpenseManagementScreen() {
           
           <View style={styles.modalContent}>
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Số tiền <Text style={styles.required}>*</Text></Text>
+              <Text style={styles.formLabel}>{text.amount} <Text style={styles.required}>*</Text></Text>
               <TextInput
                 style={styles.formInput}
-                placeholder="Nhập số tiền"
+                placeholder={text.enterAmount}
                 keyboardType="numeric"
                 value={expenseForm.amount}
                 onChangeText={(text) => setExpenseForm({...expenseForm, amount: text})}
@@ -701,13 +769,13 @@ export default function IncomeExpenseManagementScreen() {
             </View>
             
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Phương thức thanh toán <Text style={styles.required}>*</Text></Text>
+              <Text style={styles.formLabel}>{text.paymentMethod} <Text style={styles.required}>*</Text></Text>
               <View style={styles.radioGroup}>
                 {[
-                  {value: 'cash', label: 'Tiền mặt'},
-                  {value: 'bank_transfer', label: 'Chuyển khoản'},
-                  {value: 'card', label: 'Thẻ'},
-                  {value: 'other', label: 'Khác'}
+                  {value: 'cash', label: text.cash},
+                  {value: 'bank_transfer', label: text.bankTransfer},
+                  {value: 'card', label: text.card},
+                  {value: 'other', label: text.other}
                 ].map((option) => (
                   <TouchableOpacity
                     key={option.value}
@@ -723,15 +791,15 @@ export default function IncomeExpenseManagementScreen() {
             </View>
             
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Loại chi phí <Text style={styles.required}>*</Text></Text>
+              <Text style={styles.formLabel}>{text.expenseCategory} <Text style={styles.required}>*</Text></Text>
               <View style={styles.radioGroup}>
                 {[
-                  {value: 'supplies', label: 'Vật tư'},
-                  {value: 'utilities', label: 'Tiện ích'},
-                  {value: 'salary', label: 'Lương'},
-                  {value: 'maintenance', label: 'Bảo trì'},
-                  {value: 'marketing', label: 'Marketing'},
-                  {value: 'other', label: 'Khác'}
+                  {value: 'supplies', label: text.supplies},
+                  {value: 'utilities', label: text.utilities},
+                  {value: 'salary', label: text.salary},
+                  {value: 'maintenance', label: text.maintenance},
+                  {value: 'marketing', label: text.marketing},
+                  {value: 'other', label: text.other}
                 ].map((option) => (
                   <TouchableOpacity
                     key={option.value}
@@ -747,30 +815,30 @@ export default function IncomeExpenseManagementScreen() {
             </View>
             
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Mô tả <Text style={styles.required}>*</Text></Text>
+              <Text style={styles.formLabel}>{text.description} <Text style={styles.required}>*</Text></Text>
               <TextInput
                 style={styles.formInput}
-                placeholder="Nhập mô tả"
+                placeholder={text.enterDescription}
                 value={expenseForm.description}
                 onChangeText={(text) => setExpenseForm({...expenseForm, description: text})}
               />
             </View>
             
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Người nhận</Text>
+              <Text style={styles.formLabel}>{text.recipient}</Text>
               <TextInput
                 style={styles.formInput}
-                placeholder="Nhập người nhận"
+                placeholder={text.enterRecipient}
                 value={expenseForm.recipient}
                 onChangeText={(text) => setExpenseForm({...expenseForm, recipient: text})}
               />
             </View>
             
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Ghi chú</Text>
+              <Text style={styles.formLabel}>{text.notes}</Text>
               <TextInput
                 style={[styles.formInput, styles.formTextArea]}
-                placeholder="Nhập ghi chú"
+                placeholder={text.enterNotes}
                 multiline
                 numberOfLines={3}
                 value={expenseForm.notes}
@@ -779,14 +847,14 @@ export default function IncomeExpenseManagementScreen() {
             </View>
             
             <TouchableOpacity style={styles.submitButton} onPress={submitExpense}>
-              <Text style={styles.submitButtonText}>Tạo phiếu chi</Text>
+              <Text style={styles.submitButtonText}>{text.createExpense}</Text>
             </TouchableOpacity>
             
-            <Text style={styles.modalSectionTitle}>Danh sách phiếu chi</Text>
+            <Text style={styles.modalSectionTitle}>{text.expenseList}</Text>
             {expenseLoading ? (
               <View style={styles.loadingSmall}>
                 <ActivityIndicator size="small" color="#1890ff" />
-                <Text>Đang tải...</Text>
+                <Text>{text.loading}</Text>
               </View>
             ) : (
               <View style={styles.modalListContainer}>
@@ -806,7 +874,7 @@ export default function IncomeExpenseManagementScreen() {
                         </Text>
                         <Text style={styles.transactionMethod}>{getMethodText(expense.method)}</Text>
                         {!!expense.recipient && (
-                          <Text style={styles.transactionRecipient}>Người nhận: {expense.recipient}</Text>
+                          <Text style={styles.transactionRecipient}>{text.recipient}: {expense.recipient}</Text>
                         )}
                       </View>
                       <View style={styles.transactionActions}>
@@ -816,11 +884,11 @@ export default function IncomeExpenseManagementScreen() {
                             onPress={() => expense._id && deleteExpense(expense._id)}
                           >
                             <Ionicons name="trash" size={16} color="#ff4d4f" />
-                            <Text style={styles.deleteButtonText}>Xóa</Text>
+                            <Text style={styles.deleteButtonText}>{text.delete}</Text>
                           </TouchableOpacity>
                         )}
                         {!!expense.shiftHandoverId && (
-                          <Text style={styles.shiftHandoveredText}>Đã giao ca</Text>
+                          <Text style={styles.shiftHandoveredText}>{text.shiftHandedOver}</Text>
                         )}
                       </View>
                     </View>
@@ -829,7 +897,7 @@ export default function IncomeExpenseManagementScreen() {
                 {expenses.length === 0 && (
                   <View style={styles.emptyContainer}>
                     <Ionicons name="document-text" size={48} color="#ccc" />
-                    <Text style={styles.emptyText}>Không có phiếu chi</Text>
+                    <Text style={styles.emptyText}>{text.noExpense}</Text>
                   </View>
                 )}
               </View>
@@ -847,7 +915,7 @@ export default function IncomeExpenseManagementScreen() {
       >
         <ScrollView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Tạo phiếu thu</Text>
+            <Text style={styles.modalTitle}>{text.incomeModalTitle}</Text>
             <TouchableOpacity onPress={() => setIsIncomeModalVisible(false)}>
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>
@@ -855,10 +923,10 @@ export default function IncomeExpenseManagementScreen() {
           
           <View style={styles.modalContent}>
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Số tiền <Text style={styles.required}>*</Text></Text>
+              <Text style={styles.formLabel}>{text.amount} <Text style={styles.required}>*</Text></Text>
               <TextInput
                 style={styles.formInput}
-                placeholder="Nhập số tiền"
+                placeholder={text.enterAmount}
                 keyboardType="numeric"
                 value={incomeForm.amount}
                 onChangeText={(text) => setIncomeForm({...incomeForm, amount: text})}
@@ -866,13 +934,13 @@ export default function IncomeExpenseManagementScreen() {
             </View>
             
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Phương thức thanh toán <Text style={styles.required}>*</Text></Text>
+              <Text style={styles.formLabel}>{text.paymentMethod} <Text style={styles.required}>*</Text></Text>
               <View style={styles.radioGroup}>
                 {[
-                  {value: 'cash', label: 'Tiền mặt'},
-                  {value: 'bank_transfer', label: 'Chuyển khoản'},
-                  {value: 'card', label: 'Thẻ'},
-                  {value: 'other', label: 'Khác'}
+                  {value: 'cash', label: text.cash},
+                  {value: 'bank_transfer', label: text.bankTransfer},
+                  {value: 'card', label: text.card},
+                  {value: 'other', label: text.other}
                 ].map((option) => (
                   <TouchableOpacity
                     key={option.value}
@@ -888,12 +956,12 @@ export default function IncomeExpenseManagementScreen() {
             </View>
             
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Loại thu nhập <Text style={styles.required}>*</Text></Text>
+              <Text style={styles.formLabel}>{text.incomeCategory} <Text style={styles.required}>*</Text></Text>
               <View style={styles.radioGroup}>
                 {[
-                  {value: 'service', label: 'Dịch vụ'},
-                  {value: 'rental', label: 'Thuê'},
-                  {value: 'other', label: 'Khác'}
+                  {value: 'service', label: text.service},
+                  {value: 'rental', label: text.rental},
+                  {value: 'other', label: text.other}
                 ].map((option) => (
                   <TouchableOpacity
                     key={option.value}
@@ -909,30 +977,30 @@ export default function IncomeExpenseManagementScreen() {
             </View>
             
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Mô tả <Text style={styles.required}>*</Text></Text>
+              <Text style={styles.formLabel}>{text.description} <Text style={styles.required}>*</Text></Text>
               <TextInput
                 style={styles.formInput}
-                placeholder="Nhập mô tả"
+                placeholder={text.enterDescription}
                 value={incomeForm.description}
                 onChangeText={(text) => setIncomeForm({...incomeForm, description: text})}
               />
             </View>
             
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Người nộp</Text>
+              <Text style={styles.formLabel}>{text.payer}</Text>
               <TextInput
                 style={styles.formInput}
-                placeholder="Nhập người nộp"
+                placeholder={text.enterPayer}
                 value={incomeForm.payer}
                 onChangeText={(text) => setIncomeForm({...incomeForm, payer: text})}
               />
             </View>
             
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Ghi chú</Text>
+              <Text style={styles.formLabel}>{text.notes}</Text>
               <TextInput
                 style={[styles.formInput, styles.formTextArea]}
-                placeholder="Nhập ghi chú"
+                placeholder={text.enterNotes}
                 multiline
                 numberOfLines={3}
                 value={incomeForm.notes}
@@ -941,14 +1009,14 @@ export default function IncomeExpenseManagementScreen() {
             </View>
             
             <TouchableOpacity style={styles.submitButton} onPress={submitIncome}>
-              <Text style={styles.submitButtonText}>Tạo phiếu thu</Text>
+              <Text style={styles.submitButtonText}>{text.createIncome}</Text>
             </TouchableOpacity>
             
-            <Text style={styles.modalSectionTitle}>Danh sách phiếu thu</Text>
+            <Text style={styles.modalSectionTitle}>{text.incomeList}</Text>
             {incomeLoading ? (
               <View style={styles.loadingSmall}>
                 <ActivityIndicator size="small" color="#1890ff" />
-                <Text>Đang tải...</Text>
+                <Text>{text.loading}</Text>
               </View>
             ) : (
               <View style={styles.modalListContainer}>
@@ -968,7 +1036,7 @@ export default function IncomeExpenseManagementScreen() {
                         </Text>
                         <Text style={styles.transactionMethod}>{getMethodText(income.method)}</Text>
                         {!!income.payer && (
-                          <Text style={styles.transactionPayer}>Người nộp: {income.payer}</Text>
+                          <Text style={styles.transactionPayer}>{text.payer}: {income.payer}</Text>
                         )}
                       </View>
                       <View style={styles.transactionActions}>
@@ -978,11 +1046,11 @@ export default function IncomeExpenseManagementScreen() {
                             onPress={() => income._id && deleteIncome(income._id)}
                           >
                             <Ionicons name="trash" size={16} color="#ff4d4f" />
-                            <Text style={styles.deleteButtonText}>Xóa</Text>
+                            <Text style={styles.deleteButtonText}>{text.delete}</Text>
                           </TouchableOpacity>
                         )}
                         {!!income.shiftHandoverId && (
-                          <Text style={styles.shiftHandoveredText}>Đã giao ca</Text>
+                          <Text style={styles.shiftHandoveredText}>{text.shiftHandedOver}</Text>
                         )}
                       </View>
                     </View>
@@ -991,7 +1059,7 @@ export default function IncomeExpenseManagementScreen() {
                 {incomes.length === 0 && (
                   <View style={styles.emptyContainer}>
                     <Ionicons name="document-text" size={48} color="#ccc" />
-                    <Text style={styles.emptyText}>Không có phiếu thu</Text>
+                    <Text style={styles.emptyText}>{text.noIncome}</Text>
                   </View>
                 )}
               </View>
@@ -1010,7 +1078,7 @@ export default function IncomeExpenseManagementScreen() {
         <View style={styles.hotelModalBackdrop}>
           <View style={styles.hotelModalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn Khách Sạn</Text>
+              <Text style={styles.modalTitle}>{text.chooseHotel}</Text>
               <TouchableOpacity onPress={() => setHotelModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
@@ -1019,7 +1087,7 @@ export default function IncomeExpenseManagementScreen() {
               {hotelsLoading ? (
                 <View style={styles.loadingSmall}>
                   <ActivityIndicator size="small" color="#1890ff" />
-                  <Text>Đang tải khách sạn...</Text>
+                  <Text>{isVi ? 'Đang tải khách sạn...' : 'Loading hotels...'}</Text>
                 </View>
               ) : (
                 hotels.map((hotel) => (

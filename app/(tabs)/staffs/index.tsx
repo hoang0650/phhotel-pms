@@ -31,6 +31,7 @@ import Colors from '@/constants/colors';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useHotel } from '@/contexts/HotelContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { API_ENDPOINTS, apiClient, authApi, staffsApi } from '@/services/api';
 import { ApiUser } from '@/services/api/auth';
 import { extractId } from '@/services/api/utils';
@@ -124,6 +125,7 @@ export default function StaffsScreen() {
   const { selectedHotelId } = useHotel();
   const { isDark, colors } = useTheme();
   const { user, isAdmin, isBusiness } = useAuth();
+  const { language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'staffs' | 'salary'>('staffs');
   const [selectedDepartment, setSelectedDepartment] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -172,6 +174,108 @@ export default function StaffsScreen() {
     permissions: ['view'],
     notes: '',
   });
+  const isVi = language === 'vi';
+  const text = useMemo(() => ({
+    active: isVi ? 'Dang lam' : 'Active',
+    onLeave: isVi ? 'Nghi phep' : 'On leave',
+    terminated: isVi ? 'Nghi viec' : 'Terminated',
+    all: isVi ? 'Tat ca' : 'All',
+    management: isVi ? 'Quan ly' : 'Management',
+    reception: isVi ? 'Le tan' : 'Reception',
+    housekeeping: isVi ? 'Buong phong' : 'Housekeeping',
+    kitchen: isVi ? 'Bep' : 'Kitchen',
+    security: isVi ? 'Bao ve' : 'Security',
+    manager: isVi ? 'Quan ly' : 'Manager',
+    receptionist: isVi ? 'Le tan' : 'Receptionist',
+    housekeeper: isVi ? 'Buong phong' : 'Housekeeper',
+    maintenance: isVi ? 'Bao tri' : 'Maintenance',
+    other: isVi ? 'Khac' : 'Other',
+    male: isVi ? 'Nam' : 'Male',
+    female: isVi ? 'Nu' : 'Female',
+    view: isVi ? 'Xem' : 'View',
+    create: isVi ? 'Tao' : 'Create',
+    edit: isVi ? 'Sua' : 'Edit',
+    delete: isVi ? 'Xoa' : 'Delete',
+    manageRooms: isVi ? 'Quan ly phong' : 'Manage rooms',
+    manageBookings: isVi ? 'Quan ly dat phong' : 'Manage bookings',
+    morning: isVi ? 'Ca sang' : 'Morning shift',
+    afternoon: isVi ? 'Ca chieu' : 'Afternoon shift',
+    night: isVi ? 'Ca toi' : 'Night shift',
+    fullDay: isVi ? 'Ca ngay' : 'Full day',
+    scheduled: isVi ? 'Da len lich' : 'Scheduled',
+    completed: isVi ? 'Hoan thanh' : 'Completed',
+    absent: isVi ? 'Vang mat' : 'Absent',
+    late: isVi ? 'Di muon' : 'Late',
+    success: isVi ? 'Thanh cong' : 'Success',
+    notice: isVi ? 'Thong bao' : 'Notice',
+    confirm: isVi ? 'Xac nhan' : 'Confirm',
+    paySuccess: isVi ? 'Da thanh toan luong thanh cong' : 'Salary paid successfully',
+    addFailed: isVi ? 'Khong the them nhan vien' : 'Unable to add staff',
+    addSuccess: isVi ? 'Da them nhan vien' : 'Staff added',
+    updateFailed: isVi ? 'Khong the cap nhat nhan vien' : 'Unable to update staff',
+    updateSuccess: isVi ? 'Da cap nhat nhan vien' : 'Staff updated',
+    deleteFailed: isVi ? 'Khong the xoa nhan vien' : 'Unable to delete staff',
+    deleteSuccess: isVi ? 'Da xoa nhan vien' : 'Staff deleted',
+    confirmPaySalary: isVi ? 'Ban co chac muon thanh toan luong cho nhan vien nay?' : 'Do you want to pay salary for this staff?',
+    cancel: isVi ? 'Huy' : 'Cancel',
+    pay: isVi ? 'Thanh toan' : 'Pay',
+    noPermission: isVi ? 'Ban khong co quyen thuc hien thao tac nay' : 'You do not have permission for this action',
+    selectHotelFirst: isVi ? 'Vui long chon khach san truoc' : 'Please select a hotel first',
+    noAvailableAccount: isVi ? 'Khong co tai khoan kha dung de gan' : 'No available accounts to assign',
+    chooseAccount: isVi ? 'Vui long chon tai khoan' : 'Please select an account',
+    invalidAccount: isVi ? 'Tai khoan da duoc gan hoac khong hop le' : 'Account is already assigned or invalid',
+    hotelRequired: isVi ? 'Vui long chon khach san' : 'Please select a hotel',
+    nameRequired: isVi ? 'Vui long nhap ho va ten' : 'Please enter first and last name',
+    phoneRequired: isVi ? 'Vui long nhap so dien thoai' : 'Please enter a phone number',
+    confirmDeleteStaff: (name: string) => isVi
+      ? (name ? `Ban co chac muon xoa nhan vien ${name}?` : 'Ban co chac muon xoa nhan vien nay?')
+      : (name ? `Do you want to delete staff ${name}?` : 'Do you want to delete this staff?'),
+    title: isVi ? 'Nhan vien' : 'Staffs',
+    total: isVi ? 'Tong so' : 'Total',
+    list: isVi ? 'Danh sach' : 'List',
+    salary: isVi ? 'Luong' : 'Salary',
+    searchStaff: isVi ? 'Tim kiem nhan vien...' : 'Search staffs...',
+    notFound: isVi ? 'Khong tim thay nhan vien' : 'No staffs found',
+    salaryFund: isVi ? 'Tong quy luong' : 'Total salary fund',
+    pendingPayment: isVi ? 'Cho thanh toan' : 'Pending payment',
+    month: isVi ? 'Thang' : 'Month',
+    basicSalary: isVi ? 'Luong co ban' : 'Base salary',
+    bonus: isVi ? 'Thuong' : 'Bonus',
+    deduction: isVi ? 'Khau tru' : 'Deduction',
+    netSalary: isVi ? 'Thuc lanh' : 'Net salary',
+    noPendingSalary: isVi ? 'Khong co luong cho thanh toan' : 'No pending salaries',
+    staffInfo: isVi ? 'Thong tin nhan vien' : 'Staff details',
+    position: isVi ? 'Chuc vu' : 'Position',
+    phone: isVi ? 'Dien thoai' : 'Phone',
+    email: 'Email',
+    startDate: isVi ? 'Ngay bat dau' : 'Start date',
+    personalInfo: isVi ? 'Thong tin ca nhan' : 'Personal information',
+    firstName: isVi ? 'Ho' : 'First name',
+    lastName: isVi ? 'Ten' : 'Last name',
+    gender: isVi ? 'Gioi tinh' : 'Gender',
+    nationality: isVi ? 'Quoc tich' : 'Nationality',
+    documentNumber: isVi ? 'So giay to' : 'Document number',
+    contactInfo: isVi ? 'Thong tin lien he' : 'Contact information',
+    address: isVi ? 'Dia chi' : 'Address',
+    emergencyContact: isVi ? 'Lien he khan' : 'Emergency contact',
+    permissions: isVi ? 'Quyen han' : 'Permissions',
+    schedule: isVi ? 'Lich lam viec' : 'Work schedule',
+    notes: isVi ? 'Ghi chu' : 'Notes',
+    editStaff: isVi ? 'Chinh sua' : 'Edit',
+    addStaff: isVi ? 'Them nhan vien' : 'Add staff',
+    updateStaff: isVi ? 'Cap nhat nhan vien' : 'Update staff',
+    account: isVi ? 'Tai khoan' : 'Account',
+    accountHelperLocked: isVi ? 'Khong the doi tai khoan khi chinh sua' : 'Account cannot be changed while editing',
+    accountHelperAvailable: (count: number) => isVi ? `Co ${count} tai khoan kha dung` : `${count} accounts available`,
+    accountHelperNone: isVi ? 'Khong co tai khoan kha dung' : 'No available accounts',
+    chooseUser: isVi ? 'Chon tai khoan' : 'Select account',
+    searchUser: isVi ? 'Tim theo ten, email hoac vai tro' : 'Search by name, email, or role',
+    selected: isVi ? 'Da chon' : 'Selected',
+    noMatchingUser: isVi ? 'Khong co tai khoan phu hop' : 'No matching accounts',
+    saveChanges: isVi ? 'Luu thay doi' : 'Save changes',
+    addShift: isVi ? 'Them ca lam' : 'Add shift',
+    removeShift: isVi ? 'Xoa ca lam' : 'Remove shift',
+  }), [isVi]);
 
   const { data: staffs = [], isLoading: staffsLoading, refetch: refetchStaffs } = useQuery({
     queryKey: ['staffs', selectedHotelId],
@@ -284,7 +388,7 @@ export default function StaffsScreen() {
       staffsApi.paySalary(staffId, recordId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['salaryRecords', selectedHotelId] });
-      Alert.alert('Thành công', 'Đã thanh toán lương thành công');
+      Alert.alert(text.success, text.paySuccess);
     },
   });
 
@@ -292,15 +396,15 @@ export default function StaffsScreen() {
     mutationFn: (payload: Omit<Staff, 'id'>) => staffsApi.create(payload),
     onSuccess: result => {
       if (!result) {
-        Alert.alert('Thông báo', 'Không thể thêm nhân viên');
+        Alert.alert(text.notice, text.addFailed);
         return;
       }
       queryClient.invalidateQueries({ queryKey: ['staffs'] });
       setStaffFormVisible(false);
-      Alert.alert('Thông báo', 'Đã thêm nhân viên');
+      Alert.alert(text.notice, text.addSuccess);
     },
     onError: () => {
-      Alert.alert('Thông báo', 'Không thể thêm nhân viên');
+      Alert.alert(text.notice, text.addFailed);
     },
   });
 
@@ -309,15 +413,15 @@ export default function StaffsScreen() {
       staffsApi.update(id, payload),
     onSuccess: result => {
       if (!result) {
-        Alert.alert('Thông báo', 'Không thể cập nhật nhân viên');
+        Alert.alert(text.notice, text.updateFailed);
         return;
       }
       queryClient.invalidateQueries({ queryKey: ['staffs'] });
       setStaffFormVisible(false);
-      Alert.alert('Thông báo', 'Đã cập nhật nhân viên');
+      Alert.alert(text.notice, text.updateSuccess);
     },
     onError: () => {
-      Alert.alert('Thông báo', 'Không thể cập nhật nhân viên');
+      Alert.alert(text.notice, text.updateFailed);
     },
   });
 
@@ -325,15 +429,15 @@ export default function StaffsScreen() {
     mutationFn: (id: string) => staffsApi.delete(id),
     onSuccess: result => {
       if (!result) {
-        Alert.alert('Thông báo', 'Không thể xóa nhân viên');
+        Alert.alert(text.notice, text.deleteFailed);
         return;
       }
       queryClient.invalidateQueries({ queryKey: ['staffs'] });
       setStaffModalVisible(false);
-      Alert.alert('Thông báo', 'Đã xóa nhân viên');
+      Alert.alert(text.notice, text.deleteSuccess);
     },
     onError: () => {
-      Alert.alert('Thông báo', 'Không thể xóa nhân viên');
+      Alert.alert(text.notice, text.deleteFailed);
     },
   });
 
@@ -360,6 +464,56 @@ export default function StaffsScreen() {
 
   const getStaffStatus = (staff: Staff) =>
     normalizeStaffStatus(staff.employmentInfo?.status || staff.status);
+  const statusLabels = useMemo(() => ({
+    active: text.active,
+    on_leave: text.onLeave,
+    terminated: text.terminated,
+  }), [text.active, text.onLeave, text.terminated]);
+  const departments = useMemo(() => ([
+    { id: 'all', name: text.all },
+    { id: 'management', name: text.management },
+    { id: 'reception', name: text.reception },
+    { id: 'housekeeping', name: text.housekeeping },
+    { id: 'kitchen', name: text.kitchen },
+    { id: 'security', name: text.security },
+  ]), [text]);
+  const positionOptions = useMemo(() => ([
+    { value: 'manager', label: text.manager },
+    { value: 'receptionist', label: text.receptionist },
+    { value: 'housekeeper', label: text.housekeeper },
+    { value: 'maintenance', label: text.maintenance },
+    { value: 'other', label: text.other },
+  ]), [text]);
+  const statusOptions = useMemo(() => ([
+    { value: 'active', label: text.active },
+    { value: 'on_leave', label: text.onLeave },
+    { value: 'terminated', label: text.terminated },
+  ]), [text]);
+  const genderOptions = useMemo(() => ([
+    { value: 'male', label: text.male },
+    { value: 'female', label: text.female },
+    { value: 'other', label: text.other },
+  ]), [text]);
+  const permissionOptions: { value: StaffPermission; label: string }[] = useMemo(() => ([
+    { value: 'view', label: text.view },
+    { value: 'create', label: text.create },
+    { value: 'edit', label: text.edit },
+    { value: 'delete', label: text.delete },
+    { value: 'manage_rooms', label: text.manageRooms },
+    { value: 'manage_bookings', label: text.manageBookings },
+  ]), [text]);
+  const shiftOptions = useMemo(() => ([
+    { value: 'morning', label: text.morning },
+    { value: 'afternoon', label: text.afternoon },
+    { value: 'night', label: text.night },
+    { value: 'full-day', label: text.fullDay },
+  ]), [text]);
+  const scheduleStatusOptions = useMemo(() => ([
+    { value: 'scheduled', label: text.scheduled },
+    { value: 'completed', label: text.completed },
+    { value: 'absent', label: text.absent },
+    { value: 'late', label: text.late },
+  ]), [text]);
 
   const filteredStaffs = staffs.filter(staff => {
     const department = getStaffDepartment(staff);
@@ -379,7 +533,7 @@ export default function StaffsScreen() {
   });
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
+    return new Intl.NumberFormat(isVi ? 'vi-VN' : 'en-US', {
       style: 'currency',
       currency: 'VND',
       maximumFractionDigits: 0,
@@ -392,12 +546,12 @@ export default function StaffsScreen() {
 
   const handlePaySalary = (staffId: string, recordId: string) => {
     Alert.alert(
-      'Xác nhận thanh toán',
-      'Bạn có chắc muốn thanh toán lương cho nhân viên này?',
+      text.confirm,
+      text.confirmPaySalary,
       [
-        { text: 'Hủy', style: 'cancel' },
+        { text: text.cancel, style: 'cancel' },
         {
-          text: 'Thanh toán',
+          text: text.pay,
           onPress: () => paySalaryMutation.mutate({ staffId, recordId }),
         },
       ]
@@ -517,11 +671,11 @@ export default function StaffsScreen() {
 
   const openCreateModal = () => {
     if (!canManageStaff) {
-      Alert.alert('Thông báo', 'Bạn không có quyền thực hiện thao tác này');
+      Alert.alert(text.notice, text.noPermission);
       return;
     }
     if (!selectedHotelId) {
-      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn trước');
+      Alert.alert(text.notice, text.selectHotelFirst);
       return;
     }
     resetStaffForm(selectedHotelId);
@@ -545,10 +699,10 @@ export default function StaffsScreen() {
   const handleSaveStaff = () => {
     if (!staffForm.userId.trim()) {
       Alert.alert(
-        'Thông báo',
+        text.notice,
         staffFormMode === 'create' && availableUsers.length === 0
-          ? 'Không có tài khoản khả dụng để gán'
-          : 'Vui lòng chọn tài khoản'
+          ? text.noAvailableAccount
+          : text.chooseAccount
       );
       return;
     }
@@ -556,19 +710,19 @@ export default function StaffsScreen() {
       staffFormMode === 'create' &&
       !availableUsers.some(userItem => getUserId(userItem) === staffForm.userId)
     ) {
-      Alert.alert('Thông báo', 'Tài khoản đã được gán hoặc không hợp lệ');
+      Alert.alert(text.notice, text.invalidAccount);
       return;
     }
     if (!staffForm.hotelId) {
-      Alert.alert('Thông báo', 'Vui lòng chọn khách sạn');
+      Alert.alert(text.notice, text.hotelRequired);
       return;
     }
     if (!staffForm.personalInfo.firstName.trim() || !staffForm.personalInfo.lastName.trim()) {
-      Alert.alert('Thông báo', 'Vui lòng nhập họ và tên');
+      Alert.alert(text.notice, text.nameRequired);
       return;
     }
     if (!staffForm.contactInfo.phone?.trim()) {
-      Alert.alert('Thông báo', 'Vui lòng nhập số điện thoại');
+      Alert.alert(text.notice, text.phoneRequired);
       return;
     }
 
@@ -634,16 +788,16 @@ export default function StaffsScreen() {
   const handleDeleteStaff = () => {
     if (!selectedStaff) return;
     if (!canManageStaff) {
-      Alert.alert('Thông báo', 'Bạn không có quyền thực hiện thao tác này');
+      Alert.alert(text.notice, text.noPermission);
       return;
     }
     const staffName = getStaffName(selectedStaff);
     Alert.alert(
-      'Xác nhận',
-      staffName ? `Bạn có chắc muốn xóa nhân viên ${staffName}?` : 'Bạn có chắc muốn xóa nhân viên này?',
+      text.confirm,
+      text.confirmDeleteStaff(staffName),
       [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Xóa', style: 'destructive', onPress: () => deleteStaffMutation.mutate(selectedStaff.id) },
+        { text: text.cancel, style: 'cancel' },
+        { text: text.delete, style: 'destructive', onPress: () => deleteStaffMutation.mutate(selectedStaff.id) },
       ]
     );
   };
@@ -679,7 +833,7 @@ export default function StaffsScreen() {
         style={[styles.header, { paddingTop: insets.top + 12 }]}
       >
         <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Nhân viên</Text>
+          <Text style={styles.headerTitle}>{text.title}</Text>
           {canManageStaff && (
             <TouchableOpacity style={styles.addButton} onPress={openCreateModal}>
               <Plus size={20} color="#fff" />
@@ -690,17 +844,17 @@ export default function StaffsScreen() {
         <View style={styles.statsRow}>
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{staffs.length}</Text>
-            <Text style={styles.statLabel}>Tổng số</Text>
+            <Text style={styles.statLabel}>{text.total}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{activeStaffs}</Text>
-            <Text style={styles.statLabel}>Đang làm</Text>
+            <Text style={styles.statLabel}>{text.active}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statValue}>{onLeaveStaffs}</Text>
-            <Text style={styles.statLabel}>Nghỉ phép</Text>
+            <Text style={styles.statLabel}>{text.onLeave}</Text>
           </View>
         </View>
 
@@ -710,7 +864,7 @@ export default function StaffsScreen() {
             onPress={() => setActiveTab('staffs')}
           >
             <Text style={[styles.tabText, activeTab === 'staffs' && [styles.tabTextActive, { color: colors.tint }]]}>
-              Danh sách
+              {text.list}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -718,7 +872,7 @@ export default function StaffsScreen() {
             onPress={() => setActiveTab('salary')}
           >
             <Text style={[styles.tabText, activeTab === 'salary' && [styles.tabTextActive, { color: colors.tint }]]}>
-              Lương
+              {text.salary}
             </Text>
             {pendingSalaryRecords.length > 0 && (
               <View style={styles.badge}>
@@ -744,7 +898,7 @@ export default function StaffsScreen() {
                 <Search size={18} color={colors.textSecondary} />
                 <TextInput
                   style={[styles.searchInput, { color: colors.text }]}
-                  placeholder="Tìm kiếm nhân viên..."
+                  placeholder={text.searchStaff}
                   placeholderTextColor={colors.textSecondary}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -758,7 +912,7 @@ export default function StaffsScreen() {
               style={styles.departmentsContainer}
               contentContainerStyle={styles.departmentsContent}
             >
-              {DEPARTMENTS.map(dept => (
+              {departments.map(dept => (
                 <TouchableOpacity
                   key={dept.id}
                   style={[
@@ -812,7 +966,7 @@ export default function StaffsScreen() {
                   <View style={styles.staffInfo}>
                     <Text style={[styles.staffName, { color: colors.text }]}>{getStaffName(staff)}</Text>
                     <Text style={[styles.staffPosition, { color: colors.textSecondary }]}>
-                      {POSITION_OPTIONS.find(option => option.value === getStaffPosition(staff))?.label || 'Khác'}
+                      {positionOptions.find(option => option.value === getStaffPosition(staff))?.label || text.other}
                     </Text>
                     <View style={styles.staffMeta}>
                       <View style={styles.metaItem}>
@@ -830,7 +984,7 @@ export default function StaffsScreen() {
             {filteredStaffs.length === 0 && !isLoading && (
               <View style={styles.emptyState}>
                 <Users size={48} color={colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Không tìm thấy nhân viên</Text>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{text.notFound}</Text>
               </View>
             )}
           </>
@@ -839,44 +993,44 @@ export default function StaffsScreen() {
             <View style={styles.salaryOverview}>
               <View style={[styles.salaryOverviewCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
                 <DollarSign size={24} color="#0ea5e9" />
-                <Text style={[styles.salaryOverviewLabel, { color: colors.textSecondary }]}>Tổng quỹ lương</Text>
+                <Text style={[styles.salaryOverviewLabel, { color: colors.textSecondary }]}>{text.salaryFund}</Text>
                 <Text style={[styles.salaryOverviewValue, { color: colors.text }]}>{formatCurrency(totalSalary)}</Text>
               </View>
             </View>
 
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>Chờ thanh toán</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>{text.pendingPayment}</Text>
             {pendingSalaryRecords.map(record => (
               <View key={`${record.staffId}-${record.id}`} style={[styles.salaryCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
                 <View style={styles.salaryHeader}>
                   <View>
                     <Text style={[styles.salaryStaffName, { color: colors.text }]}>{record.staffName}</Text>
-                    <Text style={[styles.salaryMonth, { color: colors.textSecondary }]}>Tháng {record.month}</Text>
+                    <Text style={[styles.salaryMonth, { color: colors.textSecondary }]}>{text.month} {record.month}</Text>
                   </View>
                   <View style={styles.salaryBadge}>
                     <Clock size={12} color="#f59e0b" />
-                    <Text style={styles.salaryBadgeText}>Chờ thanh toán</Text>
+                    <Text style={styles.salaryBadgeText}>{text.pendingPayment}</Text>
                   </View>
                 </View>
 
                 <View style={[styles.salaryDetails, { backgroundColor: isDark ? '#0f172a' : '#f8fafc' }]}>
                   <View style={styles.salaryRow}>
-                    <Text style={[styles.salaryLabel, { color: colors.textSecondary }]}>Lương cơ bản</Text>
+                    <Text style={[styles.salaryLabel, { color: colors.textSecondary }]}>{text.basicSalary}</Text>
                     <Text style={[styles.salaryValue, { color: colors.text }]}>{formatCurrency(record.baseSalary)}</Text>
                   </View>
                   <View style={styles.salaryRow}>
-                    <Text style={[styles.salaryLabel, { color: colors.textSecondary }]}>Thưởng</Text>
+                    <Text style={[styles.salaryLabel, { color: colors.textSecondary }]}>{text.bonus}</Text>
                     <Text style={[styles.salaryValue, { color: '#10b981' }]}>
                       +{formatCurrency(record.bonus)}
                     </Text>
                   </View>
                   <View style={styles.salaryRow}>
-                    <Text style={[styles.salaryLabel, { color: colors.textSecondary }]}>Khấu trừ</Text>
+                    <Text style={[styles.salaryLabel, { color: colors.textSecondary }]}>{text.deduction}</Text>
                     <Text style={[styles.salaryValue, { color: '#ef4444' }]}>
                       -{formatCurrency(record.deductions)}
                     </Text>
                   </View>
                   <View style={[styles.salaryRow, styles.salaryTotal, { borderTopColor: colors.border }]}>
-                    <Text style={[styles.salaryTotalLabel, { color: colors.text }]}>Thực lãnh</Text>
+                    <Text style={[styles.salaryTotalLabel, { color: colors.text }]}>{text.netSalary}</Text>
                     <Text style={styles.salaryTotalValue}>{formatCurrency(record.netSalary)}</Text>
                   </View>
                 </View>
@@ -885,7 +1039,7 @@ export default function StaffsScreen() {
                   style={styles.payButton}
                   onPress={() => handlePaySalary(record.staffId, record.id)}
                 >
-                  <Text style={styles.payButtonText}>Thanh toán</Text>
+                  <Text style={styles.payButtonText}>{text.pay}</Text>
                 </TouchableOpacity>
               </View>
             ))}
@@ -893,7 +1047,7 @@ export default function StaffsScreen() {
             {pendingSalaryRecords.length === 0 && !isLoading && (
               <View style={styles.emptyState}>
                 <DollarSign size={48} color={colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Không có lương chờ thanh toán</Text>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{text.noPendingSalary}</Text>
               </View>
             )}
           </View>
@@ -909,7 +1063,7 @@ export default function StaffsScreen() {
         <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View style={[styles.modalContent, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Thông tin nhân viên</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{text.staffInfo}</Text>
               <TouchableOpacity onPress={() => setStaffModalVisible(false)}>
                 <X size={24} color={colors.text} />
               </TouchableOpacity>
@@ -946,7 +1100,7 @@ export default function StaffsScreen() {
                           style={[styles.statusDot, { backgroundColor: STATUS_COLORS[getStaffStatus(selectedStaff)] }]}
                         />
                         <Text style={[styles.statusText, { color: STATUS_COLORS[getStaffStatus(selectedStaff)] }]}>
-                          {STATUS_LABELS[getStaffStatus(selectedStaff)]}
+                          {statusLabels[getStaffStatus(selectedStaff)]}
                         </Text>
                       </View>
                     </View>
@@ -955,16 +1109,16 @@ export default function StaffsScreen() {
                       <View style={styles.detailItem}>
                         <Briefcase size={18} color={colors.textSecondary} />
                         <View style={styles.detailItemContent}>
-                          <Text style={[styles.detailItemLabel, { color: colors.textSecondary }]}>Chức vụ</Text>
+                          <Text style={[styles.detailItemLabel, { color: colors.textSecondary }]}>{text.position}</Text>
                           <Text style={[styles.detailItemValue, { color: colors.text }]}>
-                            {POSITION_OPTIONS.find(option => option.value === getStaffPosition(selectedStaff))?.label || 'Khác'}
+                            {positionOptions.find(option => option.value === getStaffPosition(selectedStaff))?.label || text.other}
                           </Text>
                         </View>
                       </View>
                       <View style={styles.detailItem}>
                         <Phone size={18} color={colors.textSecondary} />
                         <View style={styles.detailItemContent}>
-                          <Text style={[styles.detailItemLabel, { color: colors.textSecondary }]}>Điện thoại</Text>
+                          <Text style={[styles.detailItemLabel, { color: colors.textSecondary }]}>{text.phone}</Text>
                           <Text style={[styles.detailItemValue, { color: colors.text }]}>{getStaffPhone(selectedStaff)}</Text>
                         </View>
                       </View>
@@ -978,7 +1132,7 @@ export default function StaffsScreen() {
                       <View style={styles.detailItem}>
                         <Calendar size={18} color={colors.textSecondary} />
                         <View style={styles.detailItemContent}>
-                          <Text style={[styles.detailItemLabel, { color: colors.textSecondary }]}>Ngày bắt đầu</Text>
+                          <Text style={[styles.detailItemLabel, { color: colors.textSecondary }]}>{text.startDate}</Text>
                           <Text style={[styles.detailItemValue, { color: colors.text }]}>
                             {selectedStaff.employmentInfo?.startDate || selectedStaff.startDate || '—'}
                           </Text>
@@ -987,7 +1141,7 @@ export default function StaffsScreen() {
                       <View style={styles.detailItem}>
                         <DollarSign size={18} color={colors.textSecondary} />
                         <View style={styles.detailItemContent}>
-                          <Text style={[styles.detailItemLabel, { color: colors.textSecondary }]}>Lương</Text>
+                          <Text style={[styles.detailItemLabel, { color: colors.textSecondary }]}>{text.salary}</Text>
                           <Text style={[styles.detailItemValue, { color: colors.text }]}>
                             {formatCurrency(selectedStaff.employmentInfo?.salary || selectedStaff.salary || 0)}
                           </Text>
@@ -996,35 +1150,35 @@ export default function StaffsScreen() {
                     </View>
 
                     <View style={[styles.detailSection, { backgroundColor: isDark ? '#0f172a' : '#f9fafb' }]}>
-                      <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Thông tin cá nhân</Text>
+                      <Text style={[styles.detailSectionTitle, { color: colors.text }]}>{text.personalInfo}</Text>
                       <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Họ</Text>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.firstName}</Text>
                         <Text style={[styles.detailValue, { color: colors.text }]}>{selectedStaff.personalInfo?.firstName || '—'}</Text>
                       </View>
                       <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Tên</Text>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.lastName}</Text>
                         <Text style={[styles.detailValue, { color: colors.text }]}>{selectedStaff.personalInfo?.lastName || '—'}</Text>
                       </View>
                       <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Giới tính</Text>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.gender}</Text>
                         <Text style={[styles.detailValue, { color: colors.text }]}>
-                          {GENDER_OPTIONS.find(option => option.value === selectedStaff.personalInfo?.gender)?.label || '—'}
+                          {genderOptions.find(option => option.value === selectedStaff.personalInfo?.gender)?.label || '—'}
                         </Text>
                       </View>
                       <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Quốc tịch</Text>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.nationality}</Text>
                         <Text style={[styles.detailValue, { color: colors.text }]}>{selectedStaff.personalInfo?.nationality || '—'}</Text>
                       </View>
                       <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Số giấy tờ</Text>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.documentNumber}</Text>
                         <Text style={[styles.detailValue, { color: colors.text }]}>{selectedStaff.personalInfo?.idNumber || '—'}</Text>
                       </View>
                     </View>
 
                     <View style={[styles.detailSection, { backgroundColor: isDark ? '#0f172a' : '#f9fafb' }]}>
-                      <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Thông tin liên hệ</Text>
+                      <Text style={[styles.detailSectionTitle, { color: colors.text }]}>{text.contactInfo}</Text>
                       <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Địa chỉ</Text>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.address}</Text>
                         <Text style={[styles.detailValue, { color: colors.text }]}>
                           {[
                             selectedStaff.contactInfo?.address?.street,
@@ -1037,7 +1191,7 @@ export default function StaffsScreen() {
                         </Text>
                       </View>
                       <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Liên hệ khẩn</Text>
+                        <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{text.emergencyContact}</Text>
                         <Text style={[styles.detailValue, { color: colors.text }]}>
                           {selectedStaff.contactInfo?.emergencyContact?.name || '—'}
                         </Text>
@@ -1045,12 +1199,12 @@ export default function StaffsScreen() {
                     </View>
 
                     <View style={[styles.detailSection, { backgroundColor: isDark ? '#0f172a' : '#f9fafb' }]}>
-                      <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Quyền hạn</Text>
+                      <Text style={[styles.detailSectionTitle, { color: colors.text }]}>{text.permissions}</Text>
                       <View style={styles.permissionContainer}>
                         {(selectedStaff.permissions || ['view']).map(permission => (
                           <View key={permission} style={[styles.permissionChip, { backgroundColor: isDark ? '#1e3a5f' : '#e0f2fe' }]}>
                             <Text style={styles.permissionChipText}>
-                              {PERMISSION_OPTIONS.find(option => option.value === permission)?.label || permission}
+                              {permissionOptions.find(option => option.value === permission)?.label || permission}
                             </Text>
                           </View>
                         ))}
@@ -1059,18 +1213,18 @@ export default function StaffsScreen() {
 
                     {selectedStaff.schedule && selectedStaff.schedule.length > 0 && (
                       <View style={[styles.detailSection, { backgroundColor: isDark ? '#0f172a' : '#f9fafb' }]}>
-                        <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Lịch làm việc</Text>
+                        <Text style={[styles.detailSectionTitle, { color: colors.text }]}>{text.schedule}</Text>
                         {selectedStaff.schedule.map((item, index) => (
                           <View key={`${item.date}-${index}`} style={[styles.scheduleRow, { backgroundColor: colors.cardBackground }]}>
                             <Text style={[styles.scheduleDate, { color: colors.text }]}>{item.date}</Text>
                             <Text style={[styles.scheduleShift, { color: colors.textSecondary }]}>
-                              {SHIFT_OPTIONS.find(option => option.value === item.shift)?.label || item.shift}
+                              {shiftOptions.find(option => option.value === item.shift)?.label || item.shift}
                             </Text>
                             <Text style={[styles.scheduleTime, { color: colors.text }]}>
                               {item.startTime && item.endTime ? `${item.startTime} - ${item.endTime}` : '—'}
                             </Text>
                             <Text style={[styles.scheduleStatus, { color: colors.textSecondary }]}>
-                              {SCHEDULE_STATUS_OPTIONS.find(option => option.value === item.status)?.label || item.status}
+                              {scheduleStatusOptions.find(option => option.value === item.status)?.label || item.status}
                             </Text>
                           </View>
                         ))}
@@ -1079,7 +1233,7 @@ export default function StaffsScreen() {
 
                     {!!selectedStaff.notes && (
                       <View style={[styles.detailSection, { backgroundColor: isDark ? '#0f172a' : '#f9fafb' }]}>
-                        <Text style={[styles.detailSectionTitle, { color: colors.text }]}>Ghi chú</Text>
+                        <Text style={[styles.detailSectionTitle, { color: colors.text }]}>{text.notes}</Text>
                         <Text style={[styles.detailNote, { color: colors.text }]}>{selectedStaff.notes}</Text>
                       </View>
                     )}
@@ -1095,10 +1249,10 @@ export default function StaffsScreen() {
                         openEditModal(selectedStaff);
                       }}
                     >
-                      <Text style={styles.actionButtonText}>Chỉnh sửa</Text>
+                      <Text style={styles.actionButtonText}>{text.editStaff}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.actionButton, styles.actionButtonDanger]} onPress={handleDeleteStaff}>
-                      <Text style={[styles.actionButtonText, styles.actionButtonDangerText]}>Xóa</Text>
+                      <Text style={[styles.actionButtonText, styles.actionButtonDangerText]}>{text.delete}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -1117,16 +1271,16 @@ export default function StaffsScreen() {
           <View style={[styles.formModalContent, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>
-                {staffFormMode === 'create' ? 'Thêm nhân viên' : 'Cập nhật nhân viên'}
+                {staffFormMode === 'create' ? text.addStaff : text.updateStaff}
               </Text>
               <TouchableOpacity onPress={() => setStaffFormVisible(false)}>
                 <X size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={[styles.formSectionTitle, { color: colors.text }]}>Tài khoản</Text>
+              <Text style={[styles.formSectionTitle, { color: colors.text }]}>{text.account}</Text>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Tài khoản</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.account}</Text>
                 <TouchableOpacity
                   style={[
                     styles.selectBox,
@@ -1142,22 +1296,22 @@ export default function StaffsScreen() {
                   <Text style={[styles.selectText, { color: colors.text }, staffFormMode === 'edit' && { color: colors.textSecondary }]}>
                     {selectedUser
                       ? `${getUserLabel(selectedUser)} (${selectedUser.role || 'user'})`
-                      : staffForm.userId || 'Chọn tài khoản'}
+                      : staffForm.userId || text.chooseUser}
                   </Text>
                   <ChevronRight size={18} color={colors.textSecondary} />
                 </TouchableOpacity>
                 <Text style={[styles.helperText, { color: colors.textSecondary }]}>
                   {staffFormMode === 'edit'
-                    ? 'Không thể đổi tài khoản khi chỉnh sửa'
+                    ? text.accountHelperLocked
                     : availableUsers.length > 0
-                      ? `Có ${availableUsers.length} tài khoản khả dụng`
-                      : 'Không có tài khoản khả dụng'}
+                      ? text.accountHelperAvailable(availableUsers.length)
+                      : text.accountHelperNone}
                 </Text>
               </View>
 
-              <Text style={[styles.formSectionTitle, { color: colors.text }]}>Thông tin cá nhân</Text>
+              <Text style={[styles.formSectionTitle, { color: colors.text }]}>{text.personalInfo}</Text>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Họ</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.firstName}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.personalInfo.firstName}
@@ -1171,7 +1325,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Tên</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.lastName}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.personalInfo.lastName}
@@ -1185,7 +1339,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Ngày sinh</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.dob || 'Date of birth'}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.personalInfo.dateOfBirth || ''}
@@ -1199,9 +1353,9 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Giới tính</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.gender}</Text>
                 <View style={styles.chipRow}>
-                  {GENDER_OPTIONS.map(option => (
+                  {genderOptions.map(option => (
                     <TouchableOpacity
                       key={option.value}
                       style={[
@@ -1230,7 +1384,7 @@ export default function StaffsScreen() {
                 </View>
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Quốc tịch</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.nationality}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.personalInfo.nationality || ''}
@@ -1244,7 +1398,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Loại giấy tờ</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.documentNumber}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.personalInfo.idType || ''}
@@ -1258,7 +1412,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Số giấy tờ</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.documentNumber}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.personalInfo.idNumber || ''}
@@ -1286,9 +1440,9 @@ export default function StaffsScreen() {
                 />
               </View>
 
-              <Text style={[styles.formSectionTitle, { color: colors.text }]}>Thông tin liên hệ</Text>
+              <Text style={[styles.formSectionTitle, { color: colors.text }]}>{text.contactInfo}</Text>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Điện thoại</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.phone}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.contactInfo.phone || ''}
@@ -1318,7 +1472,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Địa chỉ</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.address}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.contactInfo.address?.street || ''}
@@ -1377,7 +1531,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Liên hệ khẩn</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.emergencyContact}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.contactInfo.emergencyContact?.name || ''}
@@ -1423,11 +1577,11 @@ export default function StaffsScreen() {
                 />
               </View>
 
-              <Text style={[styles.formSectionTitle, { color: colors.text }]}>Thông tin công việc</Text>
+              <Text style={[styles.formSectionTitle, { color: colors.text }]}>{text.position}</Text>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Chức vụ</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.position}</Text>
                 <View style={styles.chipRow}>
-                  {POSITION_OPTIONS.map(option => (
+                  {positionOptions.map(option => (
                     <TouchableOpacity
                       key={option.value}
                       style={[
@@ -1456,7 +1610,7 @@ export default function StaffsScreen() {
                 </View>
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Bộ phận</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.management}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.employmentInfo.department || ''}
@@ -1470,9 +1624,9 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Trạng thái</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.active}</Text>
                 <View style={styles.chipRow}>
-                  {STATUS_OPTIONS.map(option => (
+                  {statusOptions.map(option => (
                     <TouchableOpacity
                       key={option.value}
                       style={[
@@ -1501,7 +1655,7 @@ export default function StaffsScreen() {
                 </View>
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Ngày bắt đầu</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.startDate}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.employmentInfo.startDate || ''}
@@ -1515,7 +1669,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Lương cơ bản</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.basicSalary}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={String(staffForm.employmentInfo.salary || 0)}
@@ -1529,7 +1683,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Phụ cấp</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{isVi ? 'Phu cap' : 'Allowance'}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={String(staffForm.employmentInfo.allowance || 0)}
@@ -1543,7 +1697,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Bảo hiểm</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{isVi ? 'Bao hiem' : 'Insurance'}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={String(staffForm.employmentInfo.insurance || 0)}
@@ -1557,7 +1711,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Phạt</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{isVi ? 'Phat' : 'Penalty'}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={String(staffForm.employmentInfo.penalty || 0)}
@@ -1571,7 +1725,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Thưởng</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{text.bonus}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={String(staffForm.employmentInfo.bonus || 0)}
@@ -1585,7 +1739,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Tạm ứng</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{isVi ? 'Tam ung' : 'Advance payment'}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={String(staffForm.employmentInfo.advancePayment || 0)}
@@ -1599,7 +1753,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Tài khoản ngân hàng</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{isVi ? 'Tai khoan ngan hang' : 'Bank account'}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.employmentInfo.bankAccount?.bankName || ''}
@@ -1644,7 +1798,7 @@ export default function StaffsScreen() {
                 />
               </View>
               <View style={styles.formField}>
-                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Mã số thuế</Text>
+                <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{isVi ? 'Ma so thue' : 'Tax ID'}</Text>
                 <TextInput
                   style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                   value={staffForm.employmentInfo.taxId || ''}
@@ -1658,9 +1812,9 @@ export default function StaffsScreen() {
                 />
               </View>
 
-              <Text style={[styles.formSectionTitle, { color: colors.text }]}>Quyền hạn</Text>
+              <Text style={[styles.formSectionTitle, { color: colors.text }]}>{text.permissions}</Text>
               <View style={styles.chipRow}>
-                {PERMISSION_OPTIONS.map(option => {
+                {permissionOptions.map(option => {
                   const isActive = staffForm.permissions.includes(option.value);
                   return (
                     <TouchableOpacity
@@ -1683,11 +1837,11 @@ export default function StaffsScreen() {
                 })}
               </View>
 
-              <Text style={[styles.formSectionTitle, { color: colors.text }]}>Lịch làm việc</Text>
+              <Text style={[styles.formSectionTitle, { color: colors.text }]}>{text.schedule}</Text>
               {staffForm.schedule.map((item, index) => (
                 <View key={`${item.date}-${index}`} style={[styles.scheduleFormCard, { backgroundColor: colors.cardBackground, borderColor: colors.border }]}>
                   <View style={styles.formField}>
-                    <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Ngày</Text>
+                    <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{isVi ? 'Ngay' : 'Date'}</Text>
                     <TextInput
                       style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                       value={item.date}
@@ -1696,9 +1850,9 @@ export default function StaffsScreen() {
                     />
                   </View>
                   <View style={styles.formField}>
-                    <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Ca</Text>
+                    <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{isVi ? 'Ca' : 'Shift'}</Text>
                     <View style={styles.chipRow}>
-                      {SHIFT_OPTIONS.map(option => (
+                      {shiftOptions.map(option => (
                         <TouchableOpacity
                           key={option.value}
                           style={[
@@ -1722,7 +1876,7 @@ export default function StaffsScreen() {
                     </View>
                   </View>
                   <View style={styles.formField}>
-                    <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Giờ bắt đầu</Text>
+                    <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{isVi ? 'Gio bat dau' : 'Start time'}</Text>
                     <TextInput
                       style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                       value={item.startTime || ''}
@@ -1731,7 +1885,7 @@ export default function StaffsScreen() {
                     />
                   </View>
                   <View style={styles.formField}>
-                    <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Giờ kết thúc</Text>
+                    <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{isVi ? 'Gio ket thuc' : 'End time'}</Text>
                     <TextInput
                       style={[styles.formInput, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.text }]}
                       value={item.endTime || ''}
@@ -1740,9 +1894,9 @@ export default function StaffsScreen() {
                     />
                   </View>
                   <View style={styles.formField}>
-                    <Text style={[styles.formLabel, { color: colors.textSecondary }]}>Trạng thái</Text>
+                    <Text style={[styles.formLabel, { color: colors.textSecondary }]}>{isVi ? 'Trang thai' : 'Status'}</Text>
                     <View style={styles.chipRow}>
-                      {SCHEDULE_STATUS_OPTIONS.map(option => (
+                      {scheduleStatusOptions.map(option => (
                         <TouchableOpacity
                           key={option.value}
                           style={[
@@ -1771,16 +1925,16 @@ export default function StaffsScreen() {
                     </View>
                   </View>
                   <TouchableOpacity style={styles.removeButton} onPress={() => removeScheduleItem(index)}>
-                    <Text style={styles.removeButtonText}>Xóa ca làm</Text>
+                    <Text style={styles.removeButtonText}>{text.removeShift}</Text>
                   </TouchableOpacity>
                 </View>
               ))}
               <TouchableOpacity style={styles.addScheduleButton} onPress={addScheduleItem}>
                 <Plus size={16} color="#0ea5e9" />
-                <Text style={styles.addScheduleText}>Thêm ca làm</Text>
+                <Text style={styles.addScheduleText}>{text.addShift}</Text>
               </TouchableOpacity>
 
-              <Text style={[styles.formSectionTitle, { color: colors.text }]}>Ghi chú</Text>
+              <Text style={[styles.formSectionTitle, { color: colors.text }]}>{text.notes}</Text>
               <TextInput
                 style={[styles.formInput, styles.textArea]}
                 value={staffForm.notes}
@@ -1791,7 +1945,7 @@ export default function StaffsScreen() {
 
               <TouchableOpacity style={styles.submitButton} onPress={handleSaveStaff}>
                 <Text style={styles.submitButtonText}>
-                  {staffFormMode === 'create' ? 'Thêm nhân viên' : 'Lưu thay đổi'}
+                  {staffFormMode === 'create' ? text.addStaff : text.saveChanges}
                 </Text>
               </TouchableOpacity>
             </ScrollView>
@@ -1807,7 +1961,7 @@ export default function StaffsScreen() {
         <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View style={[styles.userModalContent, { backgroundColor: colors.cardBackground }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Chọn tài khoản</Text>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>{text.chooseUser}</Text>
               <TouchableOpacity onPress={() => setUserModalVisible(false)}>
                 <X size={24} color={colors.text} />
               </TouchableOpacity>
@@ -1816,7 +1970,7 @@ export default function StaffsScreen() {
               <Search size={18} color={colors.textSecondary} />
               <TextInput
                 style={[styles.searchInput, { color: colors.text }]}
-                placeholder="Tìm theo tên, email hoặc vai trò"
+                placeholder={text.searchUser}
                 placeholderTextColor={colors.textSecondary}
                 value={userSearch}
                 onChangeText={setUserSearch}
@@ -1841,14 +1995,14 @@ export default function StaffsScreen() {
                   </View>
                   {staffForm.userId === getUserId(userItem) && (
                     <View style={[styles.userSelectedBadge, { backgroundColor: isDark ? '#1e3a5f' : '#e0f2fe' }]}>
-                      <Text style={styles.userSelectedText}>Đã chọn</Text>
+                      <Text style={styles.userSelectedText}>{text.selected}</Text>
                     </View>
                   )}
                 </TouchableOpacity>
               ))}
               {filteredUsers.length === 0 && (
                 <View style={styles.userEmpty}>
-                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Không có tài khoản phù hợp</Text>
+                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{text.noMatchingUser}</Text>
                 </View>
               )}
             </ScrollView>
