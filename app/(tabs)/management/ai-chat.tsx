@@ -21,6 +21,7 @@ import { useHotel } from '@/contexts/HotelContext';
 import { aiApi } from '@/services/api/ai';
 import { API_CONFIG } from '@/services/api/config';
 import { useRouter } from 'expo-router';
+import { AccessGuard } from '@/components/AccessGuard';
 
 interface ChatMessage {
   id: string;
@@ -692,7 +693,8 @@ export default function AIChatScreen() {
   ];
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <AccessGuard addon="aiChatboxFeature">
+      <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
@@ -943,7 +945,8 @@ export default function AIChatScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+      </SafeAreaView>
+    </AccessGuard>
   );
 }
 

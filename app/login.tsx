@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Alert,
   Image,
   Pressable,
+  InteractionManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -76,35 +77,51 @@ export default function LoginScreen() {
   );
 
   useEffect(() => {
-    async function checkBiometrics() {
     if (!isMobile) return;
-    try {
-      // 1. Kiểm tra phần cứng có hỗ trợ không với Timeout bảo vệ
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      
-      if (hasHardware && isEnrolled) {
-        setBiometricReady(true);
-        
-        // 2. Thử đọc thông tin đã lưu từ SecureStore một cách an toàn
-        const savedCredentials = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
-        if (savedCredentials) {
-          const { email: savedEmail } = JSON.parse(savedCredentials);
-          if (savedEmail && !email) {
-            setEmail(savedEmail); // Điền sẵn email cho tiện, nhưng KHÔNG tự động kích hoạt đăng nhập gây loop
+
+    let isMounted = true;
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      const checkBiometrics = async () => {
+        try {
+          const [hasHardware, isEnrolled] = await Promise.all([
+            LocalAuthentication.hasHardwareAsync(),
+            LocalAuthentication.isEnrolledAsync(),
+          ]);
+
+          if (!isMounted || !hasHardware || !isEnrolled) {
+            if (isMounted) {
+              setBiometricReady(false);
+            }
+            return;
+          }
+
+          setBiometricReady(true);
+
+          const savedCredentials = await SecureStore.getItemAsync(BIOMETRIC_CREDENTIALS_KEY);
+          if (!isMounted || !savedCredentials) return;
+
+          const { email: savedEmail } = JSON.parse(savedCredentials) as { email?: string };
+          if (savedEmail) {
+            setEmail((currentEmail) => currentEmail || savedEmail);
+          }
+        } catch (error) {
+          if (isMounted) {
+            console.warn('[Login] Lỗi khởi tạo sinh trắc học:', error);
+            setBiometricReady(false);
           }
         }
-      }
-    } catch (error) {
-      console.warn('[Login] Lỗi khởi tạo sinh trắc học:', error);
-      setBiometricReady(false);
-    }
-  }
+      };
 
-  checkBiometrics();
-}, []);
+      checkBiometrics();
+    });
 
-  const validate = () => {
+    return () => {
+      isMounted = false;
+      interactionTask.cancel();
+    };
+  }, [isMobile]);
+
+  const validate = useCallback(() => {
     const newErrors: { email?: string; password?: string } = {};
     
     if (!email.trim()) {
@@ -121,9 +138,9 @@ export default function LoginScreen() {
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
+  }, [email, password, text.emailInvalid, text.emailRequired, text.passwordLength, text.passwordRequired]);
 
-  const handleLogin = async () => {
+  const handleLogin = useCallback(async () => {
     if (!validate()) return;
 
     try {
@@ -138,9 +155,9 @@ export default function LoginScreen() {
             : text.reviewLoginInfo;
       Alert.alert(text.loginFailed, message);
     }
-  };
+  }, [email, login, password, router, text.invalidCredential, text.loginFailed, text.reviewLoginInfo, validate]);
 
-  const handleBiometricLogin = async () => {
+  const handleBiometricLogin = useCallback(async () => {
     if (!isMobile) {
       Alert.alert(text.notice, text.noBiometricSupport);
       return;
@@ -186,7 +203,21 @@ export default function LoginScreen() {
     } finally {
       setBiometricLoading(false);
     }
-  };
+  }, [
+    BIOMETRIC_CREDENTIALS_KEY,
+    isMobile,
+    login,
+    router,
+    text.biometricLoginFailed,
+    text.biometricPrompt,
+    text.cancel,
+    text.invalidBiometricCredentials,
+    text.loginFailed,
+    text.noBiometricCredentials,
+    text.noBiometricSupport,
+    text.notice,
+    text.setupBiometricFirst,
+  ]);
 
   return (
     <View style={styles.container}>

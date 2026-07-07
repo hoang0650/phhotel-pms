@@ -13,6 +13,7 @@ import {
 import { useHotel } from '@/contexts/HotelContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { cameraApi, CameraAccessMode, CameraConfig, CameraProviderId } from '@/services/api/camera';
+import { AccessGuard } from '@/components/AccessGuard';
 
 type CameraFormState = {
   name: string;
@@ -216,7 +217,8 @@ export default function CameraManagementScreen() {
   }, [language, stats]);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <AccessGuard features={['hotel_management']}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{t.title}</Text>
 
       <View style={styles.card}>
@@ -390,7 +392,8 @@ export default function CameraManagementScreen() {
         {agentStatus ? <Text style={styles.agentStatus}>{agentStatus}</Text> : null}
         {currentCamera?._id ? <Text style={styles.cameraMeta}>ID: {currentCamera._id}</Text> : null}
       </View>
-    </ScrollView>
+      </ScrollView>
+    </AccessGuard>
   );
 }
 

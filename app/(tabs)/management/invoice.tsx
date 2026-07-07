@@ -24,6 +24,7 @@ import { Invoice } from '@/types/invoice';
 import { useTheme } from '@/hooks/useTheme';
 import { useHotel } from '@/contexts/HotelContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { AccessGuard } from '@/components/AccessGuard';
 
 // Component hiển thị một hóa đơn trong danh sách
 const InvoiceCard = ({ item, onPress }: { item: Invoice; onPress: () => void }) => {
@@ -736,42 +737,43 @@ export default function InvoiceManagementScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.header, { backgroundColor: colors.card }]}>
-        <Text style={[styles.headerTitle, { color: colors.text }]}>{text.title}</Text>
-      </View>
+    <AccessGuard features={['room_management']}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { backgroundColor: colors.card }]}>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>{text.title}</Text>
+        </View>
 
-      <View style={[styles.searchContainer, { backgroundColor: colors.card }]}>
-        <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
-        <TextInput
-          style={[styles.searchInput, { color: colors.text }]}
-          placeholder={text.searchPlaceholder}
-          placeholderTextColor={colors.textSecondary}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
+        <View style={[styles.searchContainer, { backgroundColor: colors.card }]}>
+          <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder={text.searchPlaceholder}
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+
+        {isLoading ? (
+           <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 20 }}/>
+        ) : (
+          <FlatList
+              data={filteredInvoices}
+              renderItem={({ item }) => <InvoiceCard item={item} onPress={() => handleViewInvoice(item)} />}
+              keyExtractor={(item, index) => item._id ? String(item._id) : `invoice-${index}`}
+              contentContainerStyle={styles.invoiceList}
+              ListEmptyComponent={renderEmpty}
+              refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+          />
+        )}
+
+        <InvoiceDetailModal
+          visible={modalVisible}
+          invoice={selectedInvoice}
+          onClose={closeModal}
         />
       </View>
-
-      {isLoading ? (
-         <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 20 }}/>
-      ) : (
-        <FlatList
-            data={filteredInvoices}
-            renderItem={({ item }) => <InvoiceCard item={item} onPress={() => handleViewInvoice(item)} />}
-            keyExtractor={(item, index) => item._id ? String(item._id) : `invoice-${index}`}
-            contentContainerStyle={styles.invoiceList}
-            ListEmptyComponent={renderEmpty}
-            refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
-        />
-      )}
-
-      {/* Modal chi tiết hóa đơn */}
-      <InvoiceDetailModal 
-        visible={modalVisible}
-        invoice={selectedInvoice}
-        onClose={closeModal}
-      />
-    </View>
+    </AccessGuard>
   );
 }
 

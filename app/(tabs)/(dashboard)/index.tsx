@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -46,7 +46,7 @@ import { useHotel } from '@/contexts/HotelContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { roomsApi, bookingsApi, revenueApi, notificationsApi, shiftHandoverApi } from '@/services/api';
+import { roomsApi, bookingsApi, revenueApi, notificationsApi } from '@/services/api';
 import { TextInput } from 'react-native';
 import { ShiftHandover } from '@/types/shift-handover';
 
@@ -85,9 +85,11 @@ export default function DashboardScreen() {
   const { hotels, selectedHotel, selectedHotelId, selectHotel, isLoading: hotelsLoading, canSelectMultipleHotels } = useHotel();
   const { user } = useAuth();
 
-  const filteredHotels = hotels.filter(hotel => 
-    hotel.name.toLowerCase().includes(hotelSearchText.toLowerCase())
-  );
+  const filteredHotels = useMemo(() => {
+    const normalizedSearch = hotelSearchText.trim().toLowerCase();
+    if (!normalizedSearch) return hotels;
+    return hotels.filter((hotel) => hotel.name.toLowerCase().includes(normalizedSearch));
+  }, [hotelSearchText, hotels]);
   const text = useMemo(() => ({
     booking: isVi ? 'Dat phong' : 'Bookings',
     guests: isVi ? 'Khach hang' : 'Guests',
@@ -105,22 +107,36 @@ export default function DashboardScreen() {
     searchHotel: isVi ? 'Tim kiem khach san...' : 'Search hotels...',
   }), [isVi]);
 
+  const queryDefaults = useMemo(
+    () => ({
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      refetchOnMount: false as const,
+      refetchOnReconnect: true as const,
+      refetchOnWindowFocus: false as const,
+    }),
+    []
+  );
+
   const { data: rooms = [], isLoading: roomsLoading, refetch: refetchRooms } = useQuery({
     queryKey: ['rooms', selectedHotelId],
     queryFn: () => roomsApi.getAll(selectedHotelId || undefined),
     enabled: !!selectedHotelId,
+    ...queryDefaults,
   });
 
   const { data: bookings = [], isLoading: bookingsLoading, refetch: refetchBookings } = useQuery({
     queryKey: ['bookings', selectedHotelId],
-    queryFn: () => selectedHotelId ? bookingsApi.getByHotel(selectedHotelId) : bookingsApi.getAll(),
-    enabled: true,
+    queryFn: () => bookingsApi.getByHotel(selectedHotelId || ''),
+    enabled: !!selectedHotelId,
+    ...queryDefaults,
   });
   
   const { data: roomEvents = [], isLoading: eventsLoading, refetch: refetchEvents } = useQuery({
     queryKey: ['roomEvents', selectedHotelId],
     queryFn: () => selectedHotelId ? roomsApi.getEventsByHotel(selectedHotelId, { limit: 50, types: ['checkin', 'checkout'] }) : Promise.resolve([]),
     enabled: !!selectedHotelId,
+    ...queryDefaults,
   });
 
   const { data: revenueData, isLoading: revenueLoading, refetch: refetchRevenue } = useQuery({
@@ -138,12 +154,14 @@ export default function DashboardScreen() {
       });
     },
     enabled: !!selectedHotelId,
+    ...queryDefaults,
   });
   
   const { data: revenueSummary } = useQuery({
     queryKey: ['revenueSummary', selectedHotelId],
     queryFn: () => revenueApi.getSummary(selectedHotelId || ''),
     enabled: !!selectedHotelId,
+    ...queryDefaults,
   });
   const { data: breakdownRange } = useQuery({
     queryKey: ['revenueBreakdownRangeDashboard', selectedHotelId],
@@ -158,21 +176,7 @@ export default function DashboardScreen() {
       );
     },
     enabled: !!selectedHotelId,
-  });
-
-  const { data: paymentBreakdown } = useQuery({
-    queryKey: ['shiftRevenueDashboard', selectedHotelId],
-    queryFn: async () => {
-      const today = new Date();
-      const startDate = new Date(today);
-      startDate.setDate(today.getDate() - 6);
-      return shiftHandoverApi.getRevenue(
-        selectedHotelId || '',
-        startDate.toISOString().split('T')[0],
-        today.toISOString().split('T')[0]
-      );
-    },
-    enabled: !!selectedHotelId,
+    ...queryDefaults,
   });
 
   const totalRevenuePeriod = revenueData?.totalRevenue || 0;
@@ -180,13 +184,22 @@ export default function DashboardScreen() {
   const { data: notifications = [], refetch: refetchNotifications } = useQuery({
     queryKey: ['notifications'],
     queryFn: () => notificationsApi.getAll(),
+    enabled: notificationModalVisible,
+    staleTime: 15_000,
+    gcTime: 5 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
   const { data: unreadSummary = { total: 0, system: 0, hotel: 0 }, refetch: refetchUnread } = useQuery({
     queryKey: ['notificationsUnread'],
     queryFn: () => notificationsApi.getUnreadCount(),
+    staleTime: 15_000,
+    gcTime: 5 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
-  const unreadCount = unreadSummary?.total ?? notifications.filter(n => !n.isRead).length;
+  const unreadCount = unreadSummary?.total ?? 0;
   const filteredNotifications = useMemo(() => {
     if (notifTab === 'system') return notifications.filter(n => (n.metadata?.targetType || 'system') === 'system');
     if (notifTab === 'hotel') return notifications.filter(n => n.metadata?.targetType === 'hotel');
@@ -195,7 +208,8 @@ export default function DashboardScreen() {
 
   const isLoading = hotelsLoading || roomsLoading || bookingsLoading || revenueLoading || eventsLoading;
 
-  const today = new Date().toISOString().split('T')[0];
+  const todayDate = useMemo(() => new Date(), []);
+  const today = useMemo(() => todayDate.toISOString().split('T')[0], [todayDate]);
   const isSameDay = (d: string | Date, now: Date) => {
     const dt = typeof d === 'string' ? new Date(d) : d;
     return dt.getFullYear() === now.getFullYear() && dt.getMonth() === now.getMonth() && dt.getDate() === now.getDate();
@@ -225,8 +239,20 @@ export default function DashboardScreen() {
     todayRevenue: revenueSummary?.todayRevenue || 0
   };
 
-  const todayCheckIns = roomEvents.filter(e => e.type === 'checkin' && (e.checkinTime ? isSameDay(e.checkinTime, new Date()) : isSameDay(e.createdAt, new Date())));
-  const todayCheckOuts = roomEvents.filter(e => e.type === 'checkout' && (e.checkoutTime ? isSameDay(e.checkoutTime, new Date()) : isSameDay(e.createdAt, new Date())));
+  const todayCheckIns = useMemo(
+    () =>
+      roomEvents.filter(
+        (e) => e.type === 'checkin' && (e.checkinTime ? isSameDay(e.checkinTime, todayDate) : isSameDay(e.createdAt, todayDate))
+      ),
+    [roomEvents, todayDate]
+  );
+  const todayCheckOuts = useMemo(
+    () =>
+      roomEvents.filter(
+        (e) => e.type === 'checkout' && (e.checkoutTime ? isSameDay(e.checkoutTime, todayDate) : isSameDay(e.createdAt, todayDate))
+      ),
+    [roomEvents, todayDate]
+  );
 
   const quickAccessItems: QuickAccessItem[] = [
     { id: 'bookings', title: text.booking, icon: <ClipboardList size={22} color="#6366f1" />, route: '/(tabs)/bookings', color: '#6366f1', bgColor: '#eef2ff' },
@@ -235,11 +261,15 @@ export default function DashboardScreen() {
     { id: 'staffs', title: text.staffs, icon: <UserCog size={22} color="#ec4899" />, route: '/(tabs)/staffs', color: '#ec4899', bgColor: '#fce7f3' },
   ];
 
-  const handleRefresh = async () => {
-    await Promise.all([refetchRooms(), refetchBookings(), refetchRevenue(), refetchNotifications(), refetchUnread()]);
-  };
+  const handleRefresh = useCallback(async () => {
+    const refreshTasks = [refetchRooms(), refetchBookings(), refetchEvents(), refetchRevenue(), refetchUnread()];
+    if (notificationModalVisible) {
+      refreshTasks.push(refetchNotifications());
+    }
+    await Promise.all(refreshTasks);
+  }, [notificationModalVisible, refetchBookings, refetchEvents, refetchNotifications, refetchRevenue, refetchRooms, refetchUnread]);
 
-  const handleMarkAllRead = async () => {
+  const handleMarkAllRead = useCallback(async () => {
     if (markingAll) return;
     setMarkingAll(true);
     try {
@@ -247,7 +277,7 @@ export default function DashboardScreen() {
       await Promise.all([refetchNotifications(), refetchUnread()]);
     } catch {}
     setMarkingAll(false);
-  };
+  }, [markingAll, refetchNotifications, refetchUnread]);
 
   const formatCurrency = (amount: number) => {
     if (amount >= 1000000000) {
@@ -271,21 +301,20 @@ export default function DashboardScreen() {
     }).format(amount);
   };
 
-  const dateObj = new Date();
-  const dateStr = dateObj.toLocaleDateString(isVi ? 'vi-VN' : 'en-US');
+  const dateStr = todayDate.toLocaleDateString(isVi ? 'vi-VN' : 'en-US');
   const dayNames = isVi
     ? ['Chu nhat', 'Thu Hai', 'Thu Ba', 'Thu Tu', 'Thu Nam', 'Thu Sau', 'Thu Bay']
     : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const dayStr = dayNames[dateObj.getDay()];
+  const dayStr = dayNames[todayDate.getDay()];
 
-  const handleSelectHotel = (hotelId: string) => {
+  const handleSelectHotel = useCallback((hotelId: string) => {
     selectHotel(hotelId);
     setHotelModalVisible(false);
-  };
+  }, [selectHotel]);
 
-  const handleQuickAccess = (route: string) => {
+  const handleQuickAccess = useCallback((route: string) => {
     router.navigate(route as any);
-  };
+  }, [router]);
 
   // Calculate growth based on revenue data (compare last day with previous day)
   const revenueGrowth = (() => {

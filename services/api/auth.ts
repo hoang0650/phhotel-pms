@@ -1,6 +1,7 @@
 import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
 import { extractId, extractIds } from './utils';
+import type { PackagePermission, PricingAddon, PricingFeature } from './pricing';
 
 export type UserRole = 'superadmin' | 'admin' | 'business' | 'manager' | 'receptionist' | 'staff' | 'hotel' | 'hotel_manager' | 'guest';
 
@@ -24,6 +25,18 @@ export interface User {
     };
     biometricEnabled?: boolean;
   };
+  features?: PricingFeature[];
+  packagePermissions?: PackagePermission[];
+  qrPaymentFeature?: boolean;
+  otaManagementFeature?: boolean;
+  emailManagementFeature?: boolean;
+  electricManagementFeature?: boolean;
+  paypalPaymentFeature?: boolean;
+  cryptoPaymentFeature?: boolean;
+  draftInvoiceFeature?: boolean;
+  exportInvoiceFeature?: boolean;
+  aiChatboxFeature?: boolean;
+  hotelNotificationFeature?: boolean;
 }
 
 export interface ApiUser {
@@ -47,7 +60,32 @@ export interface ApiUser {
     };
     biometricEnabled?: boolean;
   };
+  features?: PricingFeature[];
+  packagePermissions?: PackagePermission[];
+  qrPaymentFeature?: boolean;
+  otaManagementFeature?: boolean;
+  emailManagementFeature?: boolean;
+  electricManagementFeature?: boolean;
+  paypalPaymentFeature?: boolean;
+  cryptoPaymentFeature?: boolean;
+  draftInvoiceFeature?: boolean;
+  exportInvoiceFeature?: boolean;
+  aiChatboxFeature?: boolean;
+  hotelNotificationFeature?: boolean;
 }
+
+const addonKeys: PricingAddon[] = [
+  'qrPaymentFeature',
+  'otaManagementFeature',
+  'emailManagementFeature',
+  'electricManagementFeature',
+  'paypalPaymentFeature',
+  'cryptoPaymentFeature',
+  'draftInvoiceFeature',
+  'exportInvoiceFeature',
+  'aiChatboxFeature',
+  'hotelNotificationFeature',
+];
 
 export interface LoginRequest {
   email: string;
@@ -96,6 +134,9 @@ const mapApiUserToUser = (apiUser: ApiUser): User => ({
   hotelId: extractId(apiUser.hotelId),
   businessId: extractId(apiUser.businessId),
   preferences: apiUser.preferences,
+  features: Array.isArray(apiUser.features) ? apiUser.features : [],
+  packagePermissions: Array.isArray(apiUser.packagePermissions) ? apiUser.packagePermissions : [],
+  ...Object.fromEntries(addonKeys.map((key) => [key, apiUser[key] === true])),
 });
 
 const isApiUser = (value: unknown): value is ApiUser => {

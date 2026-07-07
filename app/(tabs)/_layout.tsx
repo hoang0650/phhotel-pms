@@ -2,10 +2,24 @@ import { Tabs } from 'expo-router';
 import { Home, BedDouble, BarChart3, Settings, Briefcase } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { usePermission } from '../../contexts/PermissionContext';
 
 export default function TabLayout() {
   const { isDark, colors } = useTheme();
   const { language } = useLanguage();
+  const { canAccessAnyFeature, hasAddonAccess } = usePermission();
+
+  const canAccessManagement = canAccessAnyFeature([
+    'room_management',
+    'shift_handover',
+    'bank_transfer_history',
+    'electric_management',
+    'fanpage_messages',
+    'zalo_messages',
+    'telegram_messages',
+    'hotel_management',
+  ]) || hasAddonAccess('aiChatboxFeature');
+  const canAccessReport = canAccessAnyFeature(['financial_summary_report', 'revenue_chart']);
 
   const tabLabels = {
     home: language === 'vi' ? 'Trang chủ' : 'Home',
@@ -58,6 +72,7 @@ export default function TabLayout() {
         options={{
           title: tabLabels.management,
           tabBarIcon: ({ color, size }) => <Briefcase size={size} color={color} />,
+          href: canAccessManagement ? undefined : null,
         }}
       />
       <Tabs.Screen
@@ -65,6 +80,7 @@ export default function TabLayout() {
         options={{
           title: tabLabels.report,
           tabBarIcon: ({ color, size }) => <BarChart3 size={size} color={color} />,
+          href: canAccessReport ? undefined : null,
         }}
       />
       <Tabs.Screen

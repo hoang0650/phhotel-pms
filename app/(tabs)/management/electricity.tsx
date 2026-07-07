@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useHotel } from '../../../contexts/HotelContext';
 import { apiClient } from '../../../services/api/client';
+import { AccessGuard } from '@/components/AccessGuard';
 
 interface Device {
   id: string;
@@ -385,56 +386,58 @@ export default function ElectricityScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>{t.title}</Text>
-        <TouchableOpacity
-          style={styles.toggleButton}
-          onPress={() => setShowByRoom(!showByRoom)}
+    <AccessGuard features={['electric_management']}>
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>{t.title}</Text>
+          <TouchableOpacity
+            style={styles.toggleButton}
+            onPress={() => setShowByRoom(!showByRoom)}
+          >
+            <Ionicons
+              name={showByRoom ? 'list' : 'grid'}
+              size={20}
+              color="#fff"
+            />
+            <Text style={styles.toggleButtonText}>
+              {showByRoom ? t.allDevices : t.showByRoom}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView
+          style={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              colors={['#4CAF50']}
+            />
+          }
         >
-          <Ionicons 
-            name={showByRoom ? 'list' : 'grid'} 
-            size={20} 
-            color="#fff" 
-          />
-          <Text style={styles.toggleButtonText}>
-            {showByRoom ? t.allDevices : t.showByRoom}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      
-      <ScrollView
-        style={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            colors={['#4CAF50']}
-          />
-        }
-      >
-        {showByRoom ? (
-          <View style={styles.roomsContainer}>
-            {rooms.map(renderRoomSection)}
-          </View>
-        ) : (
-          <View style={styles.devicesContainer}>
-            {devices.map(renderDeviceItem)}
-          </View>
-        )}
-        
-        {devices.length === 0 && !isLoading && (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="hardware-chip" size={64} color="#ccc" />
-            <Text style={styles.emptyText}>{t.noDevices}</Text>
-            <TouchableOpacity style={styles.reloadButton} onPress={handleRefresh}>
-              <Ionicons name="refresh" size={20} color="#fff" />
-              <Text style={styles.reloadButtonText}>{t.reload}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+          {showByRoom ? (
+            <View style={styles.roomsContainer}>
+              {rooms.map(renderRoomSection)}
+            </View>
+          ) : (
+            <View style={styles.devicesContainer}>
+              {devices.map(renderDeviceItem)}
+            </View>
+          )}
+
+          {devices.length === 0 && !isLoading && (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="hardware-chip" size={64} color="#ccc" />
+              <Text style={styles.emptyText}>{t.noDevices}</Text>
+              <TouchableOpacity style={styles.reloadButton} onPress={handleRefresh}>
+                <Ionicons name="refresh" size={20} color="#fff" />
+                <Text style={styles.reloadButtonText}>{t.reload}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+      </SafeAreaView>
+    </AccessGuard>
   );
 }
 

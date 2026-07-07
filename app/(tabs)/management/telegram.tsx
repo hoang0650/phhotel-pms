@@ -15,6 +15,7 @@ import { aiApi } from '@/services/api/ai';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHotel } from '@/contexts/HotelContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { AccessGuard } from '@/components/AccessGuard';
 
 interface TgMessage {
   id: string;
@@ -274,7 +275,8 @@ export default function TelegramManagementScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <AccessGuard features={['telegram_messages']}>
+      <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{t.title}</Text>
         <TouchableOpacity style={styles.iconButton} onPress={() => setShowConversations(true)}>
@@ -408,7 +410,8 @@ export default function TelegramManagementScreen() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
-    </SafeAreaView>
+      </SafeAreaView>
+    </AccessGuard>
   );
 }
 

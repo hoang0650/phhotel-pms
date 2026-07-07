@@ -15,6 +15,7 @@ import { useHotel } from '@/contexts/HotelContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { debtsApi, Debt, DebtLabel } from '@/services/api/debts';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { AccessGuard } from '@/components/AccessGuard';
 
 interface SettleDebtData {
   amount: number;
@@ -436,7 +437,8 @@ export default function DebtManagementScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <AccessGuard features={['room_management']}>
+      <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{text.title}</Text>
         <View style={styles.headerStats}>
@@ -908,7 +910,8 @@ export default function DebtManagementScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </AccessGuard>
   );
 }
 

@@ -223,6 +223,8 @@ export default function RoomsScreen() {
   const [guestOutNote, setGuestOutNote] = useState('');
   const [guestOutModalVisible, setGuestOutModalVisible] = useState(false);
   const [guestReturnModalVisible, setGuestReturnModalVisible] = useState(false);
+  const normalizedHotelId = selectedHotelId?.trim() || '';
+  const roomsQueryEnabled = normalizedHotelId.length > 0;
 
   
 
@@ -234,24 +236,27 @@ export default function RoomsScreen() {
 } = useQuery({
   queryKey: ['rooms', selectedHotelId], 
   queryFn: () => {
-    // CHẶN ĐẦU: Nếu lỡ lọt lưới vào đây mà hotelId vẫn rỗng, trả về mảng rỗng ngay lập tức, không gọi lên server
-    if (!selectedHotelId || selectedHotelId.trim() === '') {
+    if (!roomsQueryEnabled) {
       return [];
     }
-    return roomsApi.getAll();
+    return roomsApi.getAll(normalizedHotelId);
   },
-  // ĐIỀU KIỆN QUAN TRỌNG: Chỉ bật query khi selectedHotelId không null, không undefined và không phải chuỗi rỗng
-  enabled: !!selectedHotelId && selectedHotelId.trim() !== '',
-  
+  enabled: roomsQueryEnabled,
+  staleTime: 15_000,
+  gcTime: 5 * 60_000,
+  refetchOnMount: false,
+  refetchOnWindowFocus: false,
 });
 
-// 1. QUERY: Lấy danh sách các phiên bản nháp (Sessions) từ Redis backend công khai an toàn
-  const { data: roomSessions, refetch: refetchSessions } = useQuery({
+  const { data: roomSessions = {}, refetch: refetchSessions } = useQuery({
     queryKey: ['roomSessions', selectedHotelId],
-    // Giải pháp: Sử dụng toán tử rút gọn || '' để loại bỏ hoàn toàn lỗi Type 'null' is not assignable to type 'string'
-    queryFn: () => roomsApi.getAll(), 
-    enabled: !!selectedHotelId && selectedHotelId !== 'null' && selectedHotelId.trim() !== '', 
+    queryFn: () => roomsApi.getRoomSessions(normalizedHotelId),
+    enabled: roomsQueryEnabled,
     retry: 1,
+    staleTime: 10_000,
+    gcTime: 5 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   // 2. MUTATION: Khai báo hàm đẩy trạng thái đồng bộ lên Redis của Backend đúng chuẩn cấu trúc
@@ -380,6 +385,11 @@ export default function RoomsScreen() {
   const { data: availableServices = [], isLoading: isLoadingServiceList } = useQuery({
     queryKey: ['services', selectedHotelId],
     queryFn: () => servicesApi.getAll(selectedHotelId || undefined),
+    enabled: roomsQueryEnabled && modalVisible,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   const { data: serviceOrders = [] } = useQuery({
@@ -522,11 +532,12 @@ export default function RoomsScreen() {
   const { mutate: doGuestOut } = guestOutMutation;
   const { mutate: doGuestReturn } = guestReturnMutation;
 
+  const normalizedSearchQuery = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery]);
+
   const filteredRooms = useMemo(() => {
     return rooms.filter((room) => {
-      // Bọc an toàn: Nếu room.number bị undefined, sẽ tự động dùng chuỗi rỗng '' thay thế
       const roomNumberSafe = room.number || '';
-      const matchesSearch = roomNumberSafe.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch = normalizedSearchQuery.length === 0 || roomNumberSafe.toLowerCase().includes(normalizedSearchQuery);
       
       const matchesFilter =
         selectedFilter === 'all'
@@ -535,22 +546,35 @@ export default function RoomsScreen() {
           
       return matchesSearch && matchesFilter;
     });
-  }, [rooms, searchQuery, selectedFilter]);
+  }, [rooms, normalizedSearchQuery, selectedFilter]);
 
   const availableRoomsForTransfer = useMemo(() => {
     return rooms.filter(r => r.status === 'vacant' && r.id !== selectedRoom?.id);
   }, [rooms, selectedRoom]);
 
-  const statusCounts = useMemo(() => ({
-    all: rooms.length,
-    vacant: rooms.filter((r) => r.status === 'vacant').length,
-    occupied: rooms.filter((r) => r.status === 'occupied').length,
-    cleaning: rooms.filter((r) => r.status === 'cleaning').length,
-    dirty: rooms.filter((r) => r.status === 'dirty').length,
-    maintenance: rooms.filter((r) => r.status === 'maintenance').length,
-    booked: rooms.filter((r) => r.status === 'booked').length,
-    guest_out: rooms.filter((r) => r.status === 'occupied' && r.guestStatus === 'out').length,
-  }), [rooms]);
+  const statusCounts = useMemo(() => {
+    const counts = {
+      all: rooms.length,
+      vacant: 0,
+      occupied: 0,
+      cleaning: 0,
+      dirty: 0,
+      maintenance: 0,
+      booked: 0,
+      guest_out: 0,
+    };
+
+    rooms.forEach((room) => {
+      if (room.status in counts) {
+        counts[room.status as keyof typeof counts] += 1;
+      }
+      if (room.status === 'occupied' && room.guestStatus === 'out') {
+        counts.guest_out += 1;
+      }
+    });
+
+    return counts;
+  }, [rooms]);
 
   const formatCurrency = useCallback((amount: number) => {
     return new Intl.NumberFormat('vi-VN', {
@@ -1723,6 +1747,19 @@ export default function RoomsScreen() {
       </TouchableOpacity>
     );
   }, [handleRoomPress, openRoomModal, formatCurrency, formatDateTime, getStatusLabel, colors, isDark, t, language, doMarkClean, getRoomBookingSnapshot]);
+
+  const renderRoomItem = useCallback(
+    ({ item }: { item: Room }) => {
+      return viewMode === 'list' ? renderListItem(item) : renderGridItem(item);
+    },
+    [renderGridItem, renderListItem, viewMode]
+  );
+
+  const keyExtractor = useCallback((item: Room, index: number) => item.id || `${item.number}-${item.floor}-${index}`, []);
+
+  const handleRefresh = useCallback(() => {
+    return Promise.all([refetchRooms(), refetchSessions()]);
+  }, [refetchRooms, refetchSessions]);
 
   const renderModalContent = useCallback(() => {
     if (!selectedRoom) return null;
@@ -2955,29 +2992,27 @@ export default function RoomsScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      <ScrollView
+      <FlatList
+        data={filteredRooms}
+        key={viewMode}
+        keyExtractor={keyExtractor}
+        renderItem={renderRoomItem}
         style={styles.roomsList}
         showsVerticalScrollIndicator={false}
+        numColumns={viewMode === 'grid' ? 2 : 1}
+        columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
         contentContainerStyle={[
           styles.roomsListContent,
-          viewMode === 'grid' && styles.gridContainer,
+          viewMode === 'grid' && styles.gridListContent,
+          filteredRooms.length === 0 && styles.roomsListEmptyContent,
         ]}
-        refreshControl={
-          <RefreshControl refreshing={isRoomsLoading || isRoomsFetching} onRefresh={() =>{ refetchRooms(); }} />
-        }
-      >
-        {viewMode === 'list'
-          ? filteredRooms.map((room, index) => (
-              <View key={room.id || `${room.number}-${room.floor}-${index}`}>
-                {renderListItem(room)}
-              </View>
-            ))
-          : filteredRooms.map((room, index) => (
-              <View key={room.id || `${room.number}-${room.floor}-${index}`}>
-                {renderGridItem(room)}
-              </View>
-            ))}
-        {filteredRooms.length === 0 && (
+        removeClippedSubviews={Platform.OS !== 'web'}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={7}
+        updateCellsBatchingPeriod={50}
+        refreshControl={<RefreshControl refreshing={isRoomsLoading || isRoomsFetching} onRefresh={handleRefresh} />}
+        ListEmptyComponent={
           <View style={styles.emptyState}>
             {rooms.length === 0 ? (
               <>
@@ -2992,8 +3027,8 @@ export default function RoomsScreen() {
               </>
             )}
           </View>
-        )}
-      </ScrollView>
+        }
+      />
 
       <Modal
         visible={modalVisible}
@@ -3541,6 +3576,17 @@ const styles = StyleSheet.create({
   roomsListContent: {
     paddingHorizontal: 20,
     paddingBottom: 100,
+  },
+  roomsListEmptyContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  gridListContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 100,
+  },
+  gridRow: {
+    justifyContent: 'space-between',
   },
   gridContainer: {
     flexDirection: 'row',

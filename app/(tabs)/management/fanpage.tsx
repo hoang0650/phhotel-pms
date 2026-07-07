@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { aiApi } from '@/services/api/ai';
+import { AccessGuard } from '@/components/AccessGuard';
 
 interface FacebookMessage {
   id: string;
@@ -555,7 +556,8 @@ export default function FanpageManagementScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <AccessGuard features={['fanpage_messages']}>
+      <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{t.title}</Text>
         <TouchableOpacity
@@ -725,7 +727,8 @@ export default function FanpageManagementScreen() {
           </View>
         )}
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </AccessGuard>
   );
 }
 

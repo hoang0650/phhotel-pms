@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { HotelProvider } from "@/contexts/HotelContext";
+import { PermissionProvider } from "@/contexts/PermissionContext";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
@@ -57,18 +58,20 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <HotelProvider>
-          <ThemeProvider>
-            <LanguageProvider>
-              <GestureHandlerRootView style={{ flex: 1 }}>
-                <ThemedStatusBar />
-                <AuthGate>
-                  <RootLayoutNav />
-                </AuthGate>
-              </GestureHandlerRootView>
-            </LanguageProvider>
-          </ThemeProvider>
-        </HotelProvider>
+        <PermissionProvider>
+          <HotelProvider>
+            <ThemeProvider>
+              <LanguageProvider>
+                <GestureHandlerRootView style={{ flex: 1 }}>
+                  <ThemedStatusBar />
+                  <AuthGate>
+                    <RootLayoutNav />
+                  </AuthGate>
+                </GestureHandlerRootView>
+              </LanguageProvider>
+            </ThemeProvider>
+          </HotelProvider>
+        </PermissionProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

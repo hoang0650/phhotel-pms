@@ -8,6 +8,7 @@ import { Invoice, InvoiceProduct, Service as InvoiceService } from '@/types/invo
 import { Ionicons } from '@expo/vector-icons';
 import { useHotel } from '@/contexts/HotelContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { AccessGuard } from '@/components/AccessGuard';
 
 interface EditableProduct {
   id?: string;
@@ -431,7 +432,8 @@ export default function InvoiceEditorScreen() {
   }
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
+    <AccessGuard features={['room_management']}>
+      <ScrollView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.header, { backgroundColor: colors.card }]}>
         <View style={styles.headerLeft}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -907,7 +909,8 @@ export default function InvoiceEditorScreen() {
           {text.printDate} {new Date().toLocaleDateString(isVi ? 'vi-VN' : 'en-US')} {new Date().toLocaleTimeString(isVi ? 'vi-VN' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
         </Text>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </AccessGuard>
   );
 }
 

@@ -18,7 +18,7 @@
   "submit": {
     "production": {
       "android": {
-        "track": "production",
+        "track": "app.rork.phhotel-pms-interface",
         "releaseStatus": "completed"
       },
       "ios": {

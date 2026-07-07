@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useHotel } from '@/contexts/HotelContext';
+import { usePermission } from '@/contexts/PermissionContext';
+import { PricingFeature } from '@/services/api/pricing';
 
 interface ManagementModule {
   id: string;
@@ -38,6 +40,8 @@ interface ManagementModule {
   icon: React.ComponentType<{ size: number; color: string }>;
   route: string;
   gradient: [string, string];
+  feature?: PricingFeature;
+  addon?: 'aiChatboxFeature';
 }
 
 const managementModules: ManagementModule[] = [
@@ -50,6 +54,7 @@ const managementModules: ManagementModule[] = [
     icon: FileText,
     route: '/management/invoice',
     gradient: ['#FF6B6B', '#FF8E8E'],
+    feature: 'room_management',
   },
   {
     id: 'payment-history',
@@ -60,6 +65,7 @@ const managementModules: ManagementModule[] = [
     icon: Clock,
     route: '/management/payment-history',
     gradient: ['#4ECDC4', '#44A08D'],
+    feature: 'bank_transfer_history',
   },
   {
     id: 'debt',
@@ -70,6 +76,7 @@ const managementModules: ManagementModule[] = [
     icon: Wallet,
     route: '/management/debt',
     gradient: ['#45B7D1', '#96C93D'],
+    feature: 'room_management',
   },
   {
     id: 'rooms',
@@ -80,6 +87,7 @@ const managementModules: ManagementModule[] = [
     icon: DollarSign,
     route: '/management/rooms',
     gradient: ['#F093FB', '#F5576C'],
+    feature: 'room_management',
   },
   {
     id: 'electricity',
@@ -90,6 +98,7 @@ const managementModules: ManagementModule[] = [
     icon: Zap,
     route: '/management/electricity',
     gradient: ['#FFD93D', '#FF6B6B'],
+    feature: 'electric_management',
   },
   {
     id: 'shift-handover',
@@ -100,6 +109,7 @@ const managementModules: ManagementModule[] = [
     icon: ArrowRightLeft,
     route: '/management/shift-handover',
     gradient: ['#5B8DEF', '#6BCBFF'],
+    feature: 'shift_handover',
   },
   {
     id: 'fanpage',
@@ -110,6 +120,7 @@ const managementModules: ManagementModule[] = [
     icon: MessageSquare,
     route: '/management/fanpage',
     gradient: ['#6BCF7F', '#2E8B57'],
+    feature: 'fanpage_messages',
   },
   {
     id: 'ai-chat',
@@ -120,6 +131,7 @@ const managementModules: ManagementModule[] = [
     icon: Sparkles,
     route: '/management/ai-chat',
     gradient: ['#667eea', '#764ba2'],
+    addon: 'aiChatboxFeature',
   },
   {
     id: 'zalo',
@@ -130,6 +142,7 @@ const managementModules: ManagementModule[] = [
     icon: MessageCircleMore,
     route: '/management/zalo',
     gradient: ['#06b6d4', '#0ea5e9'],
+    feature: 'zalo_messages',
   },
   {
     id: 'telegram',
@@ -140,6 +153,7 @@ const managementModules: ManagementModule[] = [
     icon: Send,
     route: '/management/telegram',
     gradient: ['#38bdf8', '#2563eb'],
+    feature: 'telegram_messages',
   },
   {
     id: 'camera',
@@ -150,6 +164,7 @@ const managementModules: ManagementModule[] = [
     icon: Camera,
     route: '/management/camera',
     gradient: ['#f97316', '#ef4444'],
+    feature: 'hotel_management',
   },
 ];
 
@@ -159,8 +174,18 @@ export default function ManagementScreen() {
   const { isDark, colors } = useTheme();
   const { language } = useLanguage();
   const { selectedHotel } = useHotel();
+  const { hasFeatureAccess, hasAddonAccess } = usePermission();
 
   const isVi = language === 'vi';
+  const accessibleModules = useMemo(
+    () =>
+      managementModules.filter((module) => {
+        const featureAllowed = module.feature ? hasFeatureAccess(module.feature) : true;
+        const addonAllowed = module.addon ? hasAddonAccess(module.addon) : true;
+        return featureAllowed && addonAllowed;
+      }),
+    [hasAddonAccess, hasFeatureAccess]
+  );
 
   const handleModulePress = (route: string) => {
     router.push(route as any);
@@ -239,11 +264,24 @@ export default function ManagementScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]}
       >
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
-          {isVi ? 'Công cụ quản lý' : 'Management Tools'} ({managementModules.length})
+          {isVi ? 'Công cụ quản lý' : 'Management Tools'} ({accessibleModules.length})
         </Text>
-        <View style={styles.modulesGrid}>
-          {managementModules.map(renderModule)}
-        </View>
+        {accessibleModules.length > 0 ? (
+          <View style={styles.modulesGrid}>
+            {accessibleModules.map(renderModule)}
+          </View>
+        ) : (
+          <View style={[styles.emptyStateCard, { backgroundColor: colors.cardBackground }]}>
+            <Text style={[styles.emptyStateTitle, { color: colors.text }]}>
+              {isVi ? 'Gói hiện tại chưa mở tính năng quản lý' : 'Your current package does not include management tools'}
+            </Text>
+            <Text style={[styles.emptyStateDesc, { color: colors.textSecondary }]}>
+              {isVi
+                ? 'Vui lòng nâng cấp gói đăng ký hoặc cấp lại quyền tính năng để truy cập các công cụ quản lý.'
+                : 'Please upgrade the subscription or reassign feature permissions to access management tools.'}
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -305,6 +343,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+  },
+  emptyStateCard: {
+    borderRadius: 16,
+    padding: 18,
+  },
+  emptyStateTitle: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+  },
+  emptyStateDesc: {
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 8,
   },
   moduleCard: {
     width: '48%',

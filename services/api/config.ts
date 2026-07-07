@@ -109,6 +109,12 @@ export const API_ENDPOINTS = {
   SETTINGS: {
     NOTIFICATION: '/api/settings/notification',
   },
+  PRICING: {
+    BASE: '/pricing-packages',
+    BY_ID: (id: string) => `/pricing-packages/${id}`,
+    USER_PACKAGE: (userId: string) => `/pricing-packages/user/${userId}`,
+    PERMISSIONS: '/pricing-packages/permissions',
+  },
   SHIFT_HANDOVER: {
     BASE: '/shift-handover',
     PREVIOUS_AMOUNT: '/shift-handover/previous-amount',

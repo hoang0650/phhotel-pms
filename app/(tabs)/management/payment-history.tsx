@@ -21,6 +21,7 @@ import type {
 import { useAuth } from '@/contexts/AuthContext';
 import { useHotel } from '@/contexts/HotelContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { AccessGuard } from '@/components/AccessGuard';
 
 const REFRESH_INTERVAL = 30000;
 
@@ -412,26 +413,27 @@ export default function PaymentHistoryScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerTitle}>{text.title}</Text>
-            <Text style={styles.headerSubtitle}>{text.subtitle}</Text>
+    <AccessGuard features={['bank_transfer_history']}>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerTopRow}>
+            <View style={styles.headerTitleWrap}>
+              <Text style={styles.headerTitle}>{text.title}</Text>
+              <Text style={styles.headerSubtitle}>{text.subtitle}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.refreshButton}
+              onPress={refreshAllData}
+              disabled={isLoading}
+            >
+              <Ionicons name="reload-outline" size={18} color="#007AFF" />
+              <Text style={styles.refreshButtonText}>{text.refresh}</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={styles.refreshButton}
-            onPress={refreshAllData}
-            disabled={isLoading}
-          >
-            <Ionicons name="reload-outline" size={18} color="#007AFF" />
-            <Text style={styles.refreshButtonText}>{text.refresh}</Text>
-          </TouchableOpacity>
+          <Text style={styles.statText}>Tổng: {filteredPayments.length} giao dịch</Text>
         </View>
-        <Text style={styles.statText}>Tổng: {filteredPayments.length} giao dịch</Text>
-      </View>
 
-      <ScrollView style={styles.paymentList} contentContainerStyle={styles.paymentListContent}>
+        <ScrollView style={styles.paymentList} contentContainerStyle={styles.paymentListContent}>
         <View style={styles.quickActionsRow}>
           <TouchableOpacity
             style={styles.secondaryActionButton}
@@ -641,8 +643,9 @@ export default function PaymentHistoryScreen() {
             </View>
           );
         })}
-      </ScrollView>
-    </View>
+        </ScrollView>
+      </View>
+    </AccessGuard>
   );
 }
 

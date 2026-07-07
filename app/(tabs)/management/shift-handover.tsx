@@ -21,6 +21,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useRouter } from 'expo-router';
 import { Staff } from '@/types/hotel';
+import { AccessGuard } from '@/components/AccessGuard';
 
 const parseCurrency = (value: string) => {
   if (!value) return 0;
@@ -1052,7 +1053,8 @@ export default function ShiftHandoverScreen() {
   const activeFilterSummary = `${formatFilterDateLabel(appliedStartDate)} - ${formatFilterDateLabel(appliedEndDate)}`;
 
   return (
-    <View style={styles.container}>
+    <AccessGuard features={['shift_handover']}>
+      <View style={styles.container}>
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>{text.title}</Text>
@@ -1576,7 +1578,8 @@ export default function ShiftHandoverScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </AccessGuard>
   );
 }
 

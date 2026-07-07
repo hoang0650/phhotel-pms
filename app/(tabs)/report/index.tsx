@@ -43,8 +43,10 @@ import { useHotel } from '@/contexts/HotelContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermission } from '@/contexts/PermissionContext';
 import { apiClient } from '@/services/api/client';
 import { API_ENDPOINTS } from '@/services/api/config';
+import { AccessGuard } from '@/components/AccessGuard';
 
 type PeriodType = 'day' | 'week' | 'month' | 'year';
 
@@ -294,9 +296,10 @@ export default function ReportScreen() {
   const { isDark, colors } = useTheme();
   const { language } = useLanguage();
   const { user } = useAuth();
+  const { canAccessAnyFeature } = usePermission();
   const [period, setPeriod] = useState<PeriodType>('month');
   const isVi = language === 'vi';
-  const canAccess = user?.role === 'superadmin' || user?.role === 'business';
+  const canAccess = canAccessAnyFeature(['financial_summary_report', 'revenue_chart']);
 
   const text = useMemo(() => ({
     title: isVi ? 'Bao cao tai chinh' : 'Financial Summary',
@@ -308,7 +311,9 @@ export default function ReportScreen() {
     selectedHotel: isVi ? 'Khach san da chon' : 'Selected hotel',
     noHotelSelected: isVi ? 'Chua chon khach san' : 'No hotel selected',
     noAccess: isVi ? 'Ban khong co quyen xem bao cao tai chinh tong hop' : 'You do not have access to this financial summary',
-    noAccessDesc: isVi ? 'Chi superadmin va business moi xem duoc man nay' : 'Only superadmin and business roles can access this screen',
+    noAccessDesc: isVi
+      ? 'Tài khoản hiện tại chưa được gói đăng ký cấp quyền xem báo cáo tài chính tổng hợp.'
+      : 'Your current subscription does not include access to the financial summary report.',
     chooseHotel: isVi ? 'Vui long chon khach san de xem bao cao' : 'Please select a hotel to view the report',
     totalRevenue: isVi ? 'Tong doanh thu' : 'Total revenue',
     totalCosts: isVi ? 'Tong chi phi' : 'Total costs',
@@ -463,7 +468,8 @@ export default function ReportScreen() {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <AccessGuard features={['financial_summary_report', 'revenue_chart']}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient
         colors={isDark ? ['#0f766e', '#14b8a6'] : ['#14b8a6', '#0d9488']}
         style={[styles.header, { paddingTop: insets.top + 12 }]}
@@ -793,7 +799,8 @@ export default function ReportScreen() {
           </>
         )}
       </ScrollView>
-    </View>
+      </View>
+    </AccessGuard>
   );
 }
 

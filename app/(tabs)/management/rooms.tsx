@@ -18,6 +18,7 @@ import { transactionsApi } from '@/services/api/transactions';
 import { format } from 'date-fns';
 import { enUS, vi } from 'date-fns/locale';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { AccessGuard } from '@/components/AccessGuard';
 
 interface Expense {
   _id?: string;
@@ -523,7 +524,8 @@ export default function IncomeExpenseManagementScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <AccessGuard features={['room_management']}>
+      <ScrollView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{text.title}</Text>
@@ -1117,7 +1119,8 @@ export default function IncomeExpenseManagementScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+      </ScrollView>
+    </AccessGuard>
   );
 }
 
