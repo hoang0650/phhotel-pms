@@ -4,6 +4,41 @@ import { Platform } from 'react-native';
 
 type ImageFile = { uri: string; name?: string; type?: string };
 
+export interface OpenClawDevicePairingItem {
+  requestId?: string;
+  deviceId?: string;
+  clientId?: string;
+  clientMode?: string;
+  role?: string;
+  roles?: string[];
+  scopes?: string[];
+  requestedAtMs?: number;
+  updatedAtMs?: number;
+  ts?: number;
+  status?: string;
+  [key: string]: any;
+}
+
+export interface OpenClawDevicePairingsResponse {
+  success: boolean;
+  pending: OpenClawDevicePairingItem[];
+  paired: OpenClawDevicePairingItem[];
+  summary?: {
+    pendingCount: number;
+    pairedCount: number;
+  };
+  message?: string;
+}
+
+export interface OpenClawApprovePairingResponse {
+  success: boolean;
+  message?: string;
+  result?: {
+    request?: OpenClawDevicePairingItem;
+    approved?: any;
+  };
+}
+
 class AiClient {
   private baseUrl: string;
   private timeout: number;
@@ -267,6 +302,84 @@ class AiClient {
     const params = new URLSearchParams({ tenant_id: tenantId });
     if (pageId) params.append('page_id', pageId);
     return this.requestJson(`/bot/status?${params.toString()}`);
+  }
+
+  async getOpenClawDevicePairings(params?: {
+    clientId?: string;
+    clientMode?: string;
+    role?: string;
+  }): Promise<OpenClawDevicePairingsResponse> {
+    const authHeader = await this.getAuthHeader();
+    const query = new URLSearchParams({
+      clientId: params?.clientId || 'openclaw-control-ui',
+      clientMode: params?.clientMode || 'ui',
+      role: params?.role || 'operator',
+    });
+    const endpoint = `${API_CONFIG.BASE_URL}/ai-assistant/openclaw/device-pairings?${query.toString()}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...authHeader,
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  }
+
+  async approveOpenClawDevicePairing(payload?: {
+    requestId?: string;
+    clientId?: string;
+    clientMode?: string;
+    role?: string;
+    scopes?: string[];
+  }): Promise<OpenClawApprovePairingResponse> {
+    const authHeader = await this.getAuthHeader();
+    const endpoint = `${API_CONFIG.BASE_URL}/ai-assistant/openclaw/device-pairings/approve`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          ...authHeader,
+        },
+        body: JSON.stringify({
+          requestId: payload?.requestId || null,
+          clientId: payload?.clientId || 'openclaw-control-ui',
+          clientMode: payload?.clientMode || 'ui',
+          role: payload?.role || 'operator',
+          scopes: Array.isArray(payload?.scopes) ? payload?.scopes : null,
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      return await res.json();
+    } catch (err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
   }
 
   getWebSocketUrl(tenantId: string): string {

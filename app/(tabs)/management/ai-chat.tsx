@@ -18,7 +18,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useHotel } from '@/contexts/HotelContext';
-import { aiApi } from '@/services/api/ai';
+import {
+  aiApi,
+  type OpenClawDevicePairingItem,
+} from '@/services/api/ai';
 import { API_CONFIG } from '@/services/api/config';
 import { useRouter } from 'expo-router';
 import { AccessGuard } from '@/components/AccessGuard';
@@ -145,7 +148,7 @@ const isWebPrompt = (message: string) => {
 
 export default function AIChatScreen() {
   const { language } = useLanguage();
-  const { user, token } = useAuth();
+  const { user, token, isAdmin } = useAuth();
   const { selectedHotelId, selectedHotel, hotels, selectHotel, canSelectMultipleHotels, isLoading: hotelContextLoading } = useHotel();
   const router = useRouter();
   const [conversations, setConversations] = useState<Conversation[]>([
@@ -167,6 +170,10 @@ export default function AIChatScreen() {
   const [datasetModalVisible, setDatasetModalVisible] = useState(false);
   const [datasetText, setDatasetText] = useState('');
   const [datasetLoading, setDatasetLoading] = useState(false);
+  const [pairingLoading, setPairingLoading] = useState(false);
+  const [pairingApproving, setPairingApproving] = useState(false);
+  const [pendingPairings, setPendingPairings] = useState<OpenClawDevicePairingItem[]>([]);
+  const [pairedDevices, setPairedDevices] = useState<OpenClawDevicePairingItem[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -204,6 +211,22 @@ export default function AIChatScreen() {
       hotelLoading: 'Đang tải khách sạn...',
       webSummary: 'Tóm tắt web',
       webNews: 'Tin tức mới',
+      openClawPairing: 'OpenClaw Pairing',
+      loadPairings: 'Tải pending pairing',
+      approveLatestPairing: 'Approve mới nhất',
+      approve: 'Approve',
+      pendingPairings: 'Pending pairing',
+      pairedDevices: 'Thiết bị đã duyệt',
+      noPendingPairings: 'Chưa có pending pairing',
+      noPendingPairingsDesc: 'Bấm Kết nối ở OpenClaw Control UI trước, sau đó quay lại đây tải danh sách pairing.',
+      onlyAdminCanApprove: 'Chỉ admin hoặc superadmin mới được phép approve OpenClaw pairing.',
+      loadingPairingsFailed: 'Không tải được danh sách OpenClaw pairing.',
+      approvePairingFailed: 'Không approve được OpenClaw pairing.',
+      approvePairingSuccess: 'Đã approve OpenClaw pairing thành công.',
+      deviceClient: 'Client',
+      deviceRole: 'Vai trò',
+      deviceScopes: 'Scopes',
+      deviceTime: 'Thời gian',
       deleteConversation: 'Xóa cuộc hội thoại',
       confirmDelete: 'Bạn có chắc chắn muốn xóa cuộc hội thoại này?',
       noMessages: 'Chưa có tin nhắn nào',
@@ -242,6 +265,22 @@ export default function AIChatScreen() {
       hotelLoading: 'Loading hotels...',
       webSummary: 'Web summary',
       webNews: 'Latest news',
+      openClawPairing: 'OpenClaw Pairing',
+      loadPairings: 'Load pending pairings',
+      approveLatestPairing: 'Approve latest',
+      approve: 'Approve',
+      pendingPairings: 'Pending pairings',
+      pairedDevices: 'Approved devices',
+      noPendingPairings: 'No pending pairings',
+      noPendingPairingsDesc: 'Click Connect in OpenClaw Control UI first, then return here to load the pairing list.',
+      onlyAdminCanApprove: 'Only admin or superadmin can approve OpenClaw pairings.',
+      loadingPairingsFailed: 'Failed to load OpenClaw pairings.',
+      approvePairingFailed: 'Failed to approve OpenClaw pairing.',
+      approvePairingSuccess: 'OpenClaw pairing approved successfully.',
+      deviceClient: 'Client',
+      deviceRole: 'Role',
+      deviceScopes: 'Scopes',
+      deviceTime: 'Time',
       deleteConversation: 'Delete Conversation',
       confirmDelete: 'Are you sure you want to delete this conversation?',
       noMessages: 'No messages yet',
@@ -640,6 +679,58 @@ export default function AIChatScreen() {
     router.push('/management/fanpage');
   };
 
+  const getPairingRequestedAt = useCallback((item: OpenClawDevicePairingItem) => {
+    const timestamp =
+      Number(item?.requestedAtMs || 0) ||
+      Number(item?.updatedAtMs || 0) ||
+      Number(item?.ts || 0);
+    return Number.isFinite(timestamp) && timestamp > 0
+      ? new Date(timestamp).toLocaleString()
+      : '-';
+  }, []);
+
+  const loadOpenClawPairings = useCallback(async () => {
+    if (!isAdmin) {
+      Alert.alert(t.openClawPairing, t.onlyAdminCanApprove);
+      return;
+    }
+    setPairingLoading(true);
+    try {
+      const response = await aiApi.getOpenClawDevicePairings();
+      setPendingPairings(Array.isArray(response?.pending) ? response.pending : []);
+      setPairedDevices(Array.isArray(response?.paired) ? response.paired : []);
+      if (!response?.pending?.length) {
+        Alert.alert(t.openClawPairing, t.noPendingPairingsDesc);
+      }
+    } catch (error) {
+      Alert.alert(t.openClawPairing, t.loadingPairingsFailed);
+    } finally {
+      setPairingLoading(false);
+    }
+  }, [isAdmin, t.loadingPairingsFailed, t.noPendingPairingsDesc, t.onlyAdminCanApprove, t.openClawPairing]);
+
+  const approveOpenClawPairing = useCallback(async (requestId?: string) => {
+    if (!isAdmin) {
+      Alert.alert(t.openClawPairing, t.onlyAdminCanApprove);
+      return;
+    }
+    setPairingApproving(true);
+    try {
+      await aiApi.approveOpenClawDevicePairing({
+        requestId: requestId || undefined,
+        clientId: 'openclaw-control-ui',
+        clientMode: 'ui',
+        role: 'operator',
+      });
+      Alert.alert(t.openClawPairing, t.approvePairingSuccess);
+      await loadOpenClawPairings();
+    } catch (error) {
+      Alert.alert(t.openClawPairing, t.approvePairingFailed);
+    } finally {
+      setPairingApproving(false);
+    }
+  }, [isAdmin, loadOpenClawPairings, t.approvePairingFailed, t.approvePairingSuccess, t.onlyAdminCanApprove, t.openClawPairing]);
+
   const clearHistory = () => {
     if (messages.length === 0) {
       Alert.alert(t.clearHistory, t.noMessages);
@@ -794,6 +885,88 @@ export default function AIChatScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+
+          {isAdmin ? (
+            <View style={styles.adminPanel}>
+              <Text style={styles.adminPanelTitle}>{t.openClawPairing}</Text>
+              <Text style={styles.adminPanelDescription}>
+                {t.noPendingPairingsDesc}
+              </Text>
+              <View style={styles.adminActionsRow}>
+                <TouchableOpacity
+                  style={[styles.adminActionButton, styles.adminSecondaryButton]}
+                  onPress={loadOpenClawPairings}
+                  disabled={pairingLoading}
+                >
+                  {pairingLoading ? (
+                    <ActivityIndicator size="small" color="#1890ff" />
+                  ) : (
+                    <>
+                      <Ionicons name="refresh" size={16} color="#1890ff" />
+                      <Text style={styles.adminSecondaryText}>{t.loadPairings}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.adminActionButton, styles.adminPrimaryButton, (!pendingPairings.length || pairingApproving) && styles.adminDisabledButton]}
+                  onPress={() => approveOpenClawPairing()}
+                  disabled={!pendingPairings.length || pairingApproving}
+                >
+                  {pairingApproving ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={16} color="#fff" />
+                      <Text style={styles.adminPrimaryText}>{t.approveLatestPairing}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.adminSectionTitle}>
+                {t.pendingPairings} ({pendingPairings.length})
+              </Text>
+              {!pendingPairings.length ? (
+                <View style={styles.adminEmptyCard}>
+                  <Text style={styles.adminEmptyTitle}>{t.noPendingPairings}</Text>
+                  <Text style={styles.adminEmptyDescription}>{t.noPendingPairingsDesc}</Text>
+                </View>
+              ) : (
+                pendingPairings.map((pairing) => (
+                  <View key={pairing.requestId || `${pairing.clientId}-${pairing.ts}`} style={styles.pairingCard}>
+                    <Text style={styles.pairingRequestId}>{pairing.requestId || '-'}</Text>
+                    <Text style={styles.pairingMeta}>{t.deviceClient}: {pairing.clientId || '-'} / {pairing.clientMode || '-'}</Text>
+                    <Text style={styles.pairingMeta}>{t.deviceRole}: {pairing.role || pairing.roles?.join(', ') || '-'}</Text>
+                    <Text style={styles.pairingMeta}>{t.deviceScopes}: {pairing.scopes?.join(', ') || '-'}</Text>
+                    <Text style={styles.pairingMeta}>{t.deviceTime}: {getPairingRequestedAt(pairing)}</Text>
+                    <TouchableOpacity
+                      style={[styles.singleApproveButton, pairingApproving && styles.adminDisabledButton]}
+                      onPress={() => approveOpenClawPairing(pairing.requestId)}
+                      disabled={pairingApproving}
+                    >
+                      <Text style={styles.singleApproveButtonText}>{t.approve}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+
+              {pairedDevices.length ? (
+                <>
+                  <Text style={styles.adminSectionTitle}>
+                    {t.pairedDevices} ({pairedDevices.length})
+                  </Text>
+                  {pairedDevices.slice(0, 5).map((device) => (
+                    <View key={device.deviceId || `${device.clientId}-${device.ts}`} style={styles.pairedDeviceCard}>
+                      <Text style={styles.pairingRequestId}>{device.deviceId || '-'}</Text>
+                      <Text style={styles.pairingMeta}>{t.deviceClient}: {device.clientId || '-'} / {device.clientMode || '-'}</Text>
+                      <Text style={styles.pairingMeta}>{t.deviceRole}: {device.role || device.roles?.join(', ') || '-'}</Text>
+                      <Text style={styles.pairingMeta}>{t.deviceScopes}: {device.scopes?.join(', ') || '-'}</Text>
+                    </View>
+                  ))}
+                </>
+              ) : null}
+            </View>
+          ) : null}
         </SafeAreaView>
       </Modal>
 
@@ -1402,5 +1575,130 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 12,
     color: '#4CAF50',
+  },
+  adminPanel: {
+    marginHorizontal: 16,
+    marginBottom: 16,
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e8eef8',
+  },
+  adminPanelTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  adminPanelDescription: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#6b7280',
+    marginBottom: 12,
+  },
+  adminActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  adminActionButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+  },
+  adminSecondaryButton: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  adminPrimaryButton: {
+    backgroundColor: '#1890ff',
+  },
+  adminDisabledButton: {
+    opacity: 0.55,
+  },
+  adminSecondaryText: {
+    color: '#1890ff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  adminPrimaryText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  adminSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 10,
+  },
+  adminEmptyCard: {
+    borderRadius: 10,
+    padding: 12,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 12,
+  },
+  adminEmptyTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 4,
+  },
+  adminEmptyDescription: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#6b7280',
+  },
+  pairingCard: {
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+    backgroundColor: '#f8fbff',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  pairedDeviceCard: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fafafa',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  pairingRequestId: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 6,
+  },
+  pairingMeta: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#4b5563',
+    marginBottom: 2,
+  },
+  singleApproveButton: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    backgroundColor: '#e6f4ff',
+    borderWidth: 1,
+    borderColor: '#91caff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  singleApproveButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0958d9',
   },
 });

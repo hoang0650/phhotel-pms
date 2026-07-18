@@ -303,39 +303,45 @@ export default function RoomsScreen() {
     if (!snapshot) return;
 
     if (modalMode === 'checkin') {
-      setCheckInForm(prev => ({
-        ...prev,
-        guestName: snapshot.guestName,
-        guestPhone: snapshot.guestPhone,
-        guestId: snapshot.guestId,
-        adults: snapshot.adults,
-        children: snapshot.children,
-        rateType: snapshot.rateType,
-        paymentMethod: snapshot.paymentMethod,
-        advancePayment: snapshot.advancePayment ? String(snapshot.advancePayment) : '',
-        additionalCharges: snapshot.additionalCharges ? String(snapshot.additionalCharges) : '',
-        discount: snapshot.discount ? String(snapshot.discount) : '',
-        notes: snapshot.notes || '',
-      }));
+      setCheckInForm(prev => {
+        const next = {
+          ...prev,
+          guestName: snapshot.guestName,
+          guestPhone: snapshot.guestPhone,
+          guestId: snapshot.guestId,
+          adults: snapshot.adults,
+          children: snapshot.children,
+          rateType: snapshot.rateType,
+          paymentMethod: snapshot.paymentMethod,
+          advancePayment: snapshot.advancePayment ? String(snapshot.advancePayment) : '',
+          additionalCharges: snapshot.additionalCharges ? String(snapshot.additionalCharges) : '',
+          discount: snapshot.discount ? String(snapshot.discount) : '',
+          notes: snapshot.notes || '',
+        };
+        return areCheckInFormsEqual(prev, next) ? prev : next;
+      });
     }
 
     if (modalMode === 'checkout') {
-      setCheckOutForm(prev => ({
-        ...prev,
-        guestName: snapshot.guestName,
-        guestPhone: snapshot.guestPhone,
-        guestId: snapshot.guestId,
-        rateType: snapshot.rateType,
-        paymentMethod: snapshot.paymentMethod,
-        advancePayment: snapshot.advancePayment ? String(snapshot.advancePayment) : '',
-        notes: snapshot.notes || '',
-      }));
+      setCheckOutForm(prev => {
+        const next = {
+          ...prev,
+          guestName: snapshot.guestName,
+          guestPhone: snapshot.guestPhone,
+          guestId: snapshot.guestId,
+          rateType: snapshot.rateType,
+          paymentMethod: snapshot.paymentMethod,
+          advancePayment: snapshot.advancePayment ? String(snapshot.advancePayment) : '',
+          notes: snapshot.notes || '',
+        };
+        return areCheckOutFormsEqual(prev, next) ? prev : next;
+      });
     }
 
     if (snapshot.selectedServices.length > 0) {
-      setSelectedServices(snapshot.selectedServices);
+      setSelectedServices(prev => areSelectedServicesEqual(prev, snapshot.selectedServices) ? prev : snapshot.selectedServices);
     }
-  }, [modalVisible, selectedRoom, modalMode, roomSessions, rooms, getRoomBookingSnapshot, normalizePaymentMethod, normalizeRateType]);
+  }, [modalVisible, selectedRoom, modalMode, roomSessions, rooms, getRoomBookingSnapshot, normalizePaymentMethod, normalizeRateType, areCheckInFormsEqual, areCheckOutFormsEqual, areSelectedServicesEqual]);
 
   // 4. EFFECT: Lắng nghe thay đổi trên Form Mobile để tự động sync lên Cloud Redis qua Debounce (Mobile -> Web)
   useEffect(() => {
@@ -646,6 +652,47 @@ export default function RoomsScreen() {
       };
     });
   }, [t]);
+
+  const areSelectedServicesEqual = useCallback((left: SelectedServiceItem[], right: SelectedServiceItem[]) => {
+    if (left === right) return true;
+    if (left.length !== right.length) return false;
+    return left.every((item, index) => {
+      const next = right[index];
+      return (
+        item.serviceId === next?.serviceId &&
+        item.serviceName === next?.serviceName &&
+        item.price === next?.price &&
+        item.quantity === next?.quantity &&
+        item.totalPrice === next?.totalPrice
+      );
+    });
+  }, []);
+
+  const areCheckInFormsEqual = useCallback((left: CheckInFormData, right: CheckInFormData) => (
+    left.guestName === right.guestName &&
+    left.guestPhone === right.guestPhone &&
+    left.guestId === right.guestId &&
+    left.adults === right.adults &&
+    left.children === right.children &&
+    left.rateType === right.rateType &&
+    left.paymentMethod === right.paymentMethod &&
+    left.advancePayment === right.advancePayment &&
+    left.additionalCharges === right.additionalCharges &&
+    left.discount === right.discount &&
+    left.notes === right.notes
+  ), []);
+
+  const areCheckOutFormsEqual = useCallback((left: CheckOutFormData, right: CheckOutFormData) => (
+    left.guestName === right.guestName &&
+    left.guestPhone === right.guestPhone &&
+    left.guestId === right.guestId &&
+    left.rateType === right.rateType &&
+    left.paymentMethod === right.paymentMethod &&
+    left.advancePayment === right.advancePayment &&
+    left.additionalCharges === right.additionalCharges &&
+    left.discount === right.discount &&
+    left.notes === right.notes
+  ), []);
 
   const getRoomBookingSnapshot = useCallback((room?: Room | null): RoomBookingSnapshot | null => {
     if (!room) return null;
@@ -1073,39 +1120,49 @@ export default function RoomsScreen() {
     if (!modalVisible || !liveSelectedRoomSnapshot) return;
 
     if (modalMode === 'checkin') {
-      setCheckInForm(prev => ({
-        ...prev,
-        guestName: prev.guestName || liveSelectedRoomSnapshot.guestName,
-        guestPhone: prev.guestPhone || liveSelectedRoomSnapshot.guestPhone,
-        guestId: prev.guestId || liveSelectedRoomSnapshot.guestId,
-        adults: (prev.adults === 1 && liveSelectedRoomSnapshot.adults > 1) ? liveSelectedRoomSnapshot.adults : prev.adults,
-        children: (prev.children === 0 && liveSelectedRoomSnapshot.children > 0) ? liveSelectedRoomSnapshot.children : prev.children,
-        rateType: prev.rateType === 'hourly' ? liveSelectedRoomSnapshot.rateType : prev.rateType,
-        paymentMethod: prev.paymentMethod === 'cash' ? liveSelectedRoomSnapshot.paymentMethod : prev.paymentMethod,
-        advancePayment: prev.advancePayment !== '' ? prev.advancePayment : (liveSelectedRoomSnapshot.advancePayment ? String(liveSelectedRoomSnapshot.advancePayment) : ''),
-        additionalCharges: prev.additionalCharges !== '' ? prev.additionalCharges : (liveSelectedRoomSnapshot.additionalCharges ? String(liveSelectedRoomSnapshot.additionalCharges) : ''),
-        discount: prev.discount !== '' ? prev.discount : (liveSelectedRoomSnapshot.discount ? String(liveSelectedRoomSnapshot.discount) : ''),
-        notes: prev.notes || liveSelectedRoomSnapshot.notes || '',
-      }));
+      setCheckInForm(prev => {
+        const next = {
+          ...prev,
+          guestName: prev.guestName || liveSelectedRoomSnapshot.guestName,
+          guestPhone: prev.guestPhone || liveSelectedRoomSnapshot.guestPhone,
+          guestId: prev.guestId || liveSelectedRoomSnapshot.guestId,
+          adults: (prev.adults === 1 && liveSelectedRoomSnapshot.adults > 1) ? liveSelectedRoomSnapshot.adults : prev.adults,
+          children: (prev.children === 0 && liveSelectedRoomSnapshot.children > 0) ? liveSelectedRoomSnapshot.children : prev.children,
+          rateType: prev.rateType === 'hourly' ? liveSelectedRoomSnapshot.rateType : prev.rateType,
+          paymentMethod: prev.paymentMethod === 'cash' ? liveSelectedRoomSnapshot.paymentMethod : prev.paymentMethod,
+          advancePayment: prev.advancePayment !== '' ? prev.advancePayment : (liveSelectedRoomSnapshot.advancePayment ? String(liveSelectedRoomSnapshot.advancePayment) : ''),
+          additionalCharges: prev.additionalCharges !== '' ? prev.additionalCharges : (liveSelectedRoomSnapshot.additionalCharges ? String(liveSelectedRoomSnapshot.additionalCharges) : ''),
+          discount: prev.discount !== '' ? prev.discount : (liveSelectedRoomSnapshot.discount ? String(liveSelectedRoomSnapshot.discount) : ''),
+          notes: prev.notes || liveSelectedRoomSnapshot.notes || '',
+        };
+        return areCheckInFormsEqual(prev, next) ? prev : next;
+      });
     }
 
     if (modalMode === 'checkout') {
-      setCheckOutForm(prev => ({
-        ...prev,
-        guestName: prev.guestName || liveSelectedRoomSnapshot.guestName,
-        guestPhone: prev.guestPhone || liveSelectedRoomSnapshot.guestPhone,
-        guestId: prev.guestId || liveSelectedRoomSnapshot.guestId,
-        rateType: prev.rateType === 'hourly' ? liveSelectedRoomSnapshot.rateType : prev.rateType,
-        paymentMethod: prev.paymentMethod === 'cash' ? liveSelectedRoomSnapshot.paymentMethod : prev.paymentMethod,
-        advancePayment: prev.advancePayment !== '' ? prev.advancePayment : (liveSelectedRoomSnapshot.advancePayment ? String(liveSelectedRoomSnapshot.advancePayment) : ''),
-        notes: prev.notes || liveSelectedRoomSnapshot.notes || '',
-      }));
+      setCheckOutForm(prev => {
+        const next = {
+          ...prev,
+          guestName: prev.guestName || liveSelectedRoomSnapshot.guestName,
+          guestPhone: prev.guestPhone || liveSelectedRoomSnapshot.guestPhone,
+          guestId: prev.guestId || liveSelectedRoomSnapshot.guestId,
+          rateType: prev.rateType === 'hourly' ? liveSelectedRoomSnapshot.rateType : prev.rateType,
+          paymentMethod: prev.paymentMethod === 'cash' ? liveSelectedRoomSnapshot.paymentMethod : prev.paymentMethod,
+          advancePayment: prev.advancePayment !== '' ? prev.advancePayment : (liveSelectedRoomSnapshot.advancePayment ? String(liveSelectedRoomSnapshot.advancePayment) : ''),
+          notes: prev.notes || liveSelectedRoomSnapshot.notes || '',
+        };
+        return areCheckOutFormsEqual(prev, next) ? prev : next;
+      });
     }
 
     if (selectedServices.length === 0 && liveSelectedRoomSnapshot.selectedServices.length > 0) {
-      setSelectedServices(liveSelectedRoomSnapshot.selectedServices);
+      setSelectedServices(prev =>
+        areSelectedServicesEqual(prev, liveSelectedRoomSnapshot.selectedServices)
+          ? prev
+          : liveSelectedRoomSnapshot.selectedServices
+      );
     }
-  }, [modalVisible, modalMode, liveSelectedRoomSnapshot, selectedServices.length]);
+  }, [modalVisible, modalMode, liveSelectedRoomSnapshot, selectedServices.length, areCheckInFormsEqual, areCheckOutFormsEqual, areSelectedServicesEqual]);
 
   useEffect(() => {
     if (!modalVisible || modalMode !== 'checkout') return;
@@ -2855,24 +2912,30 @@ export default function RoomsScreen() {
     if (!draft) return;
     if (!selectedRoom) return;
     if (modalMode === 'checkin') {
-      setCheckInForm(prev => ({
-        ...prev,
-        guestName: draft.fullName || prev.guestName,
-        guestPhone: draft.phone || prev.guestPhone,
-        guestId: draft.idNumber || prev.guestId,
-        notes: prev.notes,
-      }));
+      setCheckInForm(prev => {
+        const next = {
+          ...prev,
+          guestName: draft.fullName || prev.guestName,
+          guestPhone: draft.phone || prev.guestPhone,
+          guestId: draft.idNumber || prev.guestId,
+          notes: prev.notes,
+        };
+        return areCheckInFormsEqual(prev, next) ? prev : next;
+      });
     }
     if (modalMode === 'checkout') {
-      setCheckOutForm(prev => ({
-        ...prev,
-        guestName: draft.fullName || prev.guestName,
-        guestPhone: draft.phone || prev.guestPhone,
-        guestId: draft.idNumber || prev.guestId,
-        notes: prev.notes,
-      }));
+      setCheckOutForm(prev => {
+        const next = {
+          ...prev,
+          guestName: draft.fullName || prev.guestName,
+          guestPhone: draft.phone || prev.guestPhone,
+          guestId: draft.idNumber || prev.guestId,
+          notes: prev.notes,
+        };
+        return areCheckOutFormsEqual(prev, next) ? prev : next;
+      });
     }
-  }, [draft, modalMode, selectedRoom]);
+  }, [draft, modalMode, selectedRoom, areCheckInFormsEqual, areCheckOutFormsEqual]);
 
   if (isRoomsLoading && rooms.length === 0) {
     return (
