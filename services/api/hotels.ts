@@ -39,9 +39,19 @@ const mapApiHotelToHotel = (apiHotel: ApiHotel): Hotel => ({
 });
 
 export const hotelsApi = {
-  getAll: async (): Promise<Hotel[]> => {
+  getAll: async (options?: { businessId?: string; lite?: boolean }): Promise<Hotel[]> => {
     try {
-      const response = await apiClient.get<ApiHotel[] | { data: ApiHotel[] }>(API_ENDPOINTS.HOTELS.BASE);
+      const params = new URLSearchParams();
+      if (options?.businessId) {
+        params.set('businessId', options.businessId);
+      }
+      if (options?.lite) {
+        params.set('lite', '1');
+      }
+      const endpoint = params.toString()
+        ? `${API_ENDPOINTS.HOTELS.BASE}?${params.toString()}`
+        : API_ENDPOINTS.HOTELS.BASE;
+      const response = await apiClient.get<ApiHotel[] | { data: ApiHotel[] }>(endpoint);
       const hotels = Array.isArray(response) ? response : (response?.data || []);
       return hotels.map(mapApiHotelToHotel);
     } catch (error) {
@@ -50,9 +60,12 @@ export const hotelsApi = {
     }
   },
 
-  getById: async (id: string): Promise<Hotel | null> => {
+  getById: async (id: string, options?: { lite?: boolean }): Promise<Hotel | null> => {
     try {
-      const response = await apiClient.get<ApiHotel>(API_ENDPOINTS.HOTELS.BY_ID(id));
+      const endpoint = options?.lite
+        ? `${API_ENDPOINTS.HOTELS.BY_ID(id)}?lite=1`
+        : API_ENDPOINTS.HOTELS.BY_ID(id);
+      const response = await apiClient.get<ApiHotel>(endpoint);
       return mapApiHotelToHotel(response);
     } catch (error) {
       console.warn('[hotelsApi.getById] Error:', error);

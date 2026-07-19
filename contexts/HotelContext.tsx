@@ -15,8 +15,34 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
 
   const { data: allHotels = [], isLoading: hotelsLoading, refetch: refetchHotels } = useQuery({
     queryKey: ['hotels'],
-    queryFn: () => hotelsApi.getAll(),
+    queryFn: async () => {
+      if (!user || !isAuthenticated) {
+        return [];
+      }
+
+      const userHotelId = extractId(user.hotelId);
+      const userBusinessId = extractId(user.businessId);
+      const role = user.role;
+
+      if (
+        ['hotel', 'staff', 'manager', 'receptionist', 'hotel_manager'].includes(role) &&
+        userHotelId
+      ) {
+        const hotel = await hotelsApi.getById(userHotelId, { lite: true });
+        return hotel ? [hotel] : [];
+      }
+
+      if (role === 'business' && userBusinessId) {
+        return hotelsApi.getAll({ businessId: userBusinessId, lite: true });
+      }
+
+      return hotelsApi.getAll({ lite: true });
+    },
     enabled: isAuthenticated,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   const hotels = useMemo(() => {
@@ -84,6 +110,23 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
     };
     loadSelectedHotel();
   }, []);
+
+  useEffect(() => {
+    if (!user || selectedHotelId) {
+      return;
+    }
+
+    const fixedHotelId = extractId(user.hotelId);
+    if (
+      fixedHotelId &&
+      ['hotel', 'staff', 'manager', 'receptionist', 'hotel_manager'].includes(user.role)
+    ) {
+      setSelectedHotelId(fixedHotelId);
+      AsyncStorage.setItem(SELECTED_HOTEL_KEY, fixedHotelId).catch((e) =>
+        console.warn('[HotelContext] Error saving fixed hotel selection:', e)
+      );
+    }
+  }, [user, selectedHotelId]);
 
   useEffect(() => {
     if (isInitialized && hotels.length > 0) {

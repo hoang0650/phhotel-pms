@@ -88,7 +88,8 @@ const addonKeys: PricingAddon[] = [
 ];
 
 export interface LoginRequest {
-  email: string;
+  email?: string;
+  username?: string;
   password: string;
 }
 
@@ -149,7 +150,7 @@ const isApiUser = (value: unknown): value is ApiUser => {
 
 export const authApi = {
   login: async (data: LoginRequest): Promise<{ user: User; token: string }> => {
-    console.log('[authApi.login] Attempting login for:', data.email);
+    console.log('[authApi.login] Attempting login for:', data.email || data.username);
     const response = await apiClient.post<AuthResponse>(API_ENDPOINTS.AUTH.LOGIN, data);
     console.log('[authApi.login] Response:', response);
     

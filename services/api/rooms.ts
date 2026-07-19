@@ -631,10 +631,17 @@ const mapApiRoomToRoom = (apiRoom: ApiRoom): Room => {
 };
 
 export const roomsApi = {
-  getAll: async (hotelId?: string): Promise<Room[]> => {
+  getAll: async (hotelId?: string, options?: { lite?: boolean }): Promise<Room[]> => {
     try {
-      const endpoint = hotelId 
-        ? `${API_ENDPOINTS.ROOMS.BASE}?hotelId=${hotelId}` 
+      const params = new URLSearchParams();
+      if (hotelId) {
+        params.set('hotelId', hotelId);
+      }
+      if (options?.lite) {
+        params.set('lite', '1');
+      }
+      const endpoint = params.toString()
+        ? `${API_ENDPOINTS.ROOMS.BASE}?${params.toString()}`
         : API_ENDPOINTS.ROOMS.BASE;
       const response = await apiClient.get<ApiRoom[]>(endpoint);
       const rooms = Array.isArray(response) ? response : [];

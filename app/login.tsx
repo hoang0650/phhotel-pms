@@ -140,11 +140,21 @@ export default function LoginScreen() {
     return Object.keys(newErrors).length === 0;
   }, [email, password, text.emailInvalid, text.emailRequired, text.passwordLength, text.passwordRequired]);
 
+  const buildLoginPayload = useCallback(
+    (rawValue: string, rawPassword: string) => {
+      const normalizedValue = rawValue.trim();
+      return normalizedValue.includes('@')
+        ? { email: normalizedValue, password: rawPassword }
+        : { username: normalizedValue, password: rawPassword };
+    },
+    []
+  );
+
   const handleLogin = useCallback(async () => {
     if (!validate()) return;
 
     try {
-      await login({ email: email.trim(), password });
+      await login(buildLoginPayload(email, password));
       router.replace('/(tabs)/(dashboard)');
     } catch (error) {
       const message =
@@ -155,7 +165,7 @@ export default function LoginScreen() {
             : text.reviewLoginInfo;
       Alert.alert(text.loginFailed, message);
     }
-  }, [email, login, password, router, text.invalidCredential, text.loginFailed, text.reviewLoginInfo, validate]);
+  }, [buildLoginPayload, email, login, password, router, text.invalidCredential, text.loginFailed, text.reviewLoginInfo, validate]);
 
   const handleBiometricLogin = useCallback(async () => {
     if (!isMobile) {
@@ -196,7 +206,7 @@ export default function LoginScreen() {
         setBiometricLoading(false);
         return;
       }
-      await login({ email: credentials.email, password: credentials.password });
+      await login(buildLoginPayload(credentials.email, credentials.password));
       router.replace('/(tabs)/(dashboard)');
     } catch (error) {
       Alert.alert(text.loginFailed, text.biometricLoginFailed);
@@ -205,6 +215,7 @@ export default function LoginScreen() {
     }
   }, [
     BIOMETRIC_CREDENTIALS_KEY,
+    buildLoginPayload,
     isMobile,
     login,
     router,

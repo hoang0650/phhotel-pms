@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Modal,
   Pressable,
+  InteractionManager,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -82,8 +83,23 @@ export default function DashboardScreen() {
   const [notifTab, setNotifTab] = useState<'all' | 'system' | 'hotel'>('all');
   const [markingAll, setMarkingAll] = useState(false);
   const [hotelSearchText, setHotelSearchText] = useState('');
+  const [deferredReady, setDeferredReady] = useState(false);
   const { hotels, selectedHotel, selectedHotelId, selectHotel, isLoading: hotelsLoading, canSelectMultipleHotels } = useHotel();
   const { user } = useAuth();
+
+  useEffect(() => {
+    let mounted = true;
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (mounted) {
+        setDeferredReady(true);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      task.cancel();
+    };
+  }, []);
 
   const filteredHotels = useMemo(() => {
     const normalizedSearch = hotelSearchText.trim().toLowerCase();
@@ -120,7 +136,7 @@ export default function DashboardScreen() {
 
   const { data: rooms = [], isLoading: roomsLoading, refetch: refetchRooms } = useQuery({
     queryKey: ['rooms', selectedHotelId],
-    queryFn: () => roomsApi.getAll(selectedHotelId || undefined),
+    queryFn: () => roomsApi.getAll(selectedHotelId || undefined, { lite: true }),
     enabled: !!selectedHotelId,
     ...queryDefaults,
   });
@@ -128,14 +144,14 @@ export default function DashboardScreen() {
   const { data: bookings = [], isLoading: bookingsLoading, refetch: refetchBookings } = useQuery({
     queryKey: ['bookings', selectedHotelId],
     queryFn: () => bookingsApi.getByHotel(selectedHotelId || ''),
-    enabled: !!selectedHotelId,
+    enabled: !!selectedHotelId && deferredReady,
     ...queryDefaults,
   });
   
   const { data: roomEvents = [], isLoading: eventsLoading, refetch: refetchEvents } = useQuery({
     queryKey: ['roomEvents', selectedHotelId],
-    queryFn: () => selectedHotelId ? roomsApi.getEventsByHotel(selectedHotelId, { limit: 50, types: ['checkin', 'checkout'] }) : Promise.resolve([]),
-    enabled: !!selectedHotelId,
+    queryFn: () => selectedHotelId ? roomsApi.getEventsByHotel(selectedHotelId, { limit: 20, types: ['checkin', 'checkout'] }) : Promise.resolve([]),
+    enabled: !!selectedHotelId && deferredReady,
     ...queryDefaults,
   });
 
@@ -153,7 +169,7 @@ export default function DashboardScreen() {
         endDate: today.toISOString().split('T')[0]
       });
     },
-    enabled: !!selectedHotelId,
+    enabled: !!selectedHotelId && deferredReady,
     ...queryDefaults,
   });
   
@@ -175,7 +191,7 @@ export default function DashboardScreen() {
         today.toISOString().split('T')[0]
       );
     },
-    enabled: !!selectedHotelId,
+    enabled: !!selectedHotelId && deferredReady,
     ...queryDefaults,
   });
 

@@ -239,7 +239,7 @@ export default function RoomsScreen() {
     if (!roomsQueryEnabled) {
       return [];
     }
-    return roomsApi.getAll(normalizedHotelId);
+    return roomsApi.getAll(normalizedHotelId, { lite: true });
   },
   enabled: roomsQueryEnabled,
   staleTime: 15_000,
@@ -406,7 +406,10 @@ export default function RoomsScreen() {
   const { data: checkoutRoomDetail } = useQuery({
     queryKey: ['roomDetailCheckout', selectedRoom?.id],
     queryFn: () => (selectedRoom ? roomsApi.getById(selectedRoom.id) : Promise.resolve(null)),
-    enabled: !!selectedRoom && modalMode === 'checkout',
+    enabled: modalVisible && !!selectedRoom && modalMode === 'checkout',
+    staleTime: 10_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
   const { user } = useAuth();
   const checkoutRoom = checkoutRoomDetail || selectedRoom;
