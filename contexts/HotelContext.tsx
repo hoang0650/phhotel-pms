@@ -6,28 +6,41 @@ import { sessionsApi } from '@/services/api/sessions';
 import { useAuth } from './AuthContext';
 import { extractId } from '@/services/api/utils';
 
+const EMPTY_HOTELS: Hotel[] = [];
+
+const resolveHotelId = (hotel: Hotel | null | undefined): string | null => {
+  if (!hotel) return null;
+  return extractId(hotel.id) || extractId((hotel as any)._id) || null;
+};
+
+const isHotelRole = (role: string | undefined): boolean =>
+  !!role &&
+  ['hotel', 'staff', 'manager', 'receptionist', 'hotel_manager'].includes(role);
+
 export const [HotelProvider, useHotel] = createContextHook(() => {
   const { user, isAuthenticated } = useAuth();
   const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
-  const { data: allHotels = [], isLoading: hotelsLoading, refetch: refetchHotels } = useQuery({
+  const {
+    data: hotelsData,
+    isLoading: hotelsLoading,
+    isFetched: hotelsFetched,
+    refetch: refetchHotels,
+  } = useQuery({
     queryKey: ['hotels'],
     queryFn: async () => {
       if (!user || !isAuthenticated) {
-        return [];
+        return EMPTY_HOTELS;
       }
 
       const userHotelId = extractId(user.hotelId);
       const userBusinessId = extractId(user.businessId);
       const role = user.role;
 
-      if (
-        ['hotel', 'staff', 'manager', 'receptionist', 'hotel_manager'].includes(role) &&
-        userHotelId
-      ) {
+      if (isHotelRole(role) && userHotelId) {
         const hotel = await hotelsApi.getById(userHotelId, { lite: true });
-        return hotel ? [hotel] : [];
+        return hotel ? [hotel] : EMPTY_HOTELS;
       }
 
       if (role === 'business' && userBusinessId) {
@@ -43,51 +56,48 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
     refetchOnWindowFocus: false,
   });
 
+  // Tránh `= []` tạo mảng mới mỗi render → kích hoạt effect vô hạn
+  const allHotels = hotelsData ?? EMPTY_HOTELS;
+
   const hotels = useMemo(() => {
-    if (!user || !isAuthenticated) return [];
-    
+    if (!user || !isAuthenticated) return EMPTY_HOTELS;
+
     if (user.role === 'admin' || user.role === 'superadmin') {
       return allHotels;
     }
-    
+
     if (user.role === 'business') {
       const userBusinessId = extractId(user.businessId);
-      if (userBusinessId) {
-        return allHotels.filter(hotel => {
-          const hotelBusinessId = extractId(hotel.businessId);
-          return hotelBusinessId === userBusinessId;
-        });
-      }
-      return [];
+      if (!userBusinessId) return EMPTY_HOTELS;
+      return allHotels.filter((hotel) => extractId(hotel.businessId) === userBusinessId);
     }
 
-    if (
-      user.role === 'hotel' || 
-      user.role === 'staff' || 
-      user.role === 'manager' || 
-      user.role === 'receptionist' || 
-      (user as any).role === 'hotel_manager'
-    ) {
+    if (isHotelRole(user.role) || (user as any).role === 'hotel_manager') {
       const userHotelId = extractId(user.hotelId);
       if (userHotelId) {
-        return allHotels.filter(hotel => {
-          const hId = extractId(hotel.id) || extractId(hotel._id);
-          return hId === userHotelId;
-        });
+        return allHotels.filter((hotel) => resolveHotelId(hotel) === userHotelId);
       }
-      
+
       const userHotelIds = (user as any).hotelIds as string[] | undefined;
       if (userHotelIds && userHotelIds.length > 0) {
-        const idSet = new Set(userHotelIds);
-        return allHotels.filter(hotel => idSet.has(extractId(hotel.id) || extractId((hotel as any)._id) || ''));
+        const idSet = new Set(userHotelIds.map((id) => extractId(id)).filter(Boolean));
+        return allHotels.filter((hotel) => {
+          const hId = resolveHotelId(hotel);
+          return !!hId && idSet.has(hId);
+        });
       }
-      
+
       console.warn('[HotelContext] Staff/Hotel user missing hotelId');
-      return [];
+      return EMPTY_HOTELS;
     }
-    
-    return [];
+
+    return EMPTY_HOTELS;
   }, [allHotels, user, isAuthenticated]);
+
+  const hotelsIdsKey = useMemo(
+    () => hotels.map((h) => resolveHotelId(h)).filter(Boolean).join('|'),
+    [hotels]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -103,8 +113,9 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
 
       try {
         const redisHotelId = await sessionsApi.getSelectedHotel();
-        if (!cancelled && redisHotelId) {
-          setSelectedHotelId(redisHotelId);
+        const normalized = extractId(redisHotelId) || null;
+        if (!cancelled && normalized) {
+          setSelectedHotelId((prev) => (prev === normalized ? prev : normalized));
         }
       } catch (error) {
         console.warn('[HotelContext] Error loading selected hotel from Redis:', error);
@@ -115,7 +126,6 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
       }
     };
 
-    setIsInitialized(false);
     loadSelectedHotel();
 
     return () => {
@@ -123,58 +133,84 @@ export const [HotelProvider, useHotel] = createContextHook(() => {
     };
   }, [isAuthenticated, user?.id]);
 
+  // Gán hotel cố định cho role hotel/staff — chỉ khi chưa có selection
   useEffect(() => {
-    if (!user || selectedHotelId) {
-      return;
-    }
+    if (!user || selectedHotelId) return;
 
-    const fixedHotelId = extractId(user.hotelId);
-    if (
-      fixedHotelId &&
-      ['hotel', 'staff', 'manager', 'receptionist', 'hotel_manager'].includes(user.role)
-    ) {
+    const fixedHotelId = extractId(user.hotelId) || null;
+    if (fixedHotelId && isHotelRole(user.role)) {
       setSelectedHotelId(fixedHotelId);
       sessionsApi.saveSelectedHotel(fixedHotelId).catch((e) =>
         console.warn('[HotelContext] Error saving fixed hotel selection:', e)
       );
     }
-  }, [user, selectedHotelId]);
+  }, [user?.id, user?.role, user?.hotelId, selectedHotelId]);
 
+  // Đồng bộ selection với danh sách hotel đã load xong (không clear khi đang loading)
   useEffect(() => {
-    if (isInitialized && hotels.length > 0) {
-      const currentSelection = hotels.find(h => h.id === selectedHotelId);
-      
-      if (!currentSelection) {
-        const firstHotel = hotels[0];
-        console.log('[HotelContext] Auto-selecting first hotel:', firstHotel.name);
-        setSelectedHotelId(firstHotel.id);
-        sessionsApi.saveSelectedHotel(firstHotel.id).catch((e) =>
-          console.warn('[HotelContext] Error auto-saving first hotel:', e)
-        );
-      }
-    } else if (isInitialized && hotels.length === 0) {
-      if (selectedHotelId) {
-        setSelectedHotelId(null);
-      }
-    }
-  }, [hotels, selectedHotelId, isInitialized]);
-
-  const selectHotel = useCallback(async (hotelId: string) => {
-    const hotelExists = hotels.find(h => h.id === hotelId);
-    if (!hotelExists) {
-      console.warn('[HotelContext] Attempted to select unauthorized hotel');
+    if (!isInitialized || hotelsLoading || !hotelsFetched) {
       return;
     }
-    
-    setSelectedHotelId(hotelId);
-    try {
-      await sessionsApi.saveSelectedHotel(hotelId);
-    } catch (error) {
-      console.warn('[HotelContext] Error saving selected hotel:', error);
-    }
-  }, [hotels]);
 
-  const selectedHotel = hotels.find(h => h.id === selectedHotelId) || null;
+    const selectedNormalized = extractId(selectedHotelId) || null;
+
+    if (hotels.length === 0) {
+      if (selectedNormalized) {
+        setSelectedHotelId(null);
+      }
+      return;
+    }
+
+    const hasValidSelection = hotels.some(
+      (h) => resolveHotelId(h) === selectedNormalized
+    );
+
+    if (hasValidSelection) {
+      return;
+    }
+
+    const firstId = resolveHotelId(hotels[0]);
+    if (!firstId || firstId === selectedNormalized) {
+      return;
+    }
+
+    console.log('[HotelContext] Auto-selecting first hotel:', hotels[0].name);
+    setSelectedHotelId(firstId);
+    sessionsApi.saveSelectedHotel(firstId).catch((e) =>
+      console.warn('[HotelContext] Error auto-saving first hotel:', e)
+    );
+  }, [
+    hotelsIdsKey,
+    hotels,
+    selectedHotelId,
+    isInitialized,
+    hotelsLoading,
+    hotelsFetched,
+  ]);
+
+  const selectHotel = useCallback(
+    async (hotelId: string) => {
+      const normalized = extractId(hotelId);
+      if (!normalized) return;
+
+      const hotelExists = hotels.some((h) => resolveHotelId(h) === normalized);
+      if (!hotelExists) {
+        console.warn('[HotelContext] Attempted to select unauthorized hotel');
+        return;
+      }
+
+      setSelectedHotelId((prev) => (prev === normalized ? prev : normalized));
+      try {
+        await sessionsApi.saveSelectedHotel(normalized);
+      } catch (error) {
+        console.warn('[HotelContext] Error saving selected hotel:', error);
+      }
+    },
+    [hotels]
+  );
+
+  const selectedHotel =
+    hotels.find((h) => resolveHotelId(h) === extractId(selectedHotelId)) || null;
   const canSelectMultipleHotels = hotels.length > 1;
 
   return {

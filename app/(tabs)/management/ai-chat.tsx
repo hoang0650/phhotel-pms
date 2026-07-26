@@ -148,7 +148,7 @@ const isWebPrompt = (message: string) => {
 
 export default function AIChatScreen() {
   const { language } = useLanguage();
-  const { user, token, isAdmin } = useAuth();
+  const { user, token } = useAuth();
   const { selectedHotelId, selectedHotel, hotels, selectHotel, canSelectMultipleHotels, isLoading: hotelContextLoading } = useHotel();
   const router = useRouter();
   const [conversations, setConversations] = useState<Conversation[]>([
@@ -170,12 +170,15 @@ export default function AIChatScreen() {
   const [datasetModalVisible, setDatasetModalVisible] = useState(false);
   const [datasetText, setDatasetText] = useState('');
   const [datasetLoading, setDatasetLoading] = useState(false);
+  const [openingOpenClaw, setOpeningOpenClaw] = useState(false);
+  const [isApprovingDevice, setIsApprovingDevice] = useState(false);
   const [pairingLoading, setPairingLoading] = useState(false);
-  const [pairingApproving, setPairingApproving] = useState(false);
   const [pendingPairings, setPendingPairings] = useState<OpenClawDevicePairingItem[]>([]);
   const [pairedDevices, setPairedDevices] = useState<OpenClawDevicePairingItem[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const approvePollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const approveDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const translations = {
     vi: {
@@ -211,15 +214,23 @@ export default function AIChatScreen() {
       hotelLoading: 'Đang tải khách sạn...',
       webSummary: 'Tóm tắt web',
       webNews: 'Tin tức mới',
-      openClawPairing: 'OpenClaw Pairing',
-      loadPairings: 'Tải pending pairing',
-      approveLatestPairing: 'Approve mới nhất',
+      openClawPairing: 'OpenClaw',
+      openOpenClaw: 'Mở OpenClaw',
+      approvingOpenClaw: 'Đang Approve...',
+      retryApprove: 'Duyệt lại',
+      openClawDesc: 'Mở Control UI với token gateway, tự động duyệt kết nối thiết bị.',
+      openingOpenClawInfo: 'Đang mở OpenClaw với token gateway... Tự động duyệt kết nối.',
+      openClawUrlFailed: 'Không lấy được đường dẫn OpenClaw Gateway.',
+      openClawUrlError: 'Lỗi khi lấy URL OpenClaw.',
+      openClawOpenFailed: 'Không thể mở OpenClaw trên thiết bị này.',
+      autoApproveSuccess: 'Đã tự động Approve kết nối OpenClaw!',
+      autoApprovePending: 'Chưa duyệt được pairing. Bấm "Duyệt lại" sau khi OpenClaw hiện yêu cầu ghép đôi.',
+      loadPairings: 'Tải danh sách pairing',
       approve: 'Approve',
       pendingPairings: 'Pending pairing',
       pairedDevices: 'Thiết bị đã duyệt',
       noPendingPairings: 'Chưa có pending pairing',
-      noPendingPairingsDesc: 'Bấm Kết nối ở OpenClaw Control UI trước, sau đó quay lại đây tải danh sách pairing.',
-      onlyAdminCanApprove: 'Chỉ admin hoặc superadmin mới được phép approve OpenClaw pairing.',
+      noPendingPairingsDesc: 'Bấm "Mở OpenClaw" trước. Nếu chưa tự duyệt, bấm "Duyệt lại".',
       loadingPairingsFailed: 'Không tải được danh sách OpenClaw pairing.',
       approvePairingFailed: 'Không approve được OpenClaw pairing.',
       approvePairingSuccess: 'Đã approve OpenClaw pairing thành công.',
@@ -265,15 +276,23 @@ export default function AIChatScreen() {
       hotelLoading: 'Loading hotels...',
       webSummary: 'Web summary',
       webNews: 'Latest news',
-      openClawPairing: 'OpenClaw Pairing',
-      loadPairings: 'Load pending pairings',
-      approveLatestPairing: 'Approve latest',
+      openClawPairing: 'OpenClaw',
+      openOpenClaw: 'Open OpenClaw',
+      approvingOpenClaw: 'Approving...',
+      retryApprove: 'Retry approve',
+      openClawDesc: 'Open Control UI with gateway token and auto-approve device pairing.',
+      openingOpenClawInfo: 'Opening OpenClaw with gateway token... Auto-approving connection.',
+      openClawUrlFailed: 'Could not get OpenClaw Gateway URL.',
+      openClawUrlError: 'Failed to get OpenClaw URL.',
+      openClawOpenFailed: 'Could not open OpenClaw on this device.',
+      autoApproveSuccess: 'OpenClaw connection auto-approved!',
+      autoApprovePending: 'Pairing not approved yet. Tap "Retry approve" after OpenClaw shows the pairing request.',
+      loadPairings: 'Load pairings',
       approve: 'Approve',
       pendingPairings: 'Pending pairings',
       pairedDevices: 'Approved devices',
       noPendingPairings: 'No pending pairings',
-      noPendingPairingsDesc: 'Click Connect in OpenClaw Control UI first, then return here to load the pairing list.',
-      onlyAdminCanApprove: 'Only admin or superadmin can approve OpenClaw pairings.',
+      noPendingPairingsDesc: 'Tap "Open OpenClaw" first. If auto-approve fails, tap "Retry approve".',
       loadingPairingsFailed: 'Failed to load OpenClaw pairings.',
       approvePairingFailed: 'Failed to approve OpenClaw pairing.',
       approvePairingSuccess: 'OpenClaw pairing approved successfully.',
@@ -689,47 +708,190 @@ export default function AIChatScreen() {
       : '-';
   }, []);
 
-  const loadOpenClawPairings = useCallback(async () => {
-    if (!isAdmin) {
-      Alert.alert(t.openClawPairing, t.onlyAdminCanApprove);
-      return;
+  const openClawContext = useMemo(
+    () => ({
+      tenantId: tenantId !== 'default' ? tenantId : effectiveHotelId || businessId || null,
+      hotelId: effectiveHotelId || null,
+      userId: user?.id || null,
+    }),
+    [businessId, effectiveHotelId, tenantId, user?.id]
+  );
+
+  const clearApproveTimers = useCallback(() => {
+    if (approvePollTimerRef.current) {
+      clearInterval(approvePollTimerRef.current);
+      approvePollTimerRef.current = null;
     }
+    if (approveDelayTimerRef.current) {
+      clearTimeout(approveDelayTimerRef.current);
+      approveDelayTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearApproveTimers();
+    };
+  }, [clearApproveTimers]);
+
+  const loadOpenClawPairings = useCallback(async (silent = false) => {
     setPairingLoading(true);
     try {
-      const response = await aiApi.getOpenClawDevicePairings();
+      const response = await aiApi.getOpenClawDevicePairings({
+        tenantId: openClawContext.tenantId,
+        hotelId: openClawContext.hotelId,
+      });
       setPendingPairings(Array.isArray(response?.pending) ? response.pending : []);
       setPairedDevices(Array.isArray(response?.paired) ? response.paired : []);
-      if (!response?.pending?.length) {
+      if (!silent && !response?.pending?.length) {
         Alert.alert(t.openClawPairing, t.noPendingPairingsDesc);
       }
     } catch (error) {
-      Alert.alert(t.openClawPairing, t.loadingPairingsFailed);
+      if (!silent) {
+        Alert.alert(t.openClawPairing, t.loadingPairingsFailed);
+      }
     } finally {
       setPairingLoading(false);
     }
-  }, [isAdmin, t.loadingPairingsFailed, t.noPendingPairingsDesc, t.onlyAdminCanApprove, t.openClawPairing]);
+  }, [openClawContext.hotelId, openClawContext.tenantId, t.loadingPairingsFailed, t.noPendingPairingsDesc, t.openClawPairing]);
+
+  const triggerAutoApproveDevicePairing = useCallback((maxAttempts = 5, intervalMs = 2000) => {
+    clearApproveTimers();
+    let attempts = 0;
+    setIsApprovingDevice(true);
+
+    const tick = async () => {
+      attempts += 1;
+      try {
+        const res = await aiApi.approveOpenClawDevicePairing({
+          tenantId: openClawContext.tenantId,
+          hotelId: openClawContext.hotelId,
+          clientId: null,
+          clientMode: null,
+          role: 'operator',
+        });
+        if (res?.success) {
+          setIsApprovingDevice(false);
+          clearApproveTimers();
+          Alert.alert(t.openClawPairing, t.autoApproveSuccess);
+          void loadOpenClawPairings(true);
+          return;
+        }
+        if (attempts >= maxAttempts) {
+          setIsApprovingDevice(false);
+          clearApproveTimers();
+          Alert.alert(t.openClawPairing, t.autoApprovePending);
+        }
+      } catch {
+        if (attempts >= maxAttempts) {
+          setIsApprovingDevice(false);
+          clearApproveTimers();
+          Alert.alert(t.openClawPairing, t.autoApprovePending);
+        }
+      }
+    };
+
+    void tick();
+    approvePollTimerRef.current = setInterval(() => {
+      if (attempts >= maxAttempts) {
+        clearApproveTimers();
+        setIsApprovingDevice(false);
+        return;
+      }
+      void tick();
+    }, intervalMs);
+  }, [
+    clearApproveTimers,
+    loadOpenClawPairings,
+    openClawContext.hotelId,
+    openClawContext.tenantId,
+    t.autoApprovePending,
+    t.autoApproveSuccess,
+    t.openClawPairing,
+  ]);
+
+  const openOpenClawGateway = useCallback(async () => {
+    if (openingOpenClaw) return;
+    setOpeningOpenClaw(true);
+    clearApproveTimers();
+    try {
+      const res = await aiApi.getOpenClawDirectUrl({
+        tenantId: openClawContext.tenantId,
+        hotelId: openClawContext.hotelId,
+        userId: openClawContext.userId ? String(openClawContext.userId) : null,
+      });
+      if (res?.success && res.url) {
+        try {
+          await Linking.openURL(res.url);
+        } catch {
+          Alert.alert(t.openClawPairing, t.openClawOpenFailed);
+          return;
+        }
+        Alert.alert(t.openClawPairing, t.openingOpenClawInfo);
+        approveDelayTimerRef.current = setTimeout(() => {
+          triggerAutoApproveDevicePairing(30, 1000);
+        }, 800);
+      } else {
+        Alert.alert(t.openClawPairing, res?.message || res?.detail || t.openClawUrlFailed);
+      }
+    } catch (error: any) {
+      const detail =
+        typeof error?.message === 'string' && error.message.trim()
+          ? error.message
+          : t.openClawUrlError;
+      Alert.alert(t.openClawPairing, detail);
+    } finally {
+      setOpeningOpenClaw(false);
+    }
+  }, [
+    clearApproveTimers,
+    openClawContext.hotelId,
+    openClawContext.tenantId,
+    openClawContext.userId,
+    openingOpenClaw,
+    t.openClawOpenFailed,
+    t.openClawPairing,
+    t.openClawUrlError,
+    t.openClawUrlFailed,
+    t.openingOpenClawInfo,
+    triggerAutoApproveDevicePairing,
+  ]);
+
+  const manualApprovePairing = useCallback(() => {
+    clearApproveTimers();
+    triggerAutoApproveDevicePairing(8, 1500);
+  }, [clearApproveTimers, triggerAutoApproveDevicePairing]);
 
   const approveOpenClawPairing = useCallback(async (requestId?: string) => {
-    if (!isAdmin) {
-      Alert.alert(t.openClawPairing, t.onlyAdminCanApprove);
-      return;
-    }
-    setPairingApproving(true);
+    setIsApprovingDevice(true);
     try {
-      await aiApi.approveOpenClawDevicePairing({
-        requestId: requestId || undefined,
-        clientId: 'openclaw-control-ui',
-        clientMode: 'ui',
+      const res = await aiApi.approveOpenClawDevicePairing({
+        requestId: requestId || null,
+        tenantId: openClawContext.tenantId,
+        hotelId: openClawContext.hotelId,
+        clientId: null,
+        clientMode: null,
         role: 'operator',
       });
-      Alert.alert(t.openClawPairing, t.approvePairingSuccess);
-      await loadOpenClawPairings();
+      if (res?.success) {
+        Alert.alert(t.openClawPairing, t.approvePairingSuccess);
+        await loadOpenClawPairings(true);
+      } else {
+        Alert.alert(t.openClawPairing, t.approvePairingFailed);
+      }
     } catch (error) {
       Alert.alert(t.openClawPairing, t.approvePairingFailed);
     } finally {
-      setPairingApproving(false);
+      setIsApprovingDevice(false);
     }
-  }, [isAdmin, loadOpenClawPairings, t.approvePairingFailed, t.approvePairingSuccess, t.onlyAdminCanApprove, t.openClawPairing]);
+  }, [
+    loadOpenClawPairings,
+    openClawContext.hotelId,
+    openClawContext.tenantId,
+    t.approvePairingFailed,
+    t.approvePairingSuccess,
+    t.openClawPairing,
+  ]);
 
   const clearHistory = () => {
     if (messages.length === 0) {
@@ -799,6 +961,25 @@ export default function AIChatScreen() {
         </Text>
         
         <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.headerOpenClawButton, (openingOpenClaw || isApprovingDevice) && styles.adminDisabledButton]}
+            onPress={openOpenClawGateway}
+            disabled={openingOpenClaw || isApprovingDevice}
+          >
+            {openingOpenClaw || isApprovingDevice ? (
+              <ActivityIndicator size="small" color="#0f766e" />
+            ) : (
+              <Ionicons name="grid-outline" size={16} color="#0f766e" />
+            )}
+            <Text style={styles.headerOpenClawText}>
+              {isApprovingDevice ? t.approvingOpenClaw : t.openOpenClaw}
+            </Text>
+          </TouchableOpacity>
+          {!isApprovingDevice ? (
+            <TouchableOpacity style={styles.headerButton} onPress={manualApprovePairing}>
+              <Ionicons name="checkmark-circle-outline" size={20} color="#0f766e" />
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity style={styles.headerButton} onPress={openDatasetModal}>
             <Ionicons name="cloud-upload" size={20} color="#4CAF50" />
           </TouchableOpacity>
@@ -886,16 +1067,41 @@ export default function AIChatScreen() {
             </TouchableOpacity>
           </View>
 
-          {isAdmin ? (
-            <View style={styles.adminPanel}>
+          <View style={styles.adminPanel}>
               <Text style={styles.adminPanelTitle}>{t.openClawPairing}</Text>
               <Text style={styles.adminPanelDescription}>
-                {t.noPendingPairingsDesc}
+                {t.openClawDesc}
               </Text>
               <View style={styles.adminActionsRow}>
                 <TouchableOpacity
+                  style={[styles.adminActionButton, styles.adminPrimaryButton, (openingOpenClaw || isApprovingDevice) && styles.adminDisabledButton]}
+                  onPress={openOpenClawGateway}
+                  disabled={openingOpenClaw || isApprovingDevice}
+                >
+                  {openingOpenClaw || isApprovingDevice ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="grid-outline" size={16} color="#fff" />
+                      <Text style={styles.adminPrimaryText}>
+                        {isApprovingDevice ? t.approvingOpenClaw : t.openOpenClaw}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.adminActionButton, styles.adminSecondaryButton, isApprovingDevice && styles.adminDisabledButton]}
+                  onPress={manualApprovePairing}
+                  disabled={isApprovingDevice}
+                >
+                  <Ionicons name="checkmark-circle" size={16} color="#1890ff" />
+                  <Text style={styles.adminSecondaryText}>{t.retryApprove}</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.adminActionsRow}>
+                <TouchableOpacity
                   style={[styles.adminActionButton, styles.adminSecondaryButton]}
-                  onPress={loadOpenClawPairings}
+                  onPress={() => loadOpenClawPairings(false)}
                   disabled={pairingLoading}
                 >
                   {pairingLoading ? (
@@ -904,20 +1110,6 @@ export default function AIChatScreen() {
                     <>
                       <Ionicons name="refresh" size={16} color="#1890ff" />
                       <Text style={styles.adminSecondaryText}>{t.loadPairings}</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.adminActionButton, styles.adminPrimaryButton, (!pendingPairings.length || pairingApproving) && styles.adminDisabledButton]}
-                  onPress={() => approveOpenClawPairing()}
-                  disabled={!pendingPairings.length || pairingApproving}
-                >
-                  {pairingApproving ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <>
-                      <Ionicons name="checkmark-circle" size={16} color="#fff" />
-                      <Text style={styles.adminPrimaryText}>{t.approveLatestPairing}</Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -940,9 +1132,9 @@ export default function AIChatScreen() {
                     <Text style={styles.pairingMeta}>{t.deviceScopes}: {pairing.scopes?.join(', ') || '-'}</Text>
                     <Text style={styles.pairingMeta}>{t.deviceTime}: {getPairingRequestedAt(pairing)}</Text>
                     <TouchableOpacity
-                      style={[styles.singleApproveButton, pairingApproving && styles.adminDisabledButton]}
+                      style={[styles.singleApproveButton, isApprovingDevice && styles.adminDisabledButton]}
                       onPress={() => approveOpenClawPairing(pairing.requestId)}
-                      disabled={pairingApproving}
+                      disabled={isApprovingDevice}
                     >
                       <Text style={styles.singleApproveButtonText}>{t.approve}</Text>
                     </TouchableOpacity>
@@ -966,7 +1158,6 @@ export default function AIChatScreen() {
                 </>
               ) : null}
             </View>
-          ) : null}
         </SafeAreaView>
       </Modal>
 
@@ -1150,10 +1341,29 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
+    alignItems: 'center',
   },
   headerButton: {
     padding: 8,
-    marginLeft: 8,
+    marginLeft: 4,
+  },
+  headerOpenClawButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    marginLeft: 4,
+    borderRadius: 8,
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#99f6e4',
+    maxWidth: 128,
+  },
+  headerOpenClawText: {
+    color: '#0f766e',
+    fontSize: 11,
+    fontWeight: '600',
   },
   hotelContextBar: {
     paddingHorizontal: 16,

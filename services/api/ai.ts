@@ -21,8 +21,12 @@ export interface OpenClawDevicePairingItem {
 
 export interface OpenClawDevicePairingsResponse {
   success: boolean;
-  pending: OpenClawDevicePairingItem[];
-  paired: OpenClawDevicePairingItem[];
+  pending?: OpenClawDevicePairingItem[];
+  paired?: OpenClawDevicePairingItem[];
+  data?: {
+    pending?: OpenClawDevicePairingItem[];
+    paired?: OpenClawDevicePairingItem[];
+  };
   summary?: {
     pendingCount: number;
     pairedCount: number;
@@ -37,6 +41,14 @@ export interface OpenClawApprovePairingResponse {
     request?: OpenClawDevicePairingItem;
     approved?: any;
   };
+}
+
+export interface OpenClawDirectUrlResponse {
+  success: boolean;
+  url?: string;
+  autoApprove?: boolean;
+  message?: string;
+  detail?: string;
 }
 
 class AiClient {
@@ -54,6 +66,32 @@ class AiClient {
       if (token) return { Authorization: `Bearer ${token}` };
     } catch {}
     return {};
+  }
+
+  private buildTenantQuery(options?: {
+    tenantId?: string | null;
+    hotelId?: string | null;
+  }): URLSearchParams {
+    const tenantId = String(options?.tenantId || options?.hotelId || '').trim();
+    const hotelId = String(options?.hotelId || '').trim();
+    const query = new URLSearchParams();
+    if (tenantId) query.set('tenant_id', tenantId);
+    if (hotelId) {
+      query.set('current_hotel_id', hotelId);
+      query.set('selected_hotel_id', hotelId);
+    }
+    return query;
+  }
+
+  private unwrapPairings(response: OpenClawDevicePairingsResponse): {
+    pending: OpenClawDevicePairingItem[];
+    paired: OpenClawDevicePairingItem[];
+  } {
+    const data = response?.data || response;
+    return {
+      pending: Array.isArray(data?.pending) ? data.pending : [],
+      paired: Array.isArray(data?.paired) ? data.paired : [],
+    };
   }
 
   private async requestJson<T>(endpoint: string, options: { method?: 'GET' | 'POST'; body?: any; headers?: Record<string, string> } = {}): Promise<T> {
@@ -304,82 +342,72 @@ class AiClient {
     return this.requestJson(`/bot/status?${params.toString()}`);
   }
 
-  async getOpenClawDevicePairings(params?: {
-    clientId?: string;
-    clientMode?: string;
-    role?: string;
-  }): Promise<OpenClawDevicePairingsResponse> {
-    const authHeader = await this.getAuthHeader();
-    const query = new URLSearchParams({
-      clientId: params?.clientId || 'openclaw-control-ui',
-      clientMode: params?.clientMode || 'ui',
-      role: params?.role || 'operator',
-    });
-    const endpoint = `${API_CONFIG.BASE_URL}/ai-assistant/openclaw/device-pairings?${query.toString()}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+  async getOpenClawDirectUrl(options?: {
+    tenantId?: string | null;
+    hotelId?: string | null;
+    userId?: string | null;
+  }): Promise<OpenClawDirectUrlResponse> {
+    const query = this.buildTenantQuery(options);
+    if (options?.userId) query.set('user_id', String(options.userId));
+    const qs = query.toString();
+    return this.requestJson(`/admin/openclaw/direct-url${qs ? `?${qs}` : ''}`);
+  }
 
-    try {
-      const res = await fetch(endpoint, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          ...authHeader,
-        },
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `HTTP ${res.status}`);
-      }
-      return await res.json();
-    } catch (err) {
-      clearTimeout(timeoutId);
-      throw err;
-    }
+  async getOpenClawDevicePairings(params?: {
+    tenantId?: string | null;
+    hotelId?: string | null;
+    clientId?: string | null;
+    clientMode?: string | null;
+    role?: string;
+  }): Promise<OpenClawDevicePairingsResponse & { pending: OpenClawDevicePairingItem[]; paired: OpenClawDevicePairingItem[] }> {
+    const query = this.buildTenantQuery(params);
+    // Không filter cứng clientId — pending đôi khi thiếu/khác alias (đồng bộ web)
+    if (params?.clientId) query.set('clientId', params.clientId);
+    if (params?.clientMode) query.set('clientMode', params.clientMode);
+    if (params?.role) query.set('role', params.role);
+    const qs = query.toString();
+    const response = await this.requestJson<OpenClawDevicePairingsResponse>(
+      `/admin/openclaw/device-pairings${qs ? `?${qs}` : ''}`
+    );
+    const unwrapped = this.unwrapPairings(response);
+    return {
+      ...response,
+      pending: unwrapped.pending,
+      paired: unwrapped.paired,
+    };
   }
 
   async approveOpenClawDevicePairing(payload?: {
-    requestId?: string;
-    clientId?: string;
-    clientMode?: string;
+    requestId?: string | null;
+    tenantId?: string | null;
+    hotelId?: string | null;
+    clientId?: string | null;
+    clientMode?: string | null;
     role?: string;
-    scopes?: string[];
+    scopes?: string[] | null;
   }): Promise<OpenClawApprovePairingResponse> {
-    const authHeader = await this.getAuthHeader();
-    const endpoint = `${API_CONFIG.BASE_URL}/ai-assistant/openclaw/device-pairings/approve`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-    try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-          ...authHeader,
-        },
-        body: JSON.stringify({
-          requestId: payload?.requestId || null,
-          clientId: payload?.clientId || 'openclaw-control-ui',
-          clientMode: payload?.clientMode || 'ui',
-          role: payload?.role || 'operator',
-          scopes: Array.isArray(payload?.scopes) ? payload?.scopes : null,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `HTTP ${res.status}`);
-      }
-      return await res.json();
-    } catch (err) {
-      clearTimeout(timeoutId);
-      throw err;
-    }
+    const query = this.buildTenantQuery(payload);
+    const qs = query.toString();
+    const hotelId = String(payload?.hotelId || '').trim();
+    const tenantId = String(payload?.tenantId || hotelId || '').trim();
+    return this.requestJson(`/admin/openclaw/device-pairings/approve${qs ? `?${qs}` : ''}`, {
+      method: 'POST',
+      body: {
+        request_id: payload?.requestId || null,
+        requestId: payload?.requestId || null,
+        client_id: payload?.clientId ?? null,
+        clientId: payload?.clientId ?? null,
+        client_mode: payload?.clientMode ?? null,
+        clientMode: payload?.clientMode ?? null,
+        role: payload?.role || 'operator',
+        scopes: Array.isArray(payload?.scopes)
+          ? payload.scopes
+          : ['operator.read', 'operator.write', 'operator.admin', 'operator.pairing'],
+        tenant_id: tenantId || null,
+        current_hotel_id: hotelId || null,
+        selected_hotel_id: hotelId || null,
+      },
+    });
   }
 
   getWebSocketUrl(tenantId: string): string {

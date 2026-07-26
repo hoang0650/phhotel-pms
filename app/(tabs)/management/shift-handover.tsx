@@ -299,6 +299,7 @@ export default function ShiftHandoverScreen() {
     noHistory: isVi ? 'Chua co lich su giao ca' : 'No shift handover history yet',
     staff: isVi ? 'Nhan vien' : 'Staff',
     handoverAmount: isVi ? 'So tien giao ca' : 'Handover amount',
+    latestHandoverAmount: isVi ? 'So tien giao ca gan nhat' : 'Latest handover amount',
     viewDetail: isVi ? 'Xem chi tiet' : 'View details',
     pageLabel: isVi ? 'Trang' : 'Page',
     selectStaff: isVi ? 'Chon nhan vien' : 'Select staff',
@@ -477,18 +478,6 @@ export default function ShiftHandoverScreen() {
     () => parseDateInput(appliedEndDate, true)?.toISOString(),
     [appliedEndDate]
   );
-  const currentShiftStartIso = useMemo(() => {
-    if (previousShiftData?.lastShiftHandover?.handoverTime) {
-      const lastHandoverDate = new Date(previousShiftData.lastShiftHandover.handoverTime);
-      if (!Number.isNaN(lastHandoverDate.getTime())) {
-        return lastHandoverDate.toISOString();
-      }
-    }
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    return startOfDay.toISOString();
-  }, [previousShiftData?.lastShiftHandover?.handoverTime]);
-  const currentShiftEndIso = currentShiftQueryTime;
 
   const { data: staffs = [], isLoading: staffsLoading, refetch: refetchStaffs } = useQuery({
     queryKey: ['staffs', selectedHotelId],
@@ -501,6 +490,19 @@ export default function ShiftHandoverScreen() {
     queryFn: () => shiftHandoverApi.getPreviousShiftAmount(selectedHotelId || ''),
     enabled: !!selectedHotelId,
   });
+
+  const currentShiftStartIso = useMemo(() => {
+    if (previousShiftData?.lastShiftHandover?.handoverTime) {
+      const lastHandoverDate = new Date(previousShiftData.lastShiftHandover.handoverTime);
+      if (!Number.isNaN(lastHandoverDate.getTime())) {
+        return lastHandoverDate.toISOString();
+      }
+    }
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    return startOfDay.toISOString();
+  }, [previousShiftData?.lastShiftHandover?.handoverTime]);
+  const currentShiftEndIso = currentShiftQueryTime;
 
   // Lấy payment history để tính tiền mặt, chuyển khoản, cà thẻ trong ca
   const { data: paymentHistoryData, isLoading: paymentHistoryLoading, refetch: refetchPaymentHistory } = useQuery({
@@ -1041,6 +1043,15 @@ export default function ShiftHandoverScreen() {
 
   const historyItems = historyData?.data || [];
   const totalPages = historyData?.pagination?.totalPages || 1;
+  const latestHandoverAmount = useMemo(() => {
+    if (!historyItems.length) return 0;
+    const latest = historyItems.reduce((best: ShiftHandover, record: ShiftHandover) => {
+      const bestTime = new Date((best as any)?.handoverTime || 0).getTime();
+      const recordTime = new Date((record as any)?.handoverTime || 0).getTime();
+      return recordTime >= bestTime ? record : best;
+    }, historyItems[0]);
+    return Number(latest?.handoverAmount || 0);
+  }, [historyItems]);
   const revenueOverview = useMemo(
     () =>
       buildRevenueOverview(
@@ -1206,6 +1217,14 @@ export default function ShiftHandoverScreen() {
                   <Text style={styles.primaryFilterButtonText}>{text.apply}</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          ) : null}
+          {historyItems.length > 0 ? (
+            <View style={styles.latestHandoverBanner}>
+              <Ionicons name="information-circle" size={16} color="#1890ff" />
+              <Text style={styles.latestHandoverBannerText}>
+                {text.latestHandoverAmount}: {formatCurrency(latestHandoverAmount)}
+              </Text>
             </View>
           ) : null}
           {historyItems.length === 0 ? (
@@ -1762,6 +1781,24 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: 8,
     color: '#7F8C8D',
+  },
+  latestHandoverBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#E6F7FF',
+    borderWidth: 1,
+    borderColor: '#91D5FF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  latestHandoverBannerText: {
+    flex: 1,
+    color: '#0958D9',
+    fontSize: 13,
+    fontWeight: '600',
   },
   historyList: {
     gap: 12,

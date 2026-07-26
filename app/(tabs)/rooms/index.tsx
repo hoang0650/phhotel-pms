@@ -50,6 +50,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Colors from '@/constants/colors';
 import { roomsApi, servicesApi, transactionsApi } from '@/services/api';
 import { calculateRoomPriceLocal, calculateRoomTotalAmount } from '@/services/api/rooms';
+import { buildOccupiedRoomLivePricing } from '@/utils/room-live-pricing';
 import { Room, RoomStatus, Service } from '@/types/hotel';
 import { useHotel } from '@/contexts/HotelContext';
 import { useTheme } from '../../../contexts/ThemeContext';
@@ -191,6 +192,8 @@ export default function RoomsScreen() {
   const [expenseRecipient, setExpenseRecipient] = useState('');
   const [expenseNotes, setExpenseNotes] = useState('');
   const [voucherSubmitting, setVoucherSubmitting] = useState(false);
+  /** Tick realtime giống web (~30s) để cập nhật thời gian ở + tiền phòng */
+  const [nowTick, setNowTick] = useState(() => Date.now());
 
   const [checkInForm, setCheckInForm] = useState<CheckInFormData>({
     guestName: '',
@@ -244,8 +247,9 @@ export default function RoomsScreen() {
   enabled: roomsQueryEnabled,
   staleTime: 15_000,
   gcTime: 5 * 60_000,
-  refetchOnMount: false,
-  refetchOnWindowFocus: false,
+  refetchInterval: roomsQueryEnabled ? 60_000 : false,
+  refetchOnMount: true,
+  refetchOnWindowFocus: true,
 });
 
   const { data: roomSessions = {}, refetch: refetchSessions } = useQuery({
@@ -255,9 +259,17 @@ export default function RoomsScreen() {
     retry: 1,
     staleTime: 10_000,
     gcTime: 5 * 60_000,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
+    refetchInterval: roomsQueryEnabled ? 60_000 : false,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTick(Date.now());
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 2. MUTATION: Khai báo hàm đẩy trạng thái đồng bộ lên Redis của Backend đúng chuẩn cấu trúc
   const syncSessionMutation = useMutation({
@@ -785,6 +797,15 @@ export default function RoomsScreen() {
       hasActiveBookingData,
     };
   }, [getRateTypeLabel, normalizePaymentMethod, normalizeRateType, normalizeSelectedServiceItems, roomSessions]);
+
+  const getOccupiedLivePricing = useCallback(
+    (room: Room) => {
+      if (room.status !== 'occupied') return null;
+      const snapshot = getRoomBookingSnapshot(room);
+      return buildOccupiedRoomLivePricing(room, snapshot, new Date(nowTick));
+    },
+    [getRoomBookingSnapshot, nowTick]
+  );
 
   const liveSelectedRoom = useMemo(() => {
     if (!selectedRoom) return null;
@@ -1605,6 +1626,10 @@ export default function RoomsScreen() {
     }
     const StatusIcon = status.icon;
     const roomSnapshot = getRoomBookingSnapshot(room);
+    const livePricing = getOccupiedLivePricing(room);
+    const displayPrice =
+      livePricing?.totalAmount ??
+      (room.status === 'occupied' ? room.price : room.price);
 
     return (
       <TouchableOpacity
@@ -1626,7 +1651,34 @@ export default function RoomsScreen() {
               {roomSnapshot.rateTypeLabel}
             </Text>
           ) : null}
-          <Text style={[styles.gridPrice, { color: colors.tint }]}>{formatCurrency(room.price)}</Text>
+          {livePricing?.durationText ? (
+            <Text style={[styles.gridDuration, { color: colors.textSecondary }]}>
+              {livePricing.durationText}
+            </Text>
+          ) : null}
+          <Text style={[styles.gridPrice, { color: colors.tint }]}>
+            {formatCurrency(displayPrice)}
+          </Text>
+          {livePricing ? (
+            <View style={styles.gridMoneyBlock}>
+              <Text style={[styles.gridMoneyLine, { color: colors.textSecondary }]}>
+                {language === 'vi' ? 'Tiền phòng' : 'Room'}: {formatCurrency(livePricing.roomPrice)}
+              </Text>
+              {livePricing.additionalCharges > 0 ? (
+                <Text style={[styles.gridMoneyLine, { color: '#d97706' }]}>
+                  {language === 'vi' ? 'Phụ thu' : 'Surcharge'}: +{formatCurrency(livePricing.additionalCharges)}
+                </Text>
+              ) : null}
+              {livePricing.discount > 0 ? (
+                <Text style={[styles.gridMoneyLine, { color: '#16a34a' }]}>
+                  {language === 'vi' ? 'Khuyến mãi' : 'Discount'}: -{formatCurrency(livePricing.discount)}
+                </Text>
+              ) : null}
+              <Text style={[styles.gridMoneyLine, { color: colors.text, fontWeight: '600' }]}>
+                {language === 'vi' ? 'Còn lại' : 'Remaining'}: {formatCurrency(livePricing.remainingAmount)}
+              </Text>
+            </View>
+          ) : null}
           {roomSnapshot?.hasActiveBookingData && roomSnapshot.guestName ? (
             <View style={styles.gridGuest}>
               <User size={12} color={colors.textSecondary} />
@@ -1646,7 +1698,7 @@ export default function RoomsScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [handleRoomPress, formatCurrency, colors, getRoomBookingSnapshot]);
+  }, [handleRoomPress, formatCurrency, colors, getRoomBookingSnapshot, getOccupiedLivePricing, language]);
 
   const renderListItem = useCallback((room: Room) => {
     const status = statusConfig[room.status];
@@ -1656,6 +1708,16 @@ export default function RoomsScreen() {
     }
     const StatusIcon = status.icon;
     const roomSnapshot = getRoomBookingSnapshot(room);
+    const livePricing = getOccupiedLivePricing(room);
+    const displayPrice = livePricing?.totalAmount ?? room.price;
+    const priceSuffix =
+      room.status === 'occupied'
+        ? ''
+        : roomSnapshot?.rateType === 'hourly'
+          ? language === 'vi'
+            ? '/giờ'
+            : '/hr'
+          : t('perNight');
 
     return (
       <TouchableOpacity
@@ -1695,15 +1757,46 @@ export default function RoomsScreen() {
                   {roomSnapshot.rateTypeLabel}
                 </Text>
               ) : null}
+              {livePricing?.durationText ? (
+                <Text style={[styles.listDuration, { color: colors.textSecondary }]}>
+                  {livePricing.durationText}
+                </Text>
+              ) : null}
             </View>
             <Text style={[styles.floorText, { color: colors.textSecondary, backgroundColor: isDark ? '#334155' : '#f3f4f6' }]}>
               {t('floor')} {room.floor}
             </Text>
           </View>
           <Text style={[styles.priceText, { color: colors.tint }]}>
-            {formatCurrency(room.price)}{t('perNight')}
+            {formatCurrency(displayPrice)}{priceSuffix}
           </Text>
         </View>
+
+        {livePricing ? (
+          <View style={[styles.listMoneyBlock, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
+            <Text style={[styles.listMoneyLine, { color: colors.textSecondary }]}>
+              {language === 'vi' ? 'Tiền phòng' : 'Room'}: {formatCurrency(livePricing.roomPrice)}
+            </Text>
+            {livePricing.additionalCharges > 0 ? (
+              <Text style={[styles.listMoneyLine, { color: '#d97706' }]}>
+                {language === 'vi' ? 'Phụ thu' : 'Surcharge'}: +{formatCurrency(livePricing.additionalCharges)}
+              </Text>
+            ) : null}
+            {livePricing.discount > 0 ? (
+              <Text style={[styles.listMoneyLine, { color: '#16a34a' }]}>
+                {language === 'vi' ? 'Khuyến mãi' : 'Discount'}: -{formatCurrency(livePricing.discount)}
+              </Text>
+            ) : null}
+            {livePricing.advancePayment > 0 ? (
+              <Text style={[styles.listMoneyLine, { color: colors.textSecondary }]}>
+                {language === 'vi' ? 'Trả trước' : 'Advance'}: {formatCurrency(livePricing.advancePayment)}
+              </Text>
+            ) : null}
+            <Text style={[styles.listMoneyLine, { color: colors.text, fontWeight: '700' }]}>
+              {language === 'vi' ? 'Còn lại' : 'Remaining'}: {formatCurrency(livePricing.remainingAmount)}
+            </Text>
+          </View>
+        ) : null}
 
         {(room.status === 'occupied' || room.status === 'booked') && roomSnapshot?.hasActiveBookingData && roomSnapshot.guestName && (
           <View style={[styles.guestInfo, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
@@ -1806,7 +1899,7 @@ export default function RoomsScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [handleRoomPress, openRoomModal, formatCurrency, formatDateTime, getStatusLabel, colors, isDark, t, language, doMarkClean, getRoomBookingSnapshot]);
+  }, [handleRoomPress, openRoomModal, formatCurrency, formatDateTime, getStatusLabel, colors, isDark, t, language, doMarkClean, getRoomBookingSnapshot, getOccupiedLivePricing, guestOutMutation.isPending, guestReturnMutation.isPending]);
 
   const renderRoomItem = useCallback(
     ({ item }: { item: Room }) => {
@@ -1861,8 +1954,44 @@ export default function RoomsScreen() {
             </View>
             <View style={[styles.detailItem, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
               <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{t('price')}</Text>
-              <Text style={[styles.detailValue, { color: colors.tint }]}>{formatCurrency(selectedRoom.price)}</Text>
+              <Text style={[styles.detailValue, { color: colors.tint }]}>
+                {formatCurrency(
+                  (selectedRoom.status === 'occupied'
+                    ? getOccupiedLivePricing(selectedRoom)?.totalAmount
+                    : null) ?? selectedRoom.price
+                )}
+              </Text>
             </View>
+            {selectedRoom.status === 'occupied' && getOccupiedLivePricing(selectedRoom)?.durationText ? (
+              <View style={[styles.detailItem, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                  {language === 'vi' ? 'Thời gian ở' : 'Stay duration'}
+                </Text>
+                <Text style={[styles.detailValue, { color: colors.text }]}>
+                  {getOccupiedLivePricing(selectedRoom)?.durationText}
+                </Text>
+              </View>
+            ) : null}
+            {selectedRoom.status === 'occupied' && (getOccupiedLivePricing(selectedRoom)?.additionalCharges || 0) > 0 ? (
+              <View style={[styles.detailItem, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                  {language === 'vi' ? 'Phụ thu' : 'Surcharge'}
+                </Text>
+                <Text style={[styles.detailValue, { color: '#d97706' }]}>
+                  +{formatCurrency(getOccupiedLivePricing(selectedRoom)?.additionalCharges || 0)}
+                </Text>
+              </View>
+            ) : null}
+            {selectedRoom.status === 'occupied' && (getOccupiedLivePricing(selectedRoom)?.discount || 0) > 0 ? (
+              <View style={[styles.detailItem, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>
+                  {language === 'vi' ? 'Khuyến mãi' : 'Discount'}
+                </Text>
+                <Text style={[styles.detailValue, { color: '#16a34a' }]}>
+                  -{formatCurrency(getOccupiedLivePricing(selectedRoom)?.discount || 0)}
+                </Text>
+              </View>
+            ) : null}
             <View style={[styles.detailItem, { backgroundColor: isDark ? '#1e293b' : '#f8fafc' }]}>
               <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>{t('capacity')}</Text>
               <Text style={[styles.detailValue, { color: colors.text }]}>{selectedRoom.capacity} {t('people')}</Text>
@@ -2908,7 +3037,7 @@ export default function RoomsScreen() {
   }, [selectedRoom, modalMode, checkInForm, checkOutForm, transferTargetId, availableRoomsForTransfer, colors, isDark, t, language,
     availableServices, isLoadingServiceList, selectedServices, serviceTotal, updateServiceQuantity, checkoutTotals, saveCheckinInfoMutation.isPending,
     handleCheckIn, handleCheckOut, handleSaveCheckOutInfo, handleShowCheckIn, handleShowCheckOut, handleShowTransfer, handleCleaning, handleMarkClean, handleMaintenance, handleTransfer,
-    checkInMutation.isPending, checkOutMutation.isPending, markCleanMutation.isPending, transferMutation.isPending, formatCurrency, formatDateTime, getStatusLabel]);
+    checkInMutation.isPending, checkOutMutation.isPending, markCleanMutation.isPending, transferMutation.isPending, formatCurrency, formatDateTime, getStatusLabel, getOccupiedLivePricing]);
 
   const draft = useGuestDraftStore(s => s.draft);
   useEffect(() => {
@@ -3689,6 +3818,18 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600' as const,
   },
+  gridDuration: {
+    fontSize: 11,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  gridMoneyBlock: {
+    marginTop: 4,
+    gap: 2,
+  },
+  gridMoneyLine: {
+    fontSize: 10,
+  },
   gridGuest: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3779,6 +3920,20 @@ const styles = StyleSheet.create({
   priceText: {
     fontSize: 14,
     fontWeight: '600' as const,
+  },
+  listDuration: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  listMoneyBlock: {
+    marginTop: 8,
+    marginBottom: 4,
+    padding: 10,
+    borderRadius: 10,
+    gap: 3,
+  },
+  listMoneyLine: {
+    fontSize: 12,
   },
   guestInfo: {
     flexDirection: 'row',

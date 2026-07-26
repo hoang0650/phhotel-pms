@@ -84,7 +84,13 @@ export default function GuestsScreen() {
     selectRoom: isVi ? 'Vui long chon phong' : 'Please select a room',
     cannotCreateAssign: isVi ? 'Khong the tao khach de assign' : 'Unable to create guest for assignment',
     saveGuestSuccess: isVi ? 'Da luu khach vao phong' : 'Guest assigned to room successfully',
+    updateOccupiedGuestSuccess: isVi
+      ? 'Da cap nhat thong tin khach vao phong dang o (khong check-in lai)'
+      : 'Guest info updated on occupied room (no re-checkin)',
     cannotAssignGuest: isVi ? 'Khong the assign khach vao phong' : 'Unable to assign guest to room',
+    cannotUpdateOccupiedGuest: isVi
+      ? 'Khong the cap nhat thong tin khach vao phong dang o'
+      : 'Unable to update guest info on occupied room',
     loadingGuests: isVi ? 'Dang tai danh sach khach hang...' : 'Loading guests...',
     title: isVi ? 'Khach hang' : 'Guests',
     allHotels: isVi ? 'Tat ca' : 'All',
@@ -119,10 +125,12 @@ export default function GuestsScreen() {
     genderPlaceholder: isVi ? 'Nam/Nu' : 'Male/Female',
     save: isVi ? 'Luu' : 'Save',
     assignRooms: isVi ? 'Assign vao Rooms' : 'Assign to Rooms',
-    selectRoomTitle: isVi ? 'Chon phong' : 'Select room',
+    selectRoomTitle: isVi ? 'Chon phong (trong hoac dang o)' : 'Select room (vacant or occupied)',
     room: isVi ? 'Phong' : 'Room',
     floor: isVi ? 'Tang' : 'Floor',
-    noVacantRoom: isVi ? 'Khong co phong trong' : 'No vacant rooms',
+    statusOccupied: isVi ? 'Dang o' : 'Occupied',
+    statusVacant: isVi ? 'Trong' : 'Vacant',
+    noAssignableRoom: isVi ? 'Khong co phong trong/dang o de assign' : 'No vacant/occupied rooms to assign',
     confirm: isVi ? 'Xac nhan' : 'Confirm',
     stays: isVi ? 'Luot o' : 'Stays',
     totalSpent: isVi ? 'Tong chi tieu' : 'Total spent',
@@ -239,8 +247,15 @@ export default function GuestsScreen() {
   }, [bookings, guests]);
 
   const availableRooms = useMemo(() => {
-    return rooms.filter((room) => room.status === 'vacant');
+    // Giống web: cho phép assign vào phòng trống (nhận phòng) hoặc đang ở (chỉ cập nhật thông tin khách)
+    return rooms.filter((room) => room.status === 'vacant' || room.status === 'occupied');
   }, [rooms]);
+
+  const getRoomStatusLabel = (status: Room['status']) => {
+    if (status === 'occupied') return text.statusOccupied;
+    if (status === 'vacant') return text.statusVacant;
+    return status;
+  };
 
   const computedGuests = useMemo(() => {
     if (guests.length === 0) return guests;
@@ -672,6 +687,22 @@ const handleScanTwoImages = async () => {
       Alert.alert(text.notice, text.selectHotelFirst);
       return;
     }
+
+    const targetRoom = rooms.find((room) => room.id === assignRoomId);
+    if (!targetRoom) {
+      Alert.alert(text.notice, text.selectRoom);
+      return;
+    }
+
+    const guestInfo = {
+      name: form.fullName || 'Khách lẻ',
+      phone: form.phone || '',
+      email: form.email || '',
+      idNumber: form.idNumber || '',
+      address: form.address || '',
+      guestSource: 'walkin' as const,
+    };
+
     try {
       const payload = {
         hotelId: effectiveHotelId,
@@ -694,26 +725,34 @@ const handleScanTwoImages = async () => {
         Alert.alert(text.error, text.cannotCreateAssign);
         return;
       }
-      await guestsApi.assignRoom(created.id, assignRoomId, {
-        checkInTime: new Date().toISOString(),
-        rateType: 'hourly',
-        guestInfo: {
-          name: form.fullName || 'Khách lẻ',
-          phone: form.phone || '',
-          email: form.email || '',
-          idNumber: form.idNumber || '',
-          address: form.address || '',
-          guestSource: 'walkin',
-        },
-      });
-      Alert.alert(text.success, text.saveGuestSuccess);
+
+      if (targetRoom.status === 'occupied') {
+        // Phòng đang ở: chỉ cập nhật thông tin khách — giữ nguyên giờ check-in hiện có
+        await roomsApi.updateCheckinInfo(assignRoomId, {
+          guestInfo,
+          advancePayment: 0,
+        });
+        Alert.alert(text.success, text.updateOccupiedGuestSuccess);
+      } else {
+        // Phòng trống: assign/nhận phòng mới (không ép checkInTime = now nếu backend tự xử lý)
+        await guestsApi.assignRoom(created.id, assignRoomId, {
+          guestInfo,
+          rateType: targetRoom.rateType || 'hourly',
+        });
+        Alert.alert(text.success, text.saveGuestSuccess);
+      }
+
       resetCreateModal();
       setCreateVisible(false);
       closeAssignModal();
       refetch();
       refetchRooms();
     } catch (error: any) {
-      Alert.alert(text.error, error?.message || text.cannotAssignGuest);
+      Alert.alert(
+        text.error,
+        error?.message ||
+          (targetRoom.status === 'occupied' ? text.cannotUpdateOccupiedGuest : text.cannotAssignGuest)
+      );
     }
   };
   
@@ -955,7 +994,8 @@ const handleScanTwoImages = async () => {
                       <View>
                         <Text style={[styles.assignRoomNumber, { color: colors.text }]}>{text.room} {room.number}</Text>
                         <Text style={[styles.assignRoomMeta, { color: colors.textSecondary }]}>
-                          {(room.roomType || room.type) ?? '-'} • {text.floor} {room.floor}
+                          {(room.roomType || room.type) ?? '-'} • {text.floor} {room.floor} • {getRoomStatusLabel(room.status)}
+                          {room.status === 'occupied' && room.currentGuest ? ` • ${room.currentGuest}` : ''}
                         </Text>
                       </View>
                       {isSelected && <CheckCircle size={20} color={colors.tint} />}
@@ -965,7 +1005,7 @@ const handleScanTwoImages = async () => {
               ) : (
                 <View style={styles.assignEmpty}>
                   <AlertCircle size={22} color={colors.textSecondary} />
-                  <Text style={[styles.assignEmptyText, { color: colors.textSecondary }]}>{text.noVacantRoom}</Text>
+                  <Text style={[styles.assignEmptyText, { color: colors.textSecondary }]}>{text.noAssignableRoom}</Text>
                 </View>
               )}
             </ScrollView>
