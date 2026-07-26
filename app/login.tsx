@@ -157,15 +157,16 @@ export default function LoginScreen() {
       await login(buildLoginPayload(email, password));
       router.replace('/(tabs)/(dashboard)');
     } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : '';
       const message =
-        error instanceof Error && (error.message === 'UNAUTHORIZED' || /invalid|credentials/i.test(error.message))
-          ? text.invalidCredential
-          : error instanceof Error
-            ? error.message
-            : text.reviewLoginInfo;
+        rawMessage === 'Request timeout' || rawMessage === 'NETWORK_ERROR'
+          ? (isVi ? 'Kết nối máy chủ quá lâu. Vui lòng thử lại.' : 'Server connection timed out. Please try again.')
+          : error instanceof Error && (rawMessage === 'UNAUTHORIZED' || /invalid|credentials/i.test(rawMessage))
+            ? text.invalidCredential
+            : rawMessage || text.reviewLoginInfo;
       Alert.alert(text.loginFailed, message);
     }
-  }, [buildLoginPayload, email, login, password, router, text.invalidCredential, text.loginFailed, text.reviewLoginInfo, validate]);
+  }, [buildLoginPayload, email, isVi, login, password, router, text.invalidCredential, text.loginFailed, text.reviewLoginInfo, validate]);
 
   const handleBiometricLogin = useCallback(async () => {
     if (!isMobile) {

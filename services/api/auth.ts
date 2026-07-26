@@ -153,8 +153,11 @@ export const authApi = {
     console.log('[authApi.login] Attempting login for:', data.email || data.username);
     const response = await apiClient.post<AuthResponse>(API_ENDPOINTS.AUTH.LOGIN, data);
     console.log('[authApi.login] Response:', response);
-    
+
     const token = response.token || response.accessToken || '';
+    if (!token || !response.user) {
+      throw new Error('Phản hồi đăng nhập không hợp lệ');
+    }
     return {
       user: mapApiUserToUser(response.user),
       token,
