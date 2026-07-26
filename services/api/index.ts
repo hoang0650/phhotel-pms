@@ -16,3 +16,4 @@ export { debtsApi } from './debts';
 export { cameraApi } from './camera';
 export { paymentsApi } from './payments';
 export { pricingApi } from './pricing';
+export { sessionsApi } from './sessions';

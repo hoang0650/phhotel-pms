@@ -698,14 +698,11 @@ export const roomsApi = {
   updateRoomSession: async (payload: {
     hotelId: string;
     roomId: string;
-    sessionData: Partial<ApiRoomSession>;
+    sessionData: Partial<ApiRoomSession> | null;
   }): Promise<any> => {
     try {
-      // Backend nhận dữ liệu từ req.body gồm: hotelId, roomId, sessionData
-      // Tuỳ thuộc vào cấu hình route của bạn, endpoint có thể là '/sessions/update'
-      const endpoint = `/sessions/update`;
-      
-      const response = await apiClient.post<any>(endpoint, payload);
+      // Backend: PUT /sessions/rooms { hotelId, roomId, sessionData }
+      const response = await apiClient.put<any>('/sessions/rooms', payload);
       return response;
     } catch (error) {
       console.warn('[roomsApi.updateRoomSession] Error:', error);
