@@ -23,16 +23,20 @@ import { Mail, Lock, Eye, EyeOff, ChevronDown } from 'lucide-react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import Colors from '@/constants/colors';
+import { authApi } from '@/services/api/auth';
+import { signInWithGoogle } from '@/services/googleAuth';
+import { GOOGLE_AUTH_CONFIG } from '@/services/api/config';
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { login, loginLoading } = useAuth();
+  const { login, loginLoading, loginWithGoogle, googleLoginLoading } = useAuth();
   const { language, setLanguage } = useLanguage();
 
   const isMobile = Platform.OS === 'ios' || Platform.OS === 'android';
   const BIOMETRIC_CREDENTIALS_KEY = 'biometric_credentials';
   const isVi = language === 'vi';
+  const isBusy = loginLoading || googleLoginLoading;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -41,6 +45,9 @@ export default function LoginScreen() {
   const [biometricReady, setBiometricReady] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
   const [languageDropdownVisible, setLanguageDropdownVisible] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(
+    !!(GOOGLE_AUTH_CONFIG.webClientId || GOOGLE_AUTH_CONFIG.iosClientId || GOOGLE_AUTH_CONFIG.androidClientId)
+  );
 
   const text = useMemo(
     () => ({
@@ -72,9 +79,28 @@ export default function LoginScreen() {
       languageLabel: isVi ? 'Ngôn ngữ' : 'Language',
       vietnamese: 'Tiếng Việt',
       english: 'English',
+      orLoginWith: isVi ? 'Hoặc đăng nhập bằng' : 'Or login with',
+      loginWithGoogle: isVi ? 'Đăng nhập với Google' : 'Sign in with Google',
+      googleNotConfigured: isVi ? 'Đăng nhập Google chưa được cấu hình' : 'Google Sign-In is not configured',
+      googleLoginFailed: isVi ? 'Đăng nhập Google thất bại' : 'Google sign-in failed',
+      googleCancelled: isVi ? 'Đã hủy đăng nhập Google' : 'Google sign-in cancelled',
     }),
     [isVi]
   );
+
+  useEffect(() => {
+    let mounted = true;
+    authApi.getGoogleConfig().then((config) => {
+      if (!mounted) return;
+      setGoogleEnabled(
+        config.enabled ||
+          !!(GOOGLE_AUTH_CONFIG.webClientId || GOOGLE_AUTH_CONFIG.iosClientId || GOOGLE_AUTH_CONFIG.androidClientId)
+      );
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isMobile) return;
@@ -231,6 +257,44 @@ export default function LoginScreen() {
     text.setupBiometricFirst,
   ]);
 
+  const handleGoogleLogin = useCallback(async () => {
+    if (!googleEnabled) {
+      Alert.alert(text.notice, text.googleNotConfigured);
+      return;
+    }
+    if (isBusy) return;
+
+    try {
+      const googleResult = await signInWithGoogle();
+      await loginWithGoogle({
+        idToken: googleResult.idToken,
+        code: googleResult.code,
+        redirectUri: googleResult.redirectUri,
+      });
+      router.replace('/(tabs)/(dashboard)');
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : '';
+      if (rawMessage === 'CANCELLED') {
+        return;
+      }
+      const message =
+        rawMessage === 'Request timeout' || rawMessage === 'NETWORK_ERROR'
+          ? (isVi ? 'Kết nối máy chủ quá lâu. Vui lòng thử lại.' : 'Server connection timed out. Please try again.')
+          : rawMessage || text.googleLoginFailed;
+      Alert.alert(text.loginFailed, message);
+    }
+  }, [
+    googleEnabled,
+    isBusy,
+    isVi,
+    loginWithGoogle,
+    router,
+    text.googleLoginFailed,
+    text.googleNotConfigured,
+    text.loginFailed,
+    text.notice,
+  ]);
+
   return (
     <View style={styles.container}>
       <LinearGradient
@@ -363,9 +427,9 @@ export default function LoginScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.loginButton, loginLoading && styles.loginButtonDisabled]}
+              style={[styles.loginButton, isBusy && styles.loginButtonDisabled]}
               onPress={handleLogin}
-              disabled={loginLoading}
+              disabled={isBusy}
             >
               {loginLoading ? (
                 <ActivityIndicator color="#fff" />
@@ -374,11 +438,38 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
 
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>{text.orLoginWith}</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.googleButton,
+                (!googleEnabled || isBusy) && styles.googleButtonDisabled,
+              ]}
+              onPress={handleGoogleLogin}
+              disabled={!googleEnabled || isBusy}
+              activeOpacity={0.85}
+            >
+              {googleLoginLoading ? (
+                <ActivityIndicator color="#1f2937" />
+              ) : (
+                <>
+                  <View style={styles.googleIconBadge}>
+                    <Text style={styles.googleIconText}>G</Text>
+                  </View>
+                  <Text style={styles.googleButtonText}>{text.loginWithGoogle}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
             {biometricReady && (
               <TouchableOpacity
-                style={[styles.biometricButton, biometricLoading && styles.biometricButtonDisabled]}
+                style={[styles.biometricButton, (biometricLoading || isBusy) && styles.biometricButtonDisabled]}
                 onPress={handleBiometricLogin}
-                disabled={biometricLoading}
+                disabled={biometricLoading || isBusy}
               >
                 {biometricLoading ? (
                   <ActivityIndicator color="#0f766e" />
@@ -578,6 +669,55 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: '#fff',
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 18,
+    marginBottom: 14,
+    gap: 10,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#d1d5db',
+  },
+  dividerText: {
+    fontSize: 12,
+    color: Colors.light.textSecondary,
+    fontWeight: '500' as const,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    borderRadius: 12,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+  },
+  googleButtonDisabled: {
+    opacity: 0.55,
+  },
+  googleIconBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#ea4335',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleIconText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700' as const,
+  },
+  googleButtonText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: '#1f2937',
   },
   biometricButton: {
     borderRadius: 12,

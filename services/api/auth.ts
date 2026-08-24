@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { API_ENDPOINTS } from './config';
+import { API_ENDPOINTS, GOOGLE_AUTH_CONFIG } from './config';
 import { extractId, extractIds } from './utils';
 import type { PackagePermission, PricingAddon, PricingFeature } from './pricing';
 
@@ -93,6 +93,17 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface GoogleLoginRequest {
+  idToken?: string;
+  code?: string;
+  redirectUri?: string;
+}
+
+export interface GoogleAuthConfigResponse {
+  enabled: boolean;
+  clientId: string;
+}
+
 export interface RegisterRequest {
   email: string;
   password: string;
@@ -157,6 +168,47 @@ export const authApi = {
     const token = response.token || response.accessToken || '';
     if (!token || !response.user) {
       throw new Error('Phản hồi đăng nhập không hợp lệ');
+    }
+    return {
+      user: mapApiUserToUser(response.user),
+      token,
+    };
+  },
+
+  getGoogleConfig: async (): Promise<GoogleAuthConfigResponse> => {
+    const envFallback = (): GoogleAuthConfigResponse => {
+      const clientId =
+        GOOGLE_AUTH_CONFIG.webClientId ||
+        GOOGLE_AUTH_CONFIG.iosClientId ||
+        GOOGLE_AUTH_CONFIG.androidClientId ||
+        '';
+      return { enabled: !!clientId, clientId };
+    };
+
+    try {
+      const response = await apiClient.get<GoogleAuthConfigResponse>(API_ENDPOINTS.AUTH.GOOGLE_CONFIG);
+      if (!response?.clientId) return envFallback();
+      return {
+        enabled: !!response.enabled && !!response.clientId,
+        clientId: response.clientId,
+      };
+    } catch (error) {
+      console.warn('[authApi.getGoogleConfig] Failed, using env fallback:', error);
+      return envFallback();
+    }
+  },
+
+  loginWithGoogle: async (data: GoogleLoginRequest): Promise<{ user: User; token: string }> => {
+    console.log('[authApi.loginWithGoogle] Attempting Google login');
+    const response = await apiClient.post<AuthResponse>(API_ENDPOINTS.AUTH.GOOGLE_LOGIN, {
+      ...data,
+      redirectUri: data.redirectUri || 'postmessage',
+    });
+    console.log('[authApi.loginWithGoogle] Response:', response);
+
+    const token = response.token || response.accessToken || '';
+    if (!token || !response.user) {
+      throw new Error('Phản hồi đăng nhập Google không hợp lệ');
     }
     return {
       user: mapApiUserToUser(response.user),

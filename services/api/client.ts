@@ -56,14 +56,15 @@ class ApiClient {
 
       clearTimeout(timeoutId);
 
+      const rawBody = await response.text();
+
       if (!response.ok) {
-        // Try parse JSON for consistent messages
-        let errorMessage = '';
+        let errorMessage = rawBody;
         try {
-          const json = await response.json();
+          const json = JSON.parse(rawBody);
           errorMessage = json?.message || JSON.stringify(json);
         } catch {
-          errorMessage = await response.text();
+          // keep rawBody
         }
         if (response.status === 401) {
           // Gracefully handle unauthorized: clear local auth and throw a typed error
@@ -90,7 +91,12 @@ class ApiClient {
         throw new Error(errorMessage || `API Error: ${response.status}`);
       }
 
-      const data = await response.json();
+      let data: T;
+      try {
+        data = rawBody ? JSON.parse(rawBody) : ({} as T);
+      } catch {
+        throw new Error(rawBody || `Invalid JSON response from ${endpoint}`);
+      }
       console.log(`[API Response] ${endpoint}:`, data);
       return data;
     } catch (error) {

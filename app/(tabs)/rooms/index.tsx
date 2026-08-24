@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -219,6 +219,8 @@ export default function RoomsScreen() {
     discount: '',
     notes: '',
   });
+  const checkInRateTypeTouchedRef = useRef(false);
+  const checkOutRateTypeTouchedRef = useRef(false);
   const [selectedServices, setSelectedServices] = useState<SelectedServiceItem[]>([]);
   const [isCheckoutServiceOpen, setIsCheckoutServiceOpen] = useState(false);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
@@ -323,7 +325,7 @@ export default function RoomsScreen() {
           guestId: snapshot.guestId,
           adults: snapshot.adults,
           children: snapshot.children,
-          rateType: snapshot.rateType,
+          rateType: checkInRateTypeTouchedRef.current ? prev.rateType : snapshot.rateType,
           paymentMethod: snapshot.paymentMethod,
           advancePayment: snapshot.advancePayment ? String(snapshot.advancePayment) : '',
           additionalCharges: snapshot.additionalCharges ? String(snapshot.additionalCharges) : '',
@@ -341,7 +343,7 @@ export default function RoomsScreen() {
           guestName: snapshot.guestName,
           guestPhone: snapshot.guestPhone,
           guestId: snapshot.guestId,
-          rateType: snapshot.rateType,
+          rateType: checkOutRateTypeTouchedRef.current ? prev.rateType : snapshot.rateType,
           paymentMethod: snapshot.paymentMethod,
           advancePayment: snapshot.advancePayment ? String(snapshot.advancePayment) : '',
           notes: snapshot.notes || '',
@@ -1055,6 +1057,8 @@ export default function RoomsScreen() {
     setIsCheckoutServiceOpen(false);
     setSelectedServiceId(null);
     setSelectedServiceQuantity(1);
+    checkInRateTypeTouchedRef.current = false;
+    checkOutRateTypeTouchedRef.current = false;
     setCheckInForm({
       guestName: '',
       guestPhone: '',
@@ -1091,6 +1095,8 @@ export default function RoomsScreen() {
 
   const openRoomModal = useCallback((room: Room, mode: ModalMode) => {
     const roomSnapshot = getRoomBookingSnapshot(room);
+    checkInRateTypeTouchedRef.current = false;
+    checkOutRateTypeTouchedRef.current = false;
     setSelectedRoom(room);
     setModalMode(mode);
     setModalVisible(true);
@@ -1152,7 +1158,6 @@ export default function RoomsScreen() {
           guestId: prev.guestId || liveSelectedRoomSnapshot.guestId,
           adults: (prev.adults === 1 && liveSelectedRoomSnapshot.adults > 1) ? liveSelectedRoomSnapshot.adults : prev.adults,
           children: (prev.children === 0 && liveSelectedRoomSnapshot.children > 0) ? liveSelectedRoomSnapshot.children : prev.children,
-          rateType: prev.rateType === 'hourly' ? liveSelectedRoomSnapshot.rateType : prev.rateType,
           paymentMethod: prev.paymentMethod === 'cash' ? liveSelectedRoomSnapshot.paymentMethod : prev.paymentMethod,
           advancePayment: prev.advancePayment !== '' ? prev.advancePayment : (liveSelectedRoomSnapshot.advancePayment ? String(liveSelectedRoomSnapshot.advancePayment) : ''),
           additionalCharges: prev.additionalCharges !== '' ? prev.additionalCharges : (liveSelectedRoomSnapshot.additionalCharges ? String(liveSelectedRoomSnapshot.additionalCharges) : ''),
@@ -1170,7 +1175,6 @@ export default function RoomsScreen() {
           guestName: prev.guestName || liveSelectedRoomSnapshot.guestName,
           guestPhone: prev.guestPhone || liveSelectedRoomSnapshot.guestPhone,
           guestId: prev.guestId || liveSelectedRoomSnapshot.guestId,
-          rateType: prev.rateType === 'hourly' ? liveSelectedRoomSnapshot.rateType : prev.rateType,
           paymentMethod: prev.paymentMethod === 'cash' ? liveSelectedRoomSnapshot.paymentMethod : prev.paymentMethod,
           advancePayment: prev.advancePayment !== '' ? prev.advancePayment : (liveSelectedRoomSnapshot.advancePayment ? String(liveSelectedRoomSnapshot.advancePayment) : ''),
           notes: prev.notes || liveSelectedRoomSnapshot.notes || '',
@@ -1214,14 +1218,6 @@ export default function RoomsScreen() {
       totalPrice: Number(service.totalPrice || (service.price || service.unitPrice || 0) * (service.quantity || 1)),
     })));
   }, [modalVisible, modalMode, checkoutRoom, selectedServices.length, serviceOrders.length, t]);
-
-  useEffect(() => {
-    if (!modalVisible || modalMode !== 'checkout') return;
-    if (!checkoutRoomDetail?.rateType) return;
-    if (checkOutForm.rateType === checkoutRoomDetail.rateType) return;
-    if (checkOutForm.rateType !== 'hourly') return;
-    setCheckOutForm(prev => ({ ...prev, rateType: checkoutRoomDetail.rateType as RateType }));
-  }, [modalVisible, modalMode, checkoutRoomDetail, checkOutForm.rateType]);
 
   const updateServiceQuantity = useCallback((service: Service, delta: number) => {
     setSelectedServices(prev => {
@@ -2262,7 +2258,10 @@ export default function RoomsScreen() {
                         { backgroundColor: colors.cardBackground, borderColor: colors.border },
                         checkInForm.rateType === option && { backgroundColor: colors.tint, borderColor: colors.tint },
                       ]}
-                      onPress={() => setCheckInForm(prev => ({ ...prev, rateType: option }))}
+                      onPress={() => {
+                        checkInRateTypeTouchedRef.current = true;
+                        setCheckInForm(prev => ({ ...prev, rateType: option }));
+                      }}
                     >
                       <Text style={[styles.optionText, { color: checkInForm.rateType === option ? '#fff' : colors.textSecondary }]}>
                         {t(option)}
@@ -2578,7 +2577,10 @@ export default function RoomsScreen() {
                         { backgroundColor: colors.cardBackground, borderColor: colors.border },
                         checkOutForm.rateType === option && { backgroundColor: colors.tint, borderColor: colors.tint },
                       ]}
-                      onPress={() => setCheckOutForm(prev => ({ ...prev, rateType: option }))}
+                      onPress={() => {
+                        checkOutRateTypeTouchedRef.current = true;
+                        setCheckOutForm(prev => ({ ...prev, rateType: option }));
+                      }}
                     >
                       <Text style={[styles.optionText, { color: checkOutForm.rateType === option ? '#fff' : colors.textSecondary }]}>
                         {t(option)}

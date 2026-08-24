@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "npx.cmd expo start --tunnel",
+    "start:lan": "npx.cmd expo start --clear",
     "start-web": "npx.cmd expo start --web --clear",
     "start-web-dev": "cross-env DEBUG=expo* npx.cmd expo start --web --clear",
     "build:web": "npx.cmd expo export -p web",
@@ -27,8 +28,10 @@
     "@ungap/structured-clone": "^1.3.0",
     "date-fns": "^4.1.0",
     "expo": "~54.0.27",
+    "expo-auth-session": "~7.0.11",
     "expo-blur": "~15.0.8",
     "expo-constants": "~18.0.11",
+    "expo-crypto": "~15.0.9",
     "expo-font": "~14.0.10",
     "expo-haptics": "~15.0.8",
     "expo-image": "~3.0.11",

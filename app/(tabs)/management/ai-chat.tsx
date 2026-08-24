@@ -23,6 +23,7 @@ import {
   type OpenClawDevicePairingItem,
 } from '@/services/api/ai';
 import { API_CONFIG } from '@/services/api/config';
+import { openOpenClawUrl, OpenClawBrowserError } from '@/utils/openClawBrowser';
 import { useRouter } from 'expo-router';
 import { AccessGuard } from '@/components/AccessGuard';
 
@@ -223,6 +224,8 @@ export default function AIChatScreen() {
       openClawUrlFailed: 'Không lấy được đường dẫn OpenClaw Gateway.',
       openClawUrlError: 'Lỗi khi lấy URL OpenClaw.',
       openClawOpenFailed: 'Không thể mở OpenClaw trên thiết bị này.',
+      openClawCertFailed: 'Chứng chỉ HTTPS không hợp lệ hoặc domain OpenClaw chưa được cấp SSL. Liên hệ admin để cấp chứng chỉ *.phhotel.vn.',
+      openClawUntrustedUrl: 'URL OpenClaw không thuộc domain được phép (phhotel.vn).',
       autoApproveSuccess: 'Đã tự động Approve kết nối OpenClaw!',
       autoApprovePending: 'Chưa duyệt được pairing. Bấm "Duyệt lại" sau khi OpenClaw hiện yêu cầu ghép đôi.',
       loadPairings: 'Tải danh sách pairing',
@@ -285,6 +288,8 @@ export default function AIChatScreen() {
       openClawUrlFailed: 'Could not get OpenClaw Gateway URL.',
       openClawUrlError: 'Failed to get OpenClaw URL.',
       openClawOpenFailed: 'Could not open OpenClaw on this device.',
+      openClawCertFailed: 'Invalid HTTPS certificate or OpenClaw domain missing SSL. Contact admin for *.phhotel.vn certificate.',
+      openClawUntrustedUrl: 'OpenClaw URL is not from an allowed domain (phhotel.vn).',
       autoApproveSuccess: 'OpenClaw connection auto-approved!',
       autoApprovePending: 'Pairing not approved yet. Tap "Retry approve" after OpenClaw shows the pairing request.',
       loadPairings: 'Load pairings',
@@ -822,9 +827,17 @@ export default function AIChatScreen() {
       });
       if (res?.success && res.url) {
         try {
-          await Linking.openURL(res.url);
-        } catch {
-          Alert.alert(t.openClawPairing, t.openClawOpenFailed);
+          await openOpenClawUrl(res.url);
+        } catch (error) {
+          if (error instanceof OpenClawBrowserError) {
+            if (error.code === 'UNTRUSTED_URL') {
+              Alert.alert(t.openClawPairing, t.openClawUntrustedUrl);
+            } else {
+              Alert.alert(t.openClawPairing, t.openClawCertFailed);
+            }
+          } else {
+            Alert.alert(t.openClawPairing, t.openClawOpenFailed);
+          }
           return;
         }
         Alert.alert(t.openClawPairing, t.openingOpenClawInfo);
@@ -850,6 +863,8 @@ export default function AIChatScreen() {
     openClawContext.userId,
     openingOpenClaw,
     t.openClawOpenFailed,
+    t.openClawCertFailed,
+    t.openClawUntrustedUrl,
     t.openClawPairing,
     t.openClawUrlError,
     t.openClawUrlFailed,

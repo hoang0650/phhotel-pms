@@ -17,7 +17,35 @@
       "supportsTablet": false,
       "bundleIdentifier": "app.rork.phhotel-pms-interface",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocalNetworkUsageDescription": "PHHotel PMS kết nối OpenClaw gateway trên mạng nội bộ hoặc LAN khi bạn mở trợ lý AI.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoadsInWebContent": true,
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "phhotel.vn": {
+              "NSIncludesSubdomains": true,
+              "NSExceptionRequiresForwardSecrecy": false,
+              "NSTemporaryExceptionMinimumTLSVersion": "TLSv1.2"
+            },
+            "openclaw.phhotel.vn": {
+              "NSIncludesSubdomains": true,
+              "NSExceptionRequiresForwardSecrecy": false,
+              "NSTemporaryExceptionMinimumTLSVersion": "TLSv1.2"
+            },
+            "ai.phhotel.vn": {
+              "NSExceptionRequiresForwardSecrecy": false,
+              "NSTemporaryExceptionMinimumTLSVersion": "TLSv1.2"
+            }
+          }
+        },
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.321108577244-p1tp873s03sc3rmhc18b6tl0g8f0h1r4"
+            ]
+          }
+        ]
       }
     },
     "android": {
@@ -25,7 +53,8 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.phhotel_pms_interface"
+      "package": "app.rork.phhotel_pms_interface",
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/images/favicon.png",
@@ -40,7 +69,8 @@
         }
       ],
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/withOpenClawNetworkSecurity.js"
     ],
     "experiments": {
       "typedRoutes": true

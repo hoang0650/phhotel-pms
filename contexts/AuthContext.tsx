@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
-import { authApi, User, LoginRequest, RegisterRequest, ForgotPasswordRequest } from '@/services/api/auth';
+import { authApi, User, LoginRequest, RegisterRequest, ForgotPasswordRequest, GoogleLoginRequest } from '@/services/api/auth';
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const AUTH_USER_KEY = 'auth_user';
@@ -120,6 +120,16 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     },
   });
 
+  const googleLoginMutation = useMutation({
+    mutationFn: (data: GoogleLoginRequest) => authApi.loginWithGoogle(data),
+    onSuccess: async (response) => {
+      await saveAuthState(response.token, response.user);
+    },
+    onError: (error) => {
+      console.warn('[AuthContext] Google login failed:', error);
+    },
+  });
+
   const registerMutation = useMutation({
     mutationFn: (data: RegisterRequest) => authApi.register(data),
     onSuccess: async (response) => {
@@ -192,6 +202,9 @@ export const [AuthProvider, useAuth] = createContextHook(() => {
     login: loginMutation.mutateAsync,
     loginLoading: loginMutation.isPending,
     loginError: loginMutation.error,
+    loginWithGoogle: googleLoginMutation.mutateAsync,
+    googleLoginLoading: googleLoginMutation.isPending,
+    googleLoginError: googleLoginMutation.error,
     register: registerMutation.mutateAsync,
     registerLoading: registerMutation.isPending,
     registerError: registerMutation.error,
