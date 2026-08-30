@@ -132,4 +132,11 @@ export const API_ENDPOINTS = {
     BY_ID: (id: string) => `/shift-handover/${id}`,
     MANAGER: '/shift-handover/manager',
   },
+  OTA: {
+    BASE: '/ota-integrations',
+    SYNC_ALL_INVENTORY: (hotelId: string) => `/ota-integrations/hotel/${hotelId}/sync-all-inventory`,
+    PULL_RESERVATIONS: (id: string) => `/ota-integrations/${id}/inbound/pull`,
+    SYNC_INVENTORY: (id: string) => `/ota-integrations/${id}/sync-inventory`,
+    CHANNEX_BOOKINGS: (hotelId: string) => `/ota-integrations/channex/bookings?hotelId=${hotelId}`,
+  },
 };

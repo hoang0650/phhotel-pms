@@ -731,7 +731,7 @@ export default function SettingsScreen() {
         </TouchableOpacity>
 
         <View style={styles.versionContainer}>
-          <Text style={[styles.versionText, { color: colors.textSecondary }]}>PHHotel PMS v1.0.1</Text>
+          <Text style={[styles.versionText, { color: colors.textSecondary }]}>PHHotel PMS v1.0.4</Text>
           <Text style={[styles.copyrightText, { color: colors.textSecondary }]}>© 2026 PHGroup. All rights reserved.</Text>
         </View>
       </ScrollView>

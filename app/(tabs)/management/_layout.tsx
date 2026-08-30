@@ -92,6 +92,20 @@ export default function ManagementLayout() {
           headerShown: true
         }} 
       />
+      <Stack.Screen 
+        name="booking-calendar" 
+        options={{ 
+          title: isVi ? 'Lich Dat Phong' : 'Booking Calendar',
+          headerShown: true
+        }} 
+      />
+      <Stack.Screen 
+        name="ota" 
+        options={{ 
+          title: isVi ? 'Quan Ly OTA' : 'OTA Management',
+          headerShown: true
+        }} 
+      />
     </Stack>
   );
 }

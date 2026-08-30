@@ -607,6 +607,75 @@ export default function RoomsScreen() {
     }).format(amount);
   }, []);
 
+  const getRoomPriceDisplay = useCallback((
+    room: Room,
+    roomSnapshot: RoomBookingSnapshot | null,
+    livePricing: ReturnType<typeof buildOccupiedRoomLivePricing> | null
+  ) => {
+    if (livePricing?.totalAmount != null) {
+      return { amount: livePricing.totalAmount, suffix: '' };
+    }
+
+    const suffixByRateType = (rateType: RateType) => {
+      switch (rateType) {
+        case 'hourly':
+          return t('perHour');
+        case 'daily':
+          return t('perDay');
+        case 'nightly':
+          return t('perNight');
+        case 'weekly':
+          return language === 'vi' ? '/tuần' : '/wk';
+        case 'monthly':
+          return language === 'vi' ? '/tháng' : '/mo';
+        default:
+          return t('perDay');
+      }
+    };
+
+    const amountByRateType = (rateType: RateType) => {
+      const pricing = room.pricing;
+      switch (rateType) {
+        case 'hourly':
+          return pricing?.hourly ?? room.firstHourRate ?? room.price;
+        case 'daily':
+          return pricing?.daily ?? room.price;
+        case 'nightly':
+          return pricing?.nightly ?? room.price;
+        case 'weekly':
+          return pricing?.weekly ?? room.price;
+        case 'monthly':
+          return pricing?.monthly ?? room.price;
+        default:
+          return room.price;
+      }
+    };
+
+    if (room.status === 'occupied') {
+      return { amount: room.price, suffix: '' };
+    }
+
+    if (roomSnapshot?.hasActiveBookingData && roomSnapshot.rateType) {
+      return {
+        amount: amountByRateType(roomSnapshot.rateType),
+        suffix: suffixByRateType(roomSnapshot.rateType),
+      };
+    }
+
+    const pricing = room.pricing;
+    if (pricing?.daily) {
+      return { amount: pricing.daily, suffix: t('perDay') };
+    }
+    if (pricing?.nightly) {
+      return { amount: pricing.nightly, suffix: t('perNight') };
+    }
+    if (pricing?.hourly) {
+      return { amount: pricing.hourly, suffix: t('perHour') };
+    }
+
+    return { amount: room.price, suffix: t('perDay') };
+  }, [language, t]);
+
   const formatDateTime = useCallback((value?: string) => {
     if (!value) return '';
     const date = new Date(value);
@@ -1705,15 +1774,7 @@ export default function RoomsScreen() {
     const StatusIcon = status.icon;
     const roomSnapshot = getRoomBookingSnapshot(room);
     const livePricing = getOccupiedLivePricing(room);
-    const displayPrice = livePricing?.totalAmount ?? room.price;
-    const priceSuffix =
-      room.status === 'occupied'
-        ? ''
-        : roomSnapshot?.rateType === 'hourly'
-          ? language === 'vi'
-            ? '/giờ'
-            : '/hr'
-          : t('perNight');
+    const { amount: displayPrice, suffix: priceSuffix } = getRoomPriceDisplay(room, roomSnapshot, livePricing);
 
     return (
       <TouchableOpacity
@@ -1895,7 +1956,7 @@ export default function RoomsScreen() {
         </View>
       </TouchableOpacity>
     );
-  }, [handleRoomPress, openRoomModal, formatCurrency, formatDateTime, getStatusLabel, colors, isDark, t, language, doMarkClean, getRoomBookingSnapshot, getOccupiedLivePricing, guestOutMutation.isPending, guestReturnMutation.isPending]);
+  }, [handleRoomPress, openRoomModal, formatCurrency, formatDateTime, getStatusLabel, colors, isDark, t, language, doMarkClean, getRoomBookingSnapshot, getOccupiedLivePricing, getRoomPriceDisplay, guestOutMutation.isPending, guestReturnMutation.isPending]);
 
   const renderRoomItem = useCallback(
     ({ item }: { item: Room }) => {
@@ -3109,14 +3170,14 @@ export default function RoomsScreen() {
             onPress={() => setIncomeModalVisible(true)}
           >
             <PlusCircle size={16} color={colors.tint} />
-            <Text style={[styles.voucherBtnText, { color: colors.tint }]}>Phiếu thu</Text>
+            <Text style={[styles.voucherBtnText, { color: colors.tint }]}>{t('incomeVoucher')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.voucherBtn, isCompactHeader && styles.voucherBtnCompact, { borderColor: colors.textSecondary }]}
             onPress={() => setExpenseModalVisible(true)}
           >
             <MinusCircle size={16} color={colors.textSecondary} />
-            <Text style={[styles.voucherBtnText, { color: colors.textSecondary }]}>Phiếu chi</Text>
+            <Text style={[styles.voucherBtnText, { color: colors.textSecondary }]}>{t('expenseVoucher')}</Text>
           </TouchableOpacity>
         </View>
       </View>

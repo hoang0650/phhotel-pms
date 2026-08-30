@@ -97,11 +97,14 @@ export interface GoogleLoginRequest {
   idToken?: string;
   code?: string;
   redirectUri?: string;
+  clientId?: string;
 }
 
 export interface GoogleAuthConfigResponse {
   enabled: boolean;
-  clientId: string;
+  clientId?: string;
+  iosClientId?: string;
+  androidClientId?: string;
 }
 
 export interface RegisterRequest {
@@ -189,8 +192,10 @@ export const authApi = {
       const response = await apiClient.get<GoogleAuthConfigResponse>(API_ENDPOINTS.AUTH.GOOGLE_CONFIG);
       if (!response?.clientId) return envFallback();
       return {
-        enabled: !!response.enabled && !!response.clientId,
+        enabled: !!response.enabled && !!(response.clientId || response.iosClientId || response.androidClientId),
         clientId: response.clientId,
+        iosClientId: response.iosClientId,
+        androidClientId: response.androidClientId,
       };
     } catch (error) {
       console.warn('[authApi.getGoogleConfig] Failed, using env fallback:', error);

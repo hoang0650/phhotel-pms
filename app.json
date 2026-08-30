@@ -2,7 +2,7 @@
   "expo": {
     "name": "PHHotel PMS",
     "slug": "phhotel-pms-interface",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/phgroup_logo_circle.png",
     "scheme": "rork-app",
@@ -40,6 +40,11 @@
           }
         },
         "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "rork-app"
+            ]
+          },
           {
             "CFBundleURLSchemes": [
               "com.googleusercontent.apps.321108577244-p1tp873s03sc3rmhc18b6tl0g8f0h1r4"

@@ -4,6 +4,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '@/hooks/useTheme';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import invoiceApi from '@/services/api/invoice';
+import eInvoiceApi, { EInvoiceVendor, EInvoiceTemplate } from '@/services/api/e-invoice';
 import { Invoice, InvoiceProduct, Service as InvoiceService } from '@/types/invoice';
 import { Ionicons } from '@expo/vector-icons';
 import { useHotel } from '@/contexts/HotelContext';
@@ -101,8 +102,21 @@ export default function InvoiceEditorScreen() {
     thankYou2: isVi ? 'Chúc quý khách một ngày tốt lành!' : 'Have a wonderful day!',
     printDate: isVi ? 'Ngày in:' : 'Printed on:',
     noTaxCode: isVi ? 'Không có' : 'Not available',
+    eInvoice: isVi ? 'Hóa đơn điện tử' : 'E-invoice',
+    eInvoiceProvider: isVi ? 'Nhà cung cấp' : 'Provider',
+    sepay: 'Sepay',
+    easyInvoice: 'EasyInvoice',
+    createDraftEInvoice: isVi ? 'Tạo nháp HĐĐT' : 'Create draft e-invoice',
+    issueEInvoice: isVi ? 'Phát hành HĐĐT' : 'Issue e-invoice',
+    eInvoiceProcessing: isVi ? 'Đang xử lý hóa đơn điện tử...' : 'Processing e-invoice...',
+    eInvoiceSuccess: isVi ? 'Xuất hóa đơn điện tử thành công' : 'E-invoice exported successfully',
+    eInvoiceFailed: isVi ? 'Không thể xuất hóa đơn điện tử' : 'Failed to export e-invoice',
+    missingTemplate: isVi ? 'Chưa cấu hình mẫu hóa đơn. Vui lòng đăng nhập trên web admin.' : 'Invoice template not configured. Please sign in on web admin.',
   }), [isVi]);
   
+  const [eInvoiceVendor, setEInvoiceVendor] = useState<EInvoiceVendor>('sepay');
+  const [eInvoiceTemplate, setEInvoiceTemplate] = useState<EInvoiceTemplate | null>(null);
+  const [eInvoiceLoading, setEInvoiceLoading] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editableProducts, setEditableProducts] = useState<EditableProduct[]>([]);
   const [formData, setFormData] = useState({
@@ -235,6 +249,122 @@ export default function InvoiceEditorScreen() {
       setEditableProducts(products);
     }
   }, [invoice, isVi]);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const vendor = await eInvoiceApi.storage.getVendor();
+      const template = await eInvoiceApi.storage.getTemplate();
+      if (!mounted) return;
+      setEInvoiceVendor(vendor);
+      if (template) {
+        setEInvoiceTemplate(template);
+        return;
+      }
+      try {
+        const res = await eInvoiceApi.getProviderAccounts(vendor) as any;
+        const accounts = res?.data || [];
+        const firstTemplate = accounts[0]?.templates?.[0];
+        if (firstTemplate) {
+          const mapped: EInvoiceTemplate = {
+            template_code: firstTemplate.template_code,
+            invoice_series: firstTemplate.invoice_series,
+            invoice_label: firstTemplate.invoice_label,
+          };
+          setEInvoiceTemplate(mapped);
+          await eInvoiceApi.storage.setTemplate(mapped);
+        }
+      } catch (error) {
+        console.warn('[EInvoice] load template failed', error);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const buildEInvoicePayload = (isDraft: boolean) => {
+    if (!invoice || !eInvoiceTemplate) {
+      throw new Error(text.missingTemplate);
+    }
+
+    const items = editableProducts.map((item, index) => ({
+      line_number: index + 1,
+      line_type: 1,
+      item_name: item.name,
+      unit: item.isService ? (isVi ? 'dịch vụ' : 'service') : (isVi ? 'cái' : 'unit'),
+      quantity: item.quantity || 1,
+      unit_price: item.price || 0,
+      tax_rate: 10,
+      total_price: item.totalPrice || 0,
+    }));
+
+    return {
+      provider: eInvoiceVendor,
+      template_code: eInvoiceTemplate.template_code,
+      invoice_series: eInvoiceTemplate.invoice_series,
+      issued_date: new Date().toISOString().slice(0, 10),
+      currency: 'VND',
+      is_draft: isDraft,
+      invoiceId: invoice._id || invoice.id,
+      buyer: {
+        name: formData.customerName || invoice.customerName || text.walkInGuest,
+        tax_code: formData.taxCode || '',
+        address: formData.customerAddress || invoice.guestInfo?.address || '',
+        email: invoice.guestInfo?.email || '',
+        phone: formData.customerPhone || invoice.customerPhone || '',
+      },
+      items,
+      notes: formData.notes || invoice.notes || '',
+    };
+  };
+
+  const handleVendorChange = async (vendor: EInvoiceVendor) => {
+    setEInvoiceVendor(vendor);
+    await eInvoiceApi.storage.setVendor(vendor);
+    setEInvoiceTemplate(null);
+    try {
+      const res = await eInvoiceApi.getProviderAccounts(vendor) as any;
+      const firstTemplate = res?.data?.[0]?.templates?.[0];
+      if (firstTemplate) {
+        const mapped: EInvoiceTemplate = {
+          template_code: firstTemplate.template_code,
+          invoice_series: firstTemplate.invoice_series,
+          invoice_label: firstTemplate.invoice_label,
+        };
+        setEInvoiceTemplate(mapped);
+        await eInvoiceApi.storage.setTemplate(mapped);
+      }
+    } catch (error) {
+      console.warn('[EInvoice] reload template failed', error);
+    }
+  };
+
+  const handleExportEInvoice = async (isDraft: boolean) => {
+    if (!invoice) return;
+    try {
+      setEInvoiceLoading(true);
+      const payload = buildEInvoicePayload(isDraft);
+      const createRes = await eInvoiceApi.createInvoice(payload, eInvoiceVendor) as any;
+      const trackingCode = createRes?.data?.tracking_code || createRes?.tracking_code;
+      const referenceCode = createRes?.data?.reference_code || trackingCode;
+
+      if (!isDraft && referenceCode) {
+        if (eInvoiceVendor === 'sepay') {
+          await eInvoiceApi.issueInvoice({
+            reference_code: referenceCode,
+            template_code: eInvoiceTemplate?.template_code,
+            invoice_series: eInvoiceTemplate?.invoice_series,
+          }, eInvoiceVendor);
+        }
+      }
+
+      Alert.alert(text.success, text.eInvoiceSuccess);
+      queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] });
+    } catch (error: any) {
+      Alert.alert(text.error, `${text.eInvoiceFailed}: ${error?.message || ''}`);
+    } finally {
+      setEInvoiceLoading(false);
+    }
+  };
 
   // Helper function to check if service is in products
   const isServiceInProducts = (service: InvoiceService, products?: InvoiceProduct[]): boolean => {
@@ -885,6 +1015,48 @@ export default function InvoiceEditorScreen() {
         </View>
       </View>
 
+      {/* E-Invoice */}
+      {!isEditMode && invoice && (
+        <View style={[styles.section, { backgroundColor: colors.card }]}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>{text.eInvoice}</Text>
+          <Text style={{ color: colors.textSecondary, marginBottom: 8 }}>
+            {eInvoiceTemplate
+              ? `${eInvoiceTemplate.template_code} / ${eInvoiceTemplate.invoice_series}`
+              : text.missingTemplate}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+            <TouchableOpacity
+              style={[styles.vendorChip, { borderColor: colors.border, backgroundColor: eInvoiceVendor === 'sepay' ? colors.primary : colors.background }]}
+              onPress={() => handleVendorChange('sepay')}
+            >
+              <Text style={{ color: eInvoiceVendor === 'sepay' ? '#fff' : colors.text }}>{text.sepay}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.vendorChip, { borderColor: colors.border, backgroundColor: eInvoiceVendor === 'easyinvoice' ? colors.primary : colors.background }]}
+              onPress={() => handleVendorChange('easyinvoice')}
+            >
+              <Text style={{ color: eInvoiceVendor === 'easyinvoice' ? '#fff' : colors.text }}>{text.easyInvoice}</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={[styles.eInvoiceButton, { backgroundColor: colors.warning, opacity: eInvoiceLoading ? 0.6 : 1 }]}
+              disabled={eInvoiceLoading || !eInvoiceTemplate}
+              onPress={() => handleExportEInvoice(true)}
+            >
+              <Text style={styles.saveButtonText}>{text.createDraftEInvoice}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.eInvoiceButton, { backgroundColor: colors.success, opacity: eInvoiceLoading ? 0.6 : 1 }]}
+              disabled={eInvoiceLoading || !eInvoiceTemplate}
+              onPress={() => handleExportEInvoice(false)}
+            >
+              <Text style={styles.saveButtonText}>{text.issueEInvoice}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {/* Action Buttons */}
       {isEditMode && (
         <View style={[styles.section, { backgroundColor: colors.card }]}>
@@ -1190,5 +1362,18 @@ const styles = StyleSheet.create({
   printDate: {
     fontSize: 12,
     marginTop: 8,
+  },
+  vendorChip: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  eInvoiceButton: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
   },
 });

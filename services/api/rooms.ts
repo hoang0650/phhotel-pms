@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import { API_ENDPOINTS } from './config';
+import { otaApi } from './ota';
 import { Room, RoomStatus } from '@/types/hotel';
 import {
   calculateRoomPriceLocal,
@@ -646,11 +647,21 @@ export const roomsApi = {
   },
 
   checkIn: async (id: string, payload: unknown) => {
-    return apiClient.post(API_ENDPOINTS.ROOMS.CHECKIN(id), payload);
+    const result = await apiClient.post(API_ENDPOINTS.ROOMS.CHECKIN(id), payload);
+    const hotelId = (payload as { hotelId?: string })?.hotelId;
+    if (hotelId) {
+      otaApi.triggerInventorySync(hotelId);
+    }
+    return result;
   },
 
   checkOut: async (id: string, payload?: unknown) => {
-    return apiClient.post(API_ENDPOINTS.ROOMS.CHECKOUT(id), payload ?? {});
+    const result = await apiClient.post(API_ENDPOINTS.ROOMS.CHECKOUT(id), payload ?? {});
+    const hotelId = (payload as { hotelId?: string })?.hotelId;
+    if (hotelId) {
+      otaApi.triggerInventorySync(hotelId);
+    }
+    return result;
   },
 
   markClean: async (id: string) => {

@@ -21,6 +21,8 @@ import {
   MessageCircleMore,
   Send,
   Camera,
+  Globe,
+  CalendarRange,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -154,6 +156,29 @@ const managementModules: ManagementModule[] = [
     route: '/management/telegram',
     gradient: ['#38bdf8', '#2563eb'],
     feature: 'telegram_messages',
+  },
+  {
+    id: 'booking-calendar',
+    titleVi: 'Lịch Đặt Phòng',
+    titleEn: 'Booking Calendar',
+    descriptionVi: 'Xem timeline đặt phòng theo phòng và ngày',
+    descriptionEn: 'View room booking timeline by day',
+    icon: CalendarRange,
+    route: '/management/booking-calendar',
+    gradient: ['#1d4ed8', '#3b82f6'],
+    feature: 'calendar',
+  },
+  {
+    id: 'ota',
+    titleVi: 'Quản Lý OTA / Channel',
+    titleEn: 'OTA / Channel Management',
+    descriptionVi: 'Đồng bộ phòng trống và booking từ Channex',
+    descriptionEn: 'Sync availability and bookings via Channex',
+    icon: Globe,
+    route: '/management/ota',
+    gradient: ['#00b4a0', '#0891b2'],
+    feature: 'ota_management',
+    addon: 'otaManagementFeature',
   },
   {
     id: 'camera',

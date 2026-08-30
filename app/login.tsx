@@ -270,6 +270,7 @@ export default function LoginScreen() {
         idToken: googleResult.idToken,
         code: googleResult.code,
         redirectUri: googleResult.redirectUri,
+        clientId: googleResult.clientId,
       });
       router.replace('/(tabs)/(dashboard)');
     } catch (error) {
