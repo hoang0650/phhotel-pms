@@ -5,7 +5,11 @@ module.exports = (config) => ({
   name: 'clip',
   displayName: 'PHHotel Clip',
   icon: '../../assets/images/phgroup_logo_circle.png',
-  exportJs: true,
+  images: {
+    Logo: '../../assets/images/phgroup_logo_circle.png',
+  },
+  // Native SwiftUI only — RN/Hermes exceeds Apple's 15 MB App Clip limit.
+  exportJs: false,
   deploymentTarget: '16.4',
   bundleIdentifier: '.clip',
   entitlements: {

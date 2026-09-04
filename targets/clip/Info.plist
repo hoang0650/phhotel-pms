@@ -4,6 +4,8 @@
   <dict>
     <key>CFBundleName</key>
     <string>$(PRODUCT_NAME)</string>
+    <key>CFBundleDisplayName</key>
+    <string>PHHotel Clip</string>
     <key>CFBundleIdentifier</key>
     <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleVersion</key>
@@ -36,9 +38,9 @@
     <string>Automatic</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
-    <key>NSMotionUsageDescription</key>
-    <string>PHHotel Clip uses motion data only when required by shared frameworks to keep the interface responsive on your device.</string>
-    <key>NSLocalNetworkUsageDescription</key>
-    <string>PHHotel Clip may connect to local network services when you open linked hotel tools.</string>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+      <string>rork-app</string>
+    </array>
   </dict>
 </plist>

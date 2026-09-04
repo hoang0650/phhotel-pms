@@ -1,14 +1,11 @@
-# App Clip target — PHHotel PMS
+# App Clip target — PHHotel PMS (native SwiftUI, under 15 MB)
 
 Parent: app.rork.phhotel-pms-interface
 Clip:   app.rork.phhotel-pms-interface.clip
 Team:   XZUV4HFW8S
 URL:    https://phhotel.vn/clip
 
-AASA (hotelapp):
-  /.well-known/apple-app-site-association
-  appclips.apps = ["XZUV4HFW8S.app.rork.phhotel-pms-interface.clip"]
+This clip is promotional only (no React Native / Hermes).
+Full PMS lives in the main app; clip opens App Store or rork-app://.
 
-Build:
-  npx expo prebuild -p ios
-  eas build --platform ios --profile production
+Do NOT add targets/clip/pods.rb with use_react_native! — binary will exceed Apple's App Clip size limit.
