@@ -4,6 +4,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
+import * as Application from "expo-application";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { HotelProvider } from "@/contexts/HotelContext";
 import { PermissionProvider } from "@/contexts/PermissionContext";
@@ -13,6 +14,7 @@ import { LanguageProvider } from "@/contexts/LanguageContext";
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
+const isAppClip = (Application.applicationId || "").endsWith(".clip");
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isInitialized } = useAuth();
@@ -22,12 +24,20 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isInitialized) return;
 
-    const inAuthGroup = segments[0] === 'login' || segments[0] === 'forgot-password';
+    const inAuthGroup = segments[0] === "login" || segments[0] === "forgot-password";
+    const inPublicClip = segments[0] === "clip";
 
-    if (!isAuthenticated && !inAuthGroup) {
-      router.replace('/login');
+    if (isAppClip) {
+      if (!inPublicClip) {
+        router.replace("/clip");
+      }
+      return;
+    }
+
+    if (!isAuthenticated && !inAuthGroup && !inPublicClip) {
+      router.replace("/login");
     } else if (isAuthenticated && inAuthGroup) {
-      router.replace('/(tabs)/(dashboard)');
+      router.replace("/(tabs)/(dashboard)");
     }
   }, [isAuthenticated, isInitialized, segments, router]);
 
@@ -45,6 +55,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="login" options={{ headerShown: false }} />
       <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
+      <Stack.Screen name="clip" options={{ headerShown: false }} />
       <Stack.Screen name="+not-found" />
     </Stack>
   );

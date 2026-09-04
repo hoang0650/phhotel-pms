@@ -14,8 +14,13 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
+      "appleTeamId": "XZUV4HFW8S",
       "supportsTablet": false,
       "bundleIdentifier": "app.rork.phhotel-pms-interface",
+      "associatedDomains": [
+        "applinks:phhotel.vn",
+        "appclips:phhotel.vn"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSLocalNetworkUsageDescription": "PHHotel PMS kết nối OpenClaw gateway trên mạng nội bộ hoặc LAN khi bạn mở trợ lý AI.",
@@ -70,19 +75,24 @@
       [
         "expo-router",
         {
-          "origin": "https://rork.com/"
+          "origin": "https://phhotel.vn/"
         }
       ],
       "expo-font",
       "expo-web-browser",
-      "./plugins/withOpenClawNetworkSecurity.js"
+      "./plugins/withOpenClawNetworkSecurity.js",
+      "@bacons/apple-targets",
+      "expo-image",
+      "expo-secure-store",
+      "expo-splash-screen",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
       "router": {
-        "origin": "https://rork.com/"
+        "origin": "https://phhotel.vn/"
       },
       "eas": {
         "projectId": "a6701f0c-abda-4422-a777-e95e502857bf"
