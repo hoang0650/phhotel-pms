@@ -36,5 +36,9 @@
     <string>Automatic</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+    <key>NSMotionUsageDescription</key>
+    <string>PHHotel Clip uses motion data only when required by shared frameworks to keep the interface responsive on your device.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>PHHotel Clip may connect to local network services when you open linked hotel tools.</string>
   </dict>
 </plist>

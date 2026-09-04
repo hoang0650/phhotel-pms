@@ -21,8 +21,14 @@
         "applinks:phhotel.vn",
         "appclips:phhotel.vn"
       ],
+      "entitlements": {
+        "com.apple.developer.associated-appclip-app-identifiers": [
+          "$(AppIdentifierPrefix)app.rork.phhotel-pms-interface.clip"
+        ]
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSMotionUsageDescription": "PHHotel PMS uses motion data only when required by shared frameworks to keep the interface responsive on your device.",
         "NSLocalNetworkUsageDescription": "PHHotel PMS kết nối OpenClaw gateway trên mạng nội bộ hoặc LAN khi bạn mở trợ lý AI.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoadsInWebContent": true,
