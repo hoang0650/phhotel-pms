@@ -80,8 +80,8 @@ export default function TermsOfServiceScreen() {
           </Text>
           <Text style={[styles.text, { color: colors.text }]}>
             {language === 'vi' ? 'Email hỗ trợ: ' : 'Support: '}
-            <Text style={styles.link} onPress={() => Linking.openURL('mailto:hotro@phhotel.vn')}>
-              hotro@phhotel.vn
+            <Text style={styles.link} onPress={() => Linking.openURL('mailto:support@phhotel.vn')}>
+              support@phhotel.vn
             </Text>
           </Text>
         </View>

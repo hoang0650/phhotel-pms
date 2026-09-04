@@ -22,7 +22,7 @@ export const TERMS_DOCS: Record<'vi' | 'en', LegalDoc> = {
     title: 'Thoả thuận sử dụng Dịch vụ Phần mềm PHHotel',
     lastUpdatedLabel: 'Cập nhật lần cuối',
     subtitle:
-      'Công ty TNHH Giải Pháp Công Nghệ PHGROUP — PHHotel PMS (web, app, App Clip) và hệ sinh thái AI Markets.',
+      'Công ty TNHH Giải Pháp Công Nghệ PHGROUP — PHHotel PMS (web, app, App Clip).',
     sections: [
       {
         title: '',
@@ -31,7 +31,7 @@ export const TERMS_DOCS: Record<'vi' | 'en', LegalDoc> = {
             p: [
               'Đây là thỏa thuận giữa Khách hàng và Công ty TNHH Giải Pháp Công Nghệ PHGROUP (“PHHotel”) khi sử dụng PHHotel PMS trên ứng dụng di động, web và App Clip.',
               'Bằng việc đăng nhập hoặc tiếp tục sử dụng, bạn đồng ý với các điều khoản này. Bản đầy đủ cũng được đăng tại https://phhotel.vn/terms-of-service',
-              'Hỗ trợ: hotro@phhotel.vn — AI Markets: https://aimarkets.vn',
+              'Hỗ trợ: support@phhotel.vn — https://phhotel.vn',
             ],
           },
         ],
@@ -41,7 +41,7 @@ export const TERMS_DOCS: Record<'vi' | 'en', LegalDoc> = {
         blocks: [
           {
             p: [
-              'Phần mềm PHHotel là hệ thống quản lý khách sạn (phòng, đặt phòng, hóa đơn, báo cáo, AI…). Dịch vụ là quyền sử dụng Phần mềm theo gói đã đăng ký. Khách hàng là cơ sở lưu trú/tổ chức vận hành; Người dùng là tài khoản được Khách hàng cấp quyền.',
+              'Phần mềm PHHotel là hệ thống quản lý khách sạn (phòng, đặt phòng, hóa đơn, báo cáo và các tính năng hỗ trợ trong PMS). Dịch vụ là quyền sử dụng Phần mềm theo gói đã đăng ký. Khách hàng là cơ sở lưu trú/tổ chức vận hành; Người dùng là tài khoản được Khách hàng cấp quyền.',
             ],
           },
         ],
@@ -51,7 +51,7 @@ export const TERMS_DOCS: Record<'vi' | 'en', LegalDoc> = {
         blocks: [
           {
             p: [
-              'Bạn phải bảo mật mật khẩu, thiết bị và sinh trắc học trên máy. Mọi thao tác từ tài khoản của bạn thuộc trách nhiệm của Khách hàng. Báo ngay hotro@phhotel.vn nếu nghi ngờ truy cập trái phép.',
+              'Bạn phải bảo mật mật khẩu, thiết bị và sinh trắc học trên máy. Mọi thao tác từ tài khoản của bạn thuộc trách nhiệm của Khách hàng. Báo ngay support@phhotel.vn nếu nghi ngờ truy cập trái phép.',
             ],
           },
         ],
@@ -95,7 +95,7 @@ export const TERMS_DOCS: Record<'vi' | 'en', LegalDoc> = {
         blocks: [
           {
             p: [
-              'Chatbox AI, OpenClaw, AI Markets và tích hợp Google/Apple/thanh toán là tiện ích bổ sung. Kết quả AI chỉ mang tính hỗ trợ — hãy kiểm tra trước khi áp dụng. Điều khoản đối tác vẫn áp dụng khi bạn bật dịch vụ của họ.',
+              'Tính năng AI trong PHHotel PMS (nếu có trong gói) và tích hợp Google/Apple/thanh toán là tiện ích bổ sung của sản phẩm PHHotel. Kết quả AI chỉ mang tính hỗ trợ — hãy kiểm tra trước khi áp dụng. Điều khoản đối tác vẫn áp dụng khi bạn bật dịch vụ của họ.',
             ],
           },
         ],
@@ -136,7 +136,7 @@ export const TERMS_DOCS: Record<'vi' | 'en', LegalDoc> = {
     title: 'PHHotel Software Services Agreement',
     lastUpdatedLabel: 'Last updated',
     subtitle:
-      'PHGROUP Technology Solutions Co., Ltd. — PHHotel PMS (web, app, App Clip) and AI Markets ecosystem.',
+      'PHGROUP Technology Solutions Co., Ltd. — PHHotel PMS (web, app, App Clip).',
     sections: [
       {
         title: '',
@@ -145,7 +145,7 @@ export const TERMS_DOCS: Record<'vi' | 'en', LegalDoc> = {
             p: [
               'This agreement is between the Customer and PHGROUP Technology Solutions Co., Ltd. (“PHHotel”) for PHHotel PMS on mobile, web, and App Clip.',
               'By signing in or continuing to use the app, you accept these terms. The full version is at https://phhotel.vn/terms-of-service',
-              'Support: hotro@phhotel.vn — AI Markets: https://aimarkets.vn',
+              'Support: support@phhotel.vn — https://phhotel.vn',
             ],
           },
         ],
@@ -165,7 +165,7 @@ export const TERMS_DOCS: Record<'vi' | 'en', LegalDoc> = {
         blocks: [
           {
             p: [
-              'Keep passwords and devices secure. Activity under your account is the Customer’s responsibility. Report suspected unauthorized access to hotro@phhotel.vn.',
+              'Keep passwords and devices secure. Activity under your account is the Customer’s responsibility. Report suspected unauthorized access to support@phhotel.vn.',
             ],
           },
         ],
@@ -209,7 +209,7 @@ export const TERMS_DOCS: Record<'vi' | 'en', LegalDoc> = {
         blocks: [
           {
             p: [
-              'AI chatbox, OpenClaw, AI Markets, and Google/Apple/payment integrations are optional. AI output is assistive — verify before use. Third-party terms apply when you enable their services.',
+              'In-PMS AI features (if included in your plan) and Google/Apple/payment integrations are optional PHHotel product features. AI output is assistive — verify before use. Third-party terms apply when you enable their services.',
             ],
           },
         ],
