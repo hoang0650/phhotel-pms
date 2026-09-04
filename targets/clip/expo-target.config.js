@@ -1,10 +1,12 @@
 /** @type {import('@bacons/apple-targets/app.plugin').ConfigFunction} */
 module.exports = (config) => ({
   type: 'clip',
-  name: 'PHHotel Clip',
+  // Must match folder name `targets/clip` — Podfile looks up target by this name.
+  name: 'clip',
+  displayName: 'PHHotel Clip',
   icon: '../../assets/images/phgroup_logo_circle.png',
   exportJs: true,
-  deploymentTarget: '16.0',
+  deploymentTarget: '16.4',
   bundleIdentifier: '.clip',
   entitlements: {
     'com.apple.developer.associated-domains': ['appclips:phhotel.vn'],

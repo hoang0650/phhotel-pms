@@ -17,7 +17,8 @@
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "321108577244-0pil8o84pmj4ub1o87tahsoprp34k82k.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "321108577244-p1tp873s03sc3rmhc18b6tl0g8f0h1r4.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "321108577244-idcomf6ckdigm8num2k7tnttntuj6dge.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://phhotel.vn/assets/oauth/google-mobile.html"
+        "EXPO_PUBLIC_GOOGLE_REDIRECT_URI": "https://phhotel.vn/assets/oauth/google-mobile.html",
+        "EXPO_NO_CAPABILITY_SYNC": "1"
       }
     }
   },
